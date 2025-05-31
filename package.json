@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "bin": {
     "uniquake-content": "bin/content.js",
-    "uniquake-master": "bin/master.js",
-    "uniquake-webrtc-master": "bin/webrtc-master.js",
+    "uniquake-master": "bin/webrtc-master.js",
     "uniquake-repak": "bin/repak.js"
+  },
+  "scripts": {
+    "start": "node bin/web.js --config ./bin/web.json",
+    "master": "node bin/webrtc-master.js",
+    "content": "node bin/content.js",
+    "repak": "node bin/repak.js"
   },
   "repository": {
     "type": "git",
