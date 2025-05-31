@@ -8,6 +8,7 @@
 const MasterServer = require('../lib/master-server');
 const optimist = require('optimist');
 const logger = require('winston');
+const path = require('path');
 
 // Set up logging
 logger.cli();
@@ -17,7 +18,7 @@ logger.level = process.env.LOG_LEVEL || 'info';
 const argv = optimist
   .usage('Usage: $0 [options]')
   .describe('config', 'Configuration file path')
-  .default('config', './master-config.json')
+  .default('config', path.join(__dirname, '..', 'master-config.json'))
   .describe('port', 'Port to listen on')
   .describe('public-ip', 'Public IP address for STUN/TURN')
   .describe('stun-port', 'STUN server port')
