@@ -100,9 +100,17 @@
 
 			// merge default args with query string args
 			var args = ['+set', 'fs_cdn', '<%= content %>'];
+			<% if (useWebRTC) { %>
+			// Add WebRTC master server address
+			args.push('+set', 'fs_master', '<%= masterServer %>');
+			<% } %>
 			args.push.apply(args, getQueryCommands());
 			ioq3.callMain(args);
 		};
 	</script>
+	<% if (useWebRTC) { %>
+	<!-- WebRTC adapter loader -->
+	<script type="text/javascript" src="/webrtc-loader.js"></script>
+	<% } %>
 	<script type="text/javascript" src="/ioquake3.js"></script>
 </html>

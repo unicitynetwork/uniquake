@@ -10,7 +10,9 @@
     "start": "node bin/web.js --config ./bin/web.json",
     "master": "node bin/webrtc-master.js",
     "content": "node bin/content.js",
-    "repak": "node bin/repak.js"
+    "repak": "node bin/repak.js",
+    "mock-server": "node lib/mock-server-client.js",
+    "mock-client": "node lib/mock-game-client.js"
   },
   "repository": {
     "type": "git",
@@ -28,7 +30,7 @@
     "express": "~3.3.5",
     "ministun": "^1.0.6",
     "node-turn": "^0.0.6",
-    "optimist": "~0.6.0",
+    "optimist": "^0.6.1",
     "quakejs-files": "0.0.3",
     "send": "^0.16.2",
     "simple-peer": "^9.11.1",

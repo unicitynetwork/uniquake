@@ -22,7 +22,9 @@ var config = loadConfig(argv.config);
 function loadConfig(configPath) {
 	var config = {
 		port: 8080,
-		content: 'localhost:9000'
+		content: 'localhost:9000',
+		masterServer: 'localhost:27950',
+		useWebRTC: true
 	};
 
 	try {
@@ -39,12 +41,29 @@ function loadConfig(configPath) {
 (function main() {
 	var app = express();
 
+	// Import WebRTC client files middleware
+	var createClientFilesMiddleware = require('../lib/client-files-middleware');
+
 	app.set('views', __dirname);
 	app.set('view engine', 'ejs');
 
+	// Configure WebRTC client files middleware
+	var clientFilesMiddleware = createClientFilesMiddleware({
+		masterServer: 'ws://' + config.masterServer,
+		useWebRTC: config.useWebRTC
+	});
+
+	// Serve static files from build directory
 	app.use(express.static(path.join(__dirname, '..', 'build')));
+	
+	// Serve WebRTC client files
+	app.use(clientFilesMiddleware);
+	
+	// Render index.ejs with template variables
 	app.use(function (req, res, next) {
 		res.locals.content = config.content;
+		res.locals.useWebRTC = config.useWebRTC;
+		res.locals.masterServer = config.masterServer;
 		res.render('index');
 	});
 

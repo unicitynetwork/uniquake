@@ -1,0 +1,5 @@
+{
+  "content": "content.quakejs.com",
+  "masterServer": "localhost:27950",
+  "useWebRTC": true
+}
