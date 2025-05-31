@@ -1,10 +1,11 @@
 {
-  "name": "quakejs",
-  "version": "0.0.1",
+  "name": "uniquake",
+  "version": "0.1.0",
   "bin": {
-    "quakejs-content": "bin/content.js",
-    "quakejs-master": "bin/master.js",
-    "quakejs-repak": "bin/repak.js"
+    "uniquake-content": "bin/content.js",
+    "uniquake-master": "bin/master.js",
+    "uniquake-webrtc-master": "bin/webrtc-master.js",
+    "uniquake-repak": "bin/repak.js"
   },
   "repository": {
     "type": "git",
@@ -16,14 +17,19 @@
   "dependencies": {
     "async": "~0.2.9",
     "buffer-crc32": "~0.2.1",
+    "crypto": "^1.0.1",
     "ejs": "~0.8.4",
     "execSync": "~1.0.1-pre",
     "express": "~3.3.5",
+    "node-stun-server": "^0.1.0",
+    "node-turn": "^0.0.6",
     "optimist": "~0.6.0",
     "quakejs-files": "0.0.3",
     "send": "^0.16.2",
+    "simple-peer": "^9.11.1",
     "temp": "~0.5.1",
     "underscore": "~1.5.1",
+    "uuid": "^9.0.0",
     "winston": "2.4.0",
     "wrench": "~1.5.4",
     "ws": "~7.2.0"
