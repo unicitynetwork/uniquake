@@ -511,8 +511,9 @@
       // Update configuration from UI
       const config = getServerConfig();
       
-      // Generate a new random server name
-      const serverName = generateServerName();
+      // Use the existing server name instead of generating a new one
+      // This ensures consistency between Server Status and Token System panels
+      const serverName = server.serverInfo.name;
       document.getElementById('server-name').value = serverName;
       config.serverName = serverName;
       
@@ -883,8 +884,17 @@
       // Get the server's peer ID for display
       const peerId = server.serverState.peerId || 'Not registered';
       
+      // Ensure the displayed username matches the server name in the Server Status panel
+      // Update the token service username if needed to maintain consistency
+      if (identity.username !== server.serverInfo.name) {
+        console.log(`Detected username mismatch: Token service username (${identity.username}) != Server name (${server.serverInfo.name})`);
+        // Note: We can't update the token service username directly as it's set during initialization
+      }
+      
+      // Display server info in the Token System panel, matching the Server Status panel
       tokenInfo.innerHTML = `
-        <strong>Username:</strong> ${identity.username}<br>
+        <strong>Server Name:</strong> ${server.serverInfo.name}<br>
+        <strong>Token Username:</strong> ${identity.username}<br>
         <strong>Network ID (Peer ID):</strong> <span style="font-family: monospace; word-break: break-all;">${peerId}</span><br>
         <strong>Token Public Key Address:</strong> <span style="font-family: monospace; word-break: break-all;">${identity.pubkey}</span><br>
         <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
