@@ -421,21 +421,9 @@
       
       console.log('Server system initialized and auto-started');
       
-      // Create a function to normalize game state for consistent hashing
-      window.normalizeGameState = function(gameState) {
-        if (!gameState) return {};
-        
-        // Return a simplified state object with just the essential properties
-        // in a consistent order to ensure identical hashing
-        return {
-          gameId: gameState.gameId || '',
-          frame: gameState.frame || 0,
-          timestamp: gameState.timestamp || 0,
-          // Only include minimal player data
-          playerCount: Object.keys(gameState.players || {}).length
-          // Exclude other volatile properties
-        };
-      };
+      // Note: We no longer need a separate normalizeGameState function
+      // as we now use the token service's hashGameState method directly.
+      // The token service internally handles state normalization and hashing.
       
       // Set up UI event handlers
       setupUIHandlers();
@@ -765,11 +753,14 @@
       
       // Calculate state hash for the game state panel
       let stateHash = 'N/A';
-      if (window.SimpleCrypto && window.normalizeGameState) {
-        // Use normalized state for consistent hashing
-        const normalizedState = window.normalizeGameState(gameState);
-        console.log('Game State Panel - Normalized data being hashed:', JSON.stringify(normalizedState));
-        stateHash = SimpleCrypto.hash(JSON.stringify(normalizedState));
+      if (server && server.serverState.tokenService && server.serverState.tokenService.hashGameState) {
+        try {
+          // Use the token service's hashGameState method
+          stateHash = server.serverState.tokenService.hashGameState(gameState);
+          console.log('Game State Panel - Hash calculated with token service:', stateHash);
+        } catch (error) {
+          console.error('Failed to calculate game state hash:', error.message);
+        }
       }
       
       gameStateElem.innerHTML = `
@@ -863,17 +854,22 @@
       
       // Generate state hash if we have a game instance but no token
       let stateHash = 'N/A';
-      // Always generate a fresh hash using the normalized state for consistency
-      if (server.gameInstance && window.SimpleCrypto && window.normalizeGameState) {
-        const currentGameState = server.gameInstance.getGameState();
-        // Use normalized state for consistent hashing
-        const normalizedState = window.normalizeGameState(currentGameState);
-        console.log('Token Panel - Normalized data being hashed:', JSON.stringify(normalizedState));
-        stateHash = SimpleCrypto.hash(JSON.stringify(normalizedState));
-      } else if (tokenStatus.gameState && tokenStatus.gameState.stateHash) {
-        // Fallback to token status if no game instance
+      // First try to use the token status state hash if available
+      if (tokenStatus.gameState && tokenStatus.gameState.stateHash) {
+        // Use the hash from token status
         console.log('Token Panel - Using hash from token status:', tokenStatus.gameState.stateHash);
         stateHash = tokenStatus.gameState.stateHash;
+      }
+      // If no state hash in token status and we have access to the token service, calculate hash directly
+      else if (server.gameInstance && server.serverState.tokenService && server.serverState.tokenService.hashGameState) {
+        try {
+          const currentGameState = server.gameInstance.getGameState();
+          // Use the token service's hashGameState method
+          stateHash = server.serverState.tokenService.hashGameState(currentGameState);
+          console.log('Token Panel - Hash calculated with token service:', stateHash);
+        } catch (error) {
+          console.error('Failed to calculate token panel game state hash:', error.message);
+        }
       }
       
       // Get the server's peer ID for display
