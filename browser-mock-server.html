@@ -726,9 +726,7 @@
         clientElem.innerHTML = `
           <div class="client-name">${client.username || client.id}</div>
           <div class="client-info">Network ID: <span style="font-family: monospace; word-break: break-all;">${client.id}</span></div>
-          <div class="client-info">Token Public Key Address: <span style="font-family: monospace; word-break: break-all;">${client.pubkey || 'N/A'}</span>
-          ${client.pubkey ? '<span style="color: #4caf50;"> (Address for sending tokens to this client)</span>' : ''}
-          </div>
+          <div class="client-info">Token Public Key Address: <span style="font-family: monospace; word-break: break-all;">${client.pubkey || 'N/A'}</span></div>
           <div class="client-info">Entry Token: ${client.entryTokenReceived ? 'Received' : 'Not Received'}</div>
         `;
         
@@ -845,8 +843,7 @@
       tokenInfo.innerHTML = `
         <strong>Username:</strong> ${identity.username}<br>
         <strong>Network ID (Peer ID):</strong> <span style="font-family: monospace; word-break: break-all;">${peerId}</span><br>
-        <strong>Token Public Key Address:</strong> <span style="font-family: monospace; word-break: break-all;">${identity.pubkey}</span>
-        <span style="color: #4caf50;"> (Derived from secret for token operations)</span><br>
+        <strong>Token Public Key Address:</strong> <span style="font-family: monospace; word-break: break-all;">${identity.pubkey}</span><br>
         <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
         <strong>Game State Token:</strong> ${server.serverState.tokenService.lastStateToken ? 'Available' : 'Not Created'}<br>
       `;
