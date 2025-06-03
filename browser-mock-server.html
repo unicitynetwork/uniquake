@@ -413,6 +413,9 @@
       await server.init();
       await integration.init(game);
       
+      // Store reference to game in server for synchronization
+      server.gameInstance = game;
+      
       // Auto-start the server
       await startServer();
       
@@ -800,7 +803,7 @@
       tokenInfo.innerHTML = `
         <strong>Identity:</strong> ${identity.username} (${identity.pubkey.substring(0, 10)}...)<br>
         <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
-        <strong>Game State Frame:</strong> ${server.serverState.gameState.frame}<br>
+        <strong>Game Frame:</strong> ${server.serverState.gameState.frame}<br>
         <strong>Game State Token:</strong> ${server.serverState.tokenService.lastStateToken ? 'Available' : 'Not Created'}<br>
       `;
       
