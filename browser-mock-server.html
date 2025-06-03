@@ -345,18 +345,27 @@
   </div>
 
   <!-- Load scripts -->
-  <script src="lib/client/webrtc-loader.js"></script>
   <script src="lib/client/uniquake-token-service.js"></script>
   <script src="lib/client/browser-mock-game.js"></script>
   <script src="lib/client/browser-mock-server.js"></script>
   <script src="lib/client/game-integration.js"></script>
   
   <script>
-    // Wait for transport to be ready
-    window.addEventListener('uniquake:transport:ready', function(event) {
-      console.log('Transport ready:', event.detail.transportType);
+    // Load WebRTC adapter directly, bypassing the auto-connect behavior
+    window.UNIQUAKE_CONFIG = {
+      useWebRTC: true,
+      masterServer: 'ws://localhost:27950',
+      noAutoConnect: true  // Flag to prevent auto-connection
+    };
+    
+    // Load the adapter script
+    var script = document.createElement('script');
+    script.src = '/webrtc-adapter.js';
+    script.onload = function() {
+      console.log('WebRTC adapter loaded, initializing server');
       initializeServer();
-    });
+    };
+    document.head.appendChild(script);
     
     // Main server, game, and integration instances
     let server, game, integration;
@@ -376,7 +385,7 @@
       
       // Create mock server
       server = new BrowserMockServer({
-        masterServer: 'localhost:27950',
+        masterServer: 'ws://localhost:27950',
         serverName: config.serverName,
         map: config.map,
         maxPlayers: config.maxPlayers,
@@ -404,16 +413,16 @@
       await server.init();
       await integration.init(game);
       
-      console.log('Server system initialized');
+      // Auto-start the server
+      await startServer();
+      
+      console.log('Server system initialized and auto-started');
       
       // Set up UI event handlers
       setupUIHandlers();
       
-      // Update initial token info
-      updateTokenInfo();
-      
-      // Update UI
-      updateServerStatus(server.getStatus());
+      // Update initial UI - disable event emission to avoid recursion
+      updateServerStatus(server.getStatus(false));
     }
     
     // Get server configuration from UI
@@ -626,7 +635,7 @@
         <strong>Registered:</strong> ${status.registered ? 'Yes' : 'No'}<br>
       `;
       
-      // Update token info if available
+      // Update token info if available, but don't trigger another status update
       if (status.tokens) {
         updateTokenInfo(status.tokens);
       }
@@ -785,8 +794,7 @@
         return;
       }
       
-      // Get token status from server
-      const status = server.getStatus();
+      // Use the provided token data instead of calling getStatus again
       const identity = server.serverState.tokenService.getIdentity();
       
       tokenInfo.innerHTML = `

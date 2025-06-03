@@ -1,18 +1,5 @@
 {
-  "port": 8080,
-  "servePath": "/home/vrogojin/Projects/uniquake",
-  "staticPaths": [
-    "/",
-    "/lib",
-    "/build",
-    "/bin"
-  ],
-  "routes": {
-    "/": "browser-mock-client.html",
-    "/client": "browser-mock-client.html",
-    "/server": "browser-mock-server.html",
-    "/webrtc-adapter.js": "lib/client/webrtc-adapter.js",
-    "/websocket-fallback.js": "lib/client/websocket-fallback.js",
-    "/transport-detector.js": "lib/client/transport-detector.js"
-  }
+  "content": "content.quakejs.com",
+  "masterServer": "localhost:27950",
+  "useWebRTC": true
 }

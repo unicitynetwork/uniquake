@@ -7,13 +7,13 @@
     "uniquake-repak": "bin/repak.js"
   },
   "scripts": {
-    "start": "node bin/web.js --config ./bin/web.json",
+    "start": "node bin/web.js --config ./web.json",
     "master": "node bin/webrtc-master.js",
     "content": "node bin/content.js",
     "repak": "node bin/repak.js",
     "mock-server": "node lib/mock-server-client.js",
     "mock-client": "node lib/mock-game-client.js",
-    "browser-mock": "node bin/web.js --config ./bin/web.json",
+    "browser-mock": "node mock-server.js",
     "browser-mock-all": "concurrently \"npm run master\" \"npm run browser-mock\"",
     "start-browser-mocks": "echo \"Starting master server and browser mock web server...\n\nMaster server: http://localhost:27950\nMock client: http://localhost:8080/client\nMock server: http://localhost:8080/server\n\" && npm run browser-mock-all"
   },
