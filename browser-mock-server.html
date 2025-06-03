@@ -390,10 +390,11 @@
       // Get initial configuration from UI
       const config = getServerConfig();
       
-      // Generate random server name
+      // Generate random server name - this will be used for registration during init()
       const serverName = generateServerName();
       document.getElementById('server-name').value = serverName;
       config.serverName = serverName;
+      console.log('Generated server name for initial registration:', serverName);
       
       // Create mock game
       game = new BrowserMockGame({
@@ -434,6 +435,13 @@
       
       // Store reference to game in server for synchronization
       server.gameInstance = game;
+      
+      // Check if the server was registered during init()
+      if (server.serverState.registered) {
+        console.log('Server was successfully registered during init(), proceeding to start');
+      } else {
+        console.warn('Server was not registered during init(), registration will be attempted in startServer()');
+      }
       
       // Auto-start the server
       await startServer();
@@ -513,8 +521,16 @@
       server.serverInfo.map = config.map;
       server.serverInfo.maxPlayers = config.maxPlayers;
       
-      // Register with master server
-      const success = await server.registerServer();
+      // Check if the server is already registered
+      let success = server.serverState.registered;
+      
+      if (success) {
+        console.log('Server already registered during init(), skipping explicit registration');
+      } else {
+        // Server wasn't registered during init(), we need to register it now
+        console.log('Server not registered yet, registering now...');
+        success = await server.registerServer();
+      }
       
       if (success) {
         // Start the game
