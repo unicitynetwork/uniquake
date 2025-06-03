@@ -371,10 +371,13 @@
         onStateChange: updateGameState
       });
       
+      // Generate a unique player name with random suffix
+      const playerName = 'Player_' + Math.floor(Math.random() * 1000);
+      
       // Create mock client
       client = new BrowserMockClient({
         masterServer: 'ws://localhost:27950',
-        name: 'BrowserPlayer',
+        name: playerName,
         verbose: true,
         debug: true,
         mintTokens: 5,
@@ -396,6 +399,9 @@
       await game.init();
       await client.init();
       await integration.init(game);
+      
+      // Store reference to game integration for syncing
+      client.gameIntegration = integration;
       
       console.log('Client system initialized');
       
