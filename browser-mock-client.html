@@ -337,18 +337,27 @@
   </div>
 
   <!-- Load scripts -->
-  <script src="lib/client/webrtc-loader.js"></script>
   <script src="lib/client/uniquake-token-service.js"></script>
   <script src="lib/client/browser-mock-game.js"></script>
   <script src="lib/client/browser-mock-client.js"></script>
   <script src="lib/client/game-integration.js"></script>
   
   <script>
-    // Wait for transport to be ready
-    window.addEventListener('uniquake:transport:ready', function(event) {
-      console.log('Transport ready:', event.detail.transportType);
+    // Load WebRTC adapter directly, bypassing the auto-connect behavior
+    window.UNIQUAKE_CONFIG = {
+      useWebRTC: true,
+      masterServer: 'ws://localhost:27950',
+      noAutoConnect: true  // Flag to prevent auto-connection
+    };
+    
+    // Load the adapter script
+    var script = document.createElement('script');
+    script.src = '/webrtc-adapter.js';
+    script.onload = function() {
+      console.log('WebRTC adapter loaded, initializing client');
       initializeClient();
-    });
+    };
+    document.head.appendChild(script);
     
     // Main client, game, and integration instances
     let client, game, integration;
@@ -392,6 +401,12 @@
       
       // Set up UI event handlers
       setupUIHandlers();
+      
+      // Connect to master server and fetch server list
+      client.connectToMasterServer().then(() => {
+        // Automatically request the server list
+        client.requestServerList();
+      });
       
       // Update initial token info
       updateTokenInfo();
