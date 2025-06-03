@@ -379,7 +379,7 @@
       // Create mock game
       game = new BrowserMockGame({
         isServer: true,
-        updateInterval: 2000,
+        updateInterval: 10000, // 10 seconds between game state updates
         onStateChange: updateGameState
       });
       
@@ -421,11 +421,40 @@
       
       console.log('Server system initialized and auto-started');
       
+      // Create a function to normalize game state for consistent hashing
+      window.normalizeGameState = function(gameState) {
+        if (!gameState) return {};
+        
+        // Return a simplified state object with just the essential properties
+        // in a consistent order to ensure identical hashing
+        return {
+          gameId: gameState.gameId || '',
+          frame: gameState.frame || 0,
+          timestamp: gameState.timestamp || 0,
+          // Only include minimal player data
+          playerCount: Object.keys(gameState.players || {}).length
+          // Exclude other volatile properties
+        };
+      };
+      
       // Set up UI event handlers
       setupUIHandlers();
       
       // Update initial UI - disable event emission to avoid recursion
       updateServerStatus(server.getStatus(false));
+      
+      // Set up regular UI updates to ensure both panels stay in sync
+      setInterval(() => {
+        if (game && server) {
+          // Update game state panel
+          updateGameState(game.getGameState());
+          
+          // Update token info panel
+          updateTokenInfo();
+          
+          console.log(`UI Sync - Game frame: ${game.gameState.frame}, Server frame: ${server.serverState.gameState.frame}`);
+        }
+      }, 10000); // Update every 10 seconds
     }
     
     // Get server configuration from UI
@@ -634,7 +663,7 @@
         <strong>Name:</strong> ${status.name}<br>
         <strong>Map:</strong> ${status.map}<br>
         <strong>Players:</strong> ${status.players}/${status.maxPlayers}<br>
-        <strong>Peer ID:</strong> ${status.peerId || 'N/A'}<br>
+        <strong>Peer ID:</strong> <span style="font-family: monospace; word-break: break-all;">${status.peerId || 'N/A'}</span><br>
         <strong>Registered:</strong> ${status.registered ? 'Yes' : 'No'}<br>
       `;
       
@@ -708,8 +737,10 @@
         
         clientElem.innerHTML = `
           <div class="client-name">${client.username || client.id}</div>
-          <div class="client-info">ID: ${client.id}</div>
-          <div class="client-info">Public Key: ${client.pubkey ? client.pubkey.substring(0, 10) + '...' : 'N/A'}</div>
+          <div class="client-info">Network ID: <span style="font-family: monospace; word-break: break-all;">${client.id}</span></div>
+          <div class="client-info">Token Public Key Address: <span style="font-family: monospace; word-break: break-all;">${client.pubkey || 'N/A'}</span>
+          ${client.pubkey ? '<span style="color: #4caf50;"> (Address for sending tokens to this client)</span>' : ''}
+          </div>
           <div class="client-info">Entry Token: ${client.entryTokenReceived ? 'Received' : 'Not Received'}</div>
         `;
         
@@ -731,13 +762,27 @@
       
       // Update game state display
       const gameStateElem = document.getElementById('game-state');
+      
+      // Calculate state hash for the game state panel
+      let stateHash = 'N/A';
+      if (window.SimpleCrypto && window.normalizeGameState) {
+        // Use normalized state for consistent hashing
+        const normalizedState = window.normalizeGameState(gameState);
+        console.log('Game State Panel - Normalized data being hashed:', JSON.stringify(normalizedState));
+        stateHash = SimpleCrypto.hash(JSON.stringify(normalizedState));
+      }
+      
       gameStateElem.innerHTML = `
         <strong>Game ID:</strong> ${gameState.gameId}<br>
         <strong>Frame:</strong> ${gameState.frame}<br>
         <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
         <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
         <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
+        <strong>State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${stateHash}</span><br>
       `;
+      
+      // Also update token info to ensure frame numbers are in sync
+      updateTokenInfo();
       
       // Display player information
       if (Object.keys(gameState.players).length > 0) {
@@ -800,10 +845,48 @@
       // Use the provided token data instead of calling getStatus again
       const identity = server.serverState.tokenService.getIdentity();
       
+      // Get the current game frame from the game instance if available
+      let gameFrame = server.serverState.gameState.frame;
+      if (server.gameInstance) {
+        // Ensure we're using the most up-to-date frame from the game
+        const currentGameState = server.gameInstance.getGameState();
+        if (currentGameState && currentGameState.frame !== gameFrame) {
+          console.log(`Frame sync correction in UI - Token panel: ${gameFrame}, Game: ${currentGameState.frame}`);
+          gameFrame = currentGameState.frame;
+          // Update server's gameState to match
+          server.serverState.gameState.frame = gameFrame;
+        }
+      }
+      
+      // Get token status which includes the state hash
+      const tokenStatus = server.serverState.tokenService.getTokenStatus();
+      
+      // Generate state hash if we have a game instance but no token
+      let stateHash = 'N/A';
+      // Always generate a fresh hash using the normalized state for consistency
+      if (server.gameInstance && window.SimpleCrypto && window.normalizeGameState) {
+        const currentGameState = server.gameInstance.getGameState();
+        // Use normalized state for consistent hashing
+        const normalizedState = window.normalizeGameState(currentGameState);
+        console.log('Token Panel - Normalized data being hashed:', JSON.stringify(normalizedState));
+        stateHash = SimpleCrypto.hash(JSON.stringify(normalizedState));
+      } else if (tokenStatus.gameState && tokenStatus.gameState.stateHash) {
+        // Fallback to token status if no game instance
+        console.log('Token Panel - Using hash from token status:', tokenStatus.gameState.stateHash);
+        stateHash = tokenStatus.gameState.stateHash;
+      }
+      
+      // Get the server's peer ID for display
+      const peerId = server.serverState.peerId || 'Not registered';
+      
       tokenInfo.innerHTML = `
-        <strong>Identity:</strong> ${identity.username} (${identity.pubkey.substring(0, 10)}...)<br>
+        <strong>Username:</strong> ${identity.username}<br>
+        <strong>Network ID (Peer ID):</strong> <span style="font-family: monospace; word-break: break-all;">${peerId}</span><br>
+        <strong>Token Public Key Address:</strong> <span style="font-family: monospace; word-break: break-all;">${identity.pubkey}</span>
+        <span style="color: #4caf50;"> (Derived from secret for token operations)</span><br>
         <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
-        <strong>Game Frame:</strong> ${server.serverState.gameState.frame}<br>
+        <strong>Game Frame:</strong> ${gameFrame}<br>
+        <strong>Game State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${stateHash}</span><br>
         <strong>Game State Token:</strong> ${server.serverState.tokenService.lastStateToken ? 'Available' : 'Not Created'}<br>
       `;
       
