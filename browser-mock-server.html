@@ -836,41 +836,8 @@
       // Use the provided token data instead of calling getStatus again
       const identity = server.serverState.tokenService.getIdentity();
       
-      // Get the current game frame from the game instance if available
-      let gameFrame = server.serverState.gameState.frame;
-      if (server.gameInstance) {
-        // Ensure we're using the most up-to-date frame from the game
-        const currentGameState = server.gameInstance.getGameState();
-        if (currentGameState && currentGameState.frame !== gameFrame) {
-          console.log(`Frame sync correction in UI - Token panel: ${gameFrame}, Game: ${currentGameState.frame}`);
-          gameFrame = currentGameState.frame;
-          // Update server's gameState to match
-          server.serverState.gameState.frame = gameFrame;
-        }
-      }
-      
-      // Get token status which includes the state hash
+      // Get token status
       const tokenStatus = server.serverState.tokenService.getTokenStatus();
-      
-      // Generate state hash if we have a game instance but no token
-      let stateHash = 'N/A';
-      // First try to use the token status state hash if available
-      if (tokenStatus.gameState && tokenStatus.gameState.stateHash) {
-        // Use the hash from token status
-        console.log('Token Panel - Using hash from token status:', tokenStatus.gameState.stateHash);
-        stateHash = tokenStatus.gameState.stateHash;
-      }
-      // If no state hash in token status and we have access to the token service, calculate hash directly
-      else if (server.gameInstance && server.serverState.tokenService && server.serverState.tokenService.hashGameState) {
-        try {
-          const currentGameState = server.gameInstance.getGameState();
-          // Use the token service's hashGameState method
-          stateHash = server.serverState.tokenService.hashGameState(currentGameState);
-          console.log('Token Panel - Hash calculated with token service:', stateHash);
-        } catch (error) {
-          console.error('Failed to calculate token panel game state hash:', error.message);
-        }
-      }
       
       // Get the server's peer ID for display
       const peerId = server.serverState.peerId || 'Not registered';
@@ -881,8 +848,6 @@
         <strong>Token Public Key Address:</strong> <span style="font-family: monospace; word-break: break-all;">${identity.pubkey}</span>
         <span style="color: #4caf50;"> (Derived from secret for token operations)</span><br>
         <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
-        <strong>Game Frame:</strong> ${gameFrame}<br>
-        <strong>Game State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${stateHash}</span><br>
         <strong>Game State Token:</strong> ${server.serverState.tokenService.lastStateToken ? 'Available' : 'Not Created'}<br>
       `;
       
