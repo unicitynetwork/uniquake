@@ -1,26 +1,27 @@
 # UNIQUAKE (QuakeJS) Project Guide
 
 ## Build Commands
-- Build binaries: `cd ioq3 && make PLATFORM=js EMSCRIPTEN=<path_to_emscripten>`
 - Install dependencies: `npm install`
-- Run web server: `node bin/web.js --config ./web.json`
-- Run dedicated server: `node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2 +exec server.cfg`
-- Repackage assets: `node bin/repak.js --src <assets_src> --dest <assets>`
-- Run content server: `node bin/content.js`
+- Start web server: `npm start` or `node bin/web.js --config ./bin/web.json`
+- Run master server: `npm run master` or `node bin/webrtc-master.js`
+- Run content server: `npm run content` or `node bin/content.js`
+- Repackage assets: `npm run repak` or `node bin/repak.js --src <assets_src> --dest <assets>`
+- Build engine: `cd ioq3 && make PLATFORM=js EMSCRIPTEN=<path_to_emscripten>`
+- Mock server: `npm run mock-server`
+- Mock client: `npm run mock-client`
 
 ## Code Style Guidelines
-- Indentation: Tabs (not spaces)
-- Naming: camelCase for variables and functions
-- File naming: lowercase with .js extension
-- Module pattern: CommonJS with `module.exports`
-- Error handling: Use logger (winston) for errors
-- Async: Callback-based pattern (not Promise)
-- Config: Load with defaults and graceful error handling
-- Functions: Traditional function declarations/expressions (not arrow functions)
-- Object methods: Use prototype pattern for classes
+- Imports: Node.js require pattern, group external then internal modules
+- Classes: ES6 class syntax with JSDoc comments for methods
+- Naming: camelCase for variables/functions, PascalCase for classes
+- Errors: Use try/catch with logger (winston) for error handling
+- Async: Mix of Promises and callbacks (newer code uses async/await)
+- Config: Use default values with safe merging (Object spread or _.extend)
+- Functions: Prefer modern ES6+ syntax for new code
+- Indentation: 2 spaces
+- File structure: Modular components with clear responsibility separation
 
-## Project Structure
-- `/bin`: Server executables and configuration
-- `/build`: Compiled QuakeJS binaries
-- `/ioq3`: ioquake3 source code
-- `/lib`: Utility libraries
+## Project Architecture
+- `/bin`: Server executables and configuration files
+- `/lib`: Core libraries and services
+- `/lib/client`: Browser-side client code for WebRTC

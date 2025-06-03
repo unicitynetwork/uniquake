@@ -1,6 +1,9 @@
 # UniQuake Browser API Interface
 
-This document outlines the API interface for the browser-compatible implementation of the UniQuake token integration. The API will enable the creation of web client and server pages that can connect to the same master server as our Node.js implementations, while maintaining all token functionality.
+This document outlines the API interface for the browser-compatible implementation 
+of the UniQuake token integration. The API will enable the creation of web client 
+and server pages that can connect to the same master server as our Node.js 
+implementations, while maintaining all token functionality.
 
 ## Core Components
 
@@ -1129,13 +1132,17 @@ The target bundle size is under 500KB minified and gzipped.
 
 For integrating with the actual Quake game in the browser, additional considerations include:
 
-1. **Non-Intrusive Integration**: The token system should not modify the core game code but rather hook into existing events and APIs.
+1. **Non-Intrusive Integration**: The token system should not modify the core game code but rather 
+hook into existing events and APIs.
 
-2. **Performance Impact**: Token operations should be performed off the main thread when possible to avoid impacting the game's frame rate.
+2. **Performance Impact**: Token operations should be performed off the main thread when possible 
+to avoid impacting the game's frame rate.
 
-3. **User Experience**: Token interactions should be minimally disruptive to gameplay (e.g., notifications that don't block the screen).
+3. **User Experience**: Token interactions should be minimally disruptive to gameplay (e.g., 
+notifications that don't block the screen).
 
-4. **Game State Extraction**: We'll need to define a standard way to extract the relevant game state for token operations without requiring deep game engine modifications.
+4. **Game State Extraction**: We'll need to define a standard way to extract the relevant game state 
+for token operations without requiring deep game engine modifications.
 
 5. **Fallback Mechanisms**: If token operations fail, the game should continue to function normally.
 
@@ -1181,4 +1188,5 @@ For development and testing, we'll follow this process:
 5. **Performance Testing**: Test performance in the context of the actual game
 6. **User Testing**: Test the entire flow with real users
 
-This approach allows us to develop and test the token functionality independently of the game, reducing development complexity and ensuring the system works correctly before integrating with the game.
+This approach allows us to develop and test the token functionality independently of the game, 
+reducing development complexity and ensuring the system works correctly before integrating with the game.
