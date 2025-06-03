@@ -12,7 +12,10 @@
     "content": "node bin/content.js",
     "repak": "node bin/repak.js",
     "mock-server": "node lib/mock-server-client.js",
-    "mock-client": "node lib/mock-game-client.js"
+    "mock-client": "node lib/mock-game-client.js",
+    "browser-mock": "node bin/web.js --config ./bin/web.json",
+    "browser-mock-all": "concurrently \"npm run master\" \"npm run browser-mock\"",
+    "start-browser-mocks": "echo \"Starting master server and browser mock web server...\n\nMaster server: http://localhost:27950\nMock client: http://localhost:8080/client\nMock server: http://localhost:8080/server\n\" && npm run browser-mock-all"
   },
   "repository": {
     "type": "git",
@@ -26,6 +29,7 @@
     "@unicitylabs/tx-flow-engine": "^1.3.9",
     "async": "~0.2.9",
     "buffer-crc32": "~0.2.1",
+    "concurrently": "^8.2.2",
     "crypto": "^1.0.1",
     "ejs": "~0.8.4",
     "execSync": "~1.0.1-pre",

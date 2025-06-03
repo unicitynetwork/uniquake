@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniQuake Browser Mock Client</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background-color: #1e1e1e;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 40px);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      color: #4fc3f7;
+    }
+    
+    .main-content {
+      display: flex;
+      flex: 1;
+      gap: 20px;
+    }
+    
+    .panel {
+      background-color: #2d2d2d;
+      border-radius: 5px;
+      padding: 15px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    
+    .server-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+    
+    .server-item {
+      background-color: #3d3d3d;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .server-item:hover {
+      background-color: #4d4d4d;
+    }
+    
+    .server-item.selected {
+      background-color: #2196f3;
+    }
+    
+    .right-panels {
+      display: flex;
+      flex-direction: column;
+      flex: 2;
+      gap: 20px;
+    }
+    
+    .game-panel {
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .token-panel {
+      flex: 1;
+    }
+    
+    .log {
+      flex: 1;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    
+    .chat-log {
+      flex: 1;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    
+    .chat-input {
+      display: flex;
+      gap: 10px;
+    }
+    
+    input, button {
+      background-color: #3d3d3d;
+      border: none;
+      border-radius: 3px;
+      padding: 8px 12px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+    }
+    
+    input {
+      flex: 1;
+    }
+    
+    button {
+      background-color: #2196f3;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #1976d2;
+    }
+    
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    
+    .button-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .ping-display {
+      color: #4caf50;
+    }
+    
+    .player-list {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .game-state {
+      flex: 1;
+      overflow-y: auto;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    
+    .token-info {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .verification-info {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+    }
+    
+    .server-name {
+      font-weight: bold;
+      color: #4fc3f7;
+    }
+    
+    .server-info {
+      font-size: 12px;
+      color: #aaa;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    
+    .status-connected {
+      background-color: #4caf50;
+    }
+    
+    .status-disconnected {
+      background-color: #f44336;
+    }
+    
+    /* ANSI color simulation */
+    .ansi-green {
+      color: #4caf50;
+    }
+    
+    .ansi-red {
+      color: #f44336;
+    }
+    
+    .ansi-yellow {
+      color: #ffeb3b;
+    }
+    
+    .ansi-blue {
+      color: #2196f3;
+    }
+    
+    .ansi-cyan {
+      color: #00bcd4;
+    }
+    
+    .ansi-magenta {
+      color: #e91e63;
+    }
+    
+    .ansi-white {
+      color: #ffffff;
+    }
+    
+    .ansi-gray {
+      color: #9e9e9e;
+    }
+    
+    .chat-message {
+      margin-bottom: 5px;
+    }
+    
+    .chat-timestamp {
+      color: #9e9e9e;
+      font-size: 12px;
+      margin-right: 5px;
+    }
+    
+    .chat-sender {
+      font-weight: bold;
+      margin-right: 5px;
+    }
+    
+    .chat-sender-server {
+      color: #ffeb3b;
+    }
+    
+    .chat-sender-self {
+      color: #4fc3f7;
+    }
+    
+    .chat-text {
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>UniQuake Browser Mock Client</h1>
+    </div>
+    
+    <div class="main-content">
+      <div class="server-list panel">
+        <div class="status-row">
+          <div>
+            <span class="status-indicator" id="connection-status"></span>
+            <span id="connection-text">Disconnected</span>
+          </div>
+          <div class="ping-display" id="ping-display"></div>
+        </div>
+        
+        <h2>Game Servers</h2>
+        <div id="servers-container"></div>
+        
+        <div class="button-row">
+          <button id="refresh-button">Refresh Servers</button>
+          <button id="connect-button" disabled>Connect</button>
+          <button id="disconnect-button" disabled>Disconnect</button>
+        </div>
+      </div>
+      
+      <div class="right-panels">
+        <div class="game-panel panel">
+          <h2>Game State</h2>
+          <div class="player-list" id="player-list">No players connected</div>
+          <div class="game-state" id="game-state">No game state available</div>
+          
+          <div class="button-row">
+            <button id="ping-button" disabled>Ping Server</button>
+            <button id="verify-button" disabled>Verify Game State</button>
+          </div>
+        </div>
+        
+        <div class="chat-panel panel">
+          <h2>Chat</h2>
+          <div class="chat-log" id="chat-log"></div>
+          <div class="chat-input">
+            <input type="text" id="chat-input" placeholder="Type your message..." disabled>
+            <button id="send-button" disabled>Send</button>
+          </div>
+        </div>
+        
+        <div class="token-panel panel">
+          <h2>Token System</h2>
+          <div class="token-info" id="token-info">Token system initializing...</div>
+          <div class="verification-info" id="verification-info">No verification performed</div>
+          
+          <div class="button-row">
+            <button id="mint-button">Mint Tokens</button>
+            <button id="status-button">Status</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load scripts -->
+  <script src="lib/client/webrtc-loader.js"></script>
+  <script src="lib/client/uniquake-token-service.js"></script>
+  <script src="lib/client/browser-mock-game.js"></script>
+  <script src="lib/client/browser-mock-client.js"></script>
+  <script src="lib/client/game-integration.js"></script>
+  
+  <script>
+    // Wait for transport to be ready
+    window.addEventListener('uniquake:transport:ready', function(event) {
+      console.log('Transport ready:', event.detail.transportType);
+      initializeClient();
+    });
+    
+    // Main client, game, and integration instances
+    let client, game, integration;
+    let selectedServerId = null;
+    
+    // Initialize client
+    async function initializeClient() {
+      // Create mock game
+      game = new BrowserMockGame({
+        updateInterval: 2000,
+        onStateChange: updateGameState
+      });
+      
+      // Create mock client
+      client = new BrowserMockClient({
+        masterServer: 'localhost:27950',
+        name: 'BrowserPlayer',
+        verbose: true,
+        debug: true,
+        mintTokens: 5,
+        onStatusUpdate: updateClientStatus,
+        onChatMessage: displayChatMessage,
+        onConnectionChange: handleConnectionChange,
+        onServerList: updateServerList
+      });
+      
+      // Create game integration
+      integration = new GameIntegration({
+        client: client,
+        debug: true,
+        onGameStateUpdate: updateGameState,
+        onTokenEvent: handleTokenEvent
+      });
+      
+      // Initialize all components
+      await game.init();
+      await client.init();
+      await integration.init(game);
+      
+      console.log('Client system initialized');
+      
+      // Set up UI event handlers
+      setupUIHandlers();
+      
+      // Update initial token info
+      updateTokenInfo();
+    }
+    
+    // Set up UI event handlers
+    function setupUIHandlers() {
+      // Server list buttons
+      document.getElementById('refresh-button').addEventListener('click', () => {
+        client.requestServerList();
+      });
+      
+      document.getElementById('connect-button').addEventListener('click', () => {
+        if (selectedServerId) {
+          client.connectToServer(selectedServerId);
+        }
+      });
+      
+      document.getElementById('disconnect-button').addEventListener('click', () => {
+        client.disconnect();
+      });
+      
+      // Game panel buttons
+      document.getElementById('ping-button').addEventListener('click', async () => {
+        const pingResult = await client.ping();
+        if (pingResult > 0) {
+          document.getElementById('ping-display').textContent = `Ping: ${pingResult}ms`;
+        }
+      });
+      
+      document.getElementById('verify-button').addEventListener('click', async () => {
+        const result = await client.verifyGameState();
+        updateVerificationInfo(result);
+      });
+      
+      // Chat input
+      document.getElementById('chat-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          sendChatMessage();
+        }
+      });
+      
+      document.getElementById('send-button').addEventListener('click', sendChatMessage);
+      
+      // Token panel buttons
+      document.getElementById('mint-button').addEventListener('click', async () => {
+        if (client.clientState.tokenService) {
+          await client.mintTokens(1);
+          updateTokenInfo();
+        }
+      });
+      
+      document.getElementById('status-button').addEventListener('click', () => {
+        updateClientStatus(client.getStatus());
+      });
+    }
+    
+    // Send a chat message
+    function sendChatMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      
+      if (message && client.clientState.connected) {
+        client.sendChatMessage(message);
+        input.value = '';
+      }
+    }
+    
+    // Update server list
+    function updateServerList(servers) {
+      const container = document.getElementById('servers-container');
+      container.innerHTML = '';
+      
+      if (servers.length === 0) {
+        container.innerHTML = '<div class="server-item">No servers available</div>';
+        return;
+      }
+      
+      servers.forEach(server => {
+        const serverElem = document.createElement('div');
+        serverElem.className = 'server-item';
+        serverElem.setAttribute('data-server-id', server.peerId);
+        
+        if (selectedServerId === server.peerId) {
+          serverElem.classList.add('selected');
+        }
+        
+        serverElem.innerHTML = `
+          <div class="server-name">${server.name}</div>
+          <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
+          <div class="server-info">ID: ${server.peerId}</div>
+        `;
+        
+        serverElem.addEventListener('click', () => {
+          // Deselect previous selection
+          document.querySelectorAll('.server-item.selected').forEach(item => {
+            item.classList.remove('selected');
+          });
+          
+          // Select this server
+          serverElem.classList.add('selected');
+          selectedServerId = server.peerId;
+          
+          // Enable connect button if not connected
+          document.getElementById('connect-button').disabled = client.clientState.connected;
+        });
+        
+        container.appendChild(serverElem);
+      });
+    }
+    
+    // Handle connection changes
+    function handleConnectionChange(status) {
+      const connectButton = document.getElementById('connect-button');
+      const disconnectButton = document.getElementById('disconnect-button');
+      const pingButton = document.getElementById('ping-button');
+      const verifyButton = document.getElementById('verify-button');
+      const chatInput = document.getElementById('chat-input');
+      const sendButton = document.getElementById('send-button');
+      const connectionStatus = document.getElementById('connection-status');
+      const connectionText = document.getElementById('connection-text');
+      
+      if (status.connected) {
+        connectButton.disabled = true;
+        disconnectButton.disabled = false;
+        pingButton.disabled = false;
+        verifyButton.disabled = false;
+        chatInput.disabled = false;
+        sendButton.disabled = false;
+        connectionStatus.className = 'status-indicator status-connected';
+        connectionText.textContent = 'Connected';
+        
+        // Start the game
+        game.start();
+      } else {
+        connectButton.disabled = false;
+        disconnectButton.disabled = true;
+        pingButton.disabled = true;
+        verifyButton.disabled = true;
+        chatInput.disabled = true;
+        sendButton.disabled = true;
+        connectionStatus.className = 'status-indicator status-disconnected';
+        connectionText.textContent = 'Disconnected';
+        document.getElementById('ping-display').textContent = '';
+        
+        // Stop the game
+        game.stop();
+      }
+    }
+    
+    // Update client status
+    function updateClientStatus(status) {
+      // Update ping display if available
+      if (status.ping && status.ping.last) {
+        document.getElementById('ping-display').textContent = `Ping: ${status.ping.last}ms`;
+      }
+      
+      // Update token info if available
+      if (status.tokens) {
+        updateTokenInfo(status.tokens);
+      }
+      
+      console.log('Client status updated:', status);
+    }
+    
+    // Update game state display
+    function updateGameState(gameState) {
+      if (!gameState) return;
+      
+      // Update player list
+      const playerListElem = document.getElementById('player-list');
+      if (Object.keys(gameState.players).length === 0) {
+        playerListElem.innerHTML = 'No players connected';
+      } else {
+        playerListElem.innerHTML = '<strong>Players:</strong>';
+        
+        Object.keys(gameState.players).forEach(playerId => {
+          const player = gameState.players[playerId];
+          const score = gameState.score?.[playerId] || 0;
+          
+          const playerElem = document.createElement('div');
+          playerElem.innerHTML = `
+            ${player.name}: Health: ${Math.round(player.health)} | Score: ${score}
+          `;
+          
+          playerListElem.appendChild(playerElem);
+        });
+      }
+      
+      // Update game state display
+      const gameStateElem = document.getElementById('game-state');
+      gameStateElem.innerHTML = `
+        <strong>Game ID:</strong> ${gameState.gameId}<br>
+        <strong>Frame:</strong> ${gameState.frame}<br>
+        <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
+        <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
+        <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
+      `;
+      
+      if (gameState.ended) {
+        gameStateElem.innerHTML += `
+          <strong>Game Ended</strong><br>
+          <strong>Winner:</strong> ${gameState.winner ? gameState.players[gameState.winner]?.name || gameState.winner : 'None'}<br>
+        `;
+      }
+    }
+    
+    // Display chat message
+    function displayChatMessage(message) {
+      const chatLog = document.getElementById('chat-log');
+      const messageElem = document.createElement('div');
+      messageElem.className = 'chat-message';
+      
+      const time = new Date(message.timestamp).toLocaleTimeString();
+      let senderClass = '';
+      
+      if (message.from === 'SERVER') {
+        senderClass = 'chat-sender-server';
+      } else if (message.from === client.clientState.clientId) {
+        senderClass = 'chat-sender-self';
+      }
+      
+      messageElem.innerHTML = `
+        <span class="chat-timestamp">[${time}]</span>
+        <span class="chat-sender ${senderClass}">${message.from}:</span>
+        <span class="chat-text">${message.message}</span>
+      `;
+      
+      chatLog.appendChild(messageElem);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+    
+    // Update token information
+    function updateTokenInfo(tokens) {
+      const tokenInfo = document.getElementById('token-info');
+      
+      if (!client || !client.clientState.tokenService) {
+        tokenInfo.innerHTML = 'Token service not available';
+        return;
+      }
+      
+      const inventory = client.getTokenInventory();
+      const identity = client.clientState.tokenService.getIdentity();
+      
+      tokenInfo.innerHTML = `
+        <strong>Identity:</strong> ${identity.username} (${identity.pubkey.substring(0, 10)}...)<br>
+        <strong>Tokens:</strong> ${inventory.total || 0}<br>
+        <strong>Value:</strong> ${inventory.value || '0'}<br>
+        <strong>Entry Token Sent:</strong> ${client.clientState.entryTokenSent ? 'Yes' : 'No'}<br>
+      `;
+    }
+    
+    // Update verification information
+    function updateVerificationInfo(result) {
+      const verificationInfo = document.getElementById('verification-info');
+      
+      if (!result) {
+        verificationInfo.innerHTML = 'No verification performed';
+        return;
+      }
+      
+      if (result.verified) {
+        verificationInfo.innerHTML = `
+          <strong class="ansi-green">Verification Successful</strong><br>
+          <strong>Frame:</strong> ${result.frame || 'N/A'}<br>
+          <strong>State Hash:</strong> ${result.stateHash ? result.stateHash.substring(0, 10) + '...' : 'N/A'}<br>
+          <strong>Timestamp:</strong> ${new Date().toLocaleTimeString()}<br>
+        `;
+      } else {
+        verificationInfo.innerHTML = `
+          <strong class="ansi-red">Verification Failed</strong><br>
+          <strong>Error:</strong> ${result.error || 'Unknown error'}<br>
+          <strong>Timestamp:</strong> ${new Date().toLocaleTimeString()}<br>
+        `;
+      }
+    }
+    
+    // Handle token events
+    function handleTokenEvent(event) {
+      console.log('Token event:', event);
+      
+      // Update token info
+      updateTokenInfo();
+      
+      // If it's a verification event, update verification info
+      if (event.type === 'game_state_verification') {
+        updateVerificationInfo(event.result);
+      }
+    }
+  </script>
+</body>
+</html>

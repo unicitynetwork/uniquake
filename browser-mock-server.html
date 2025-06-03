@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniQuake Browser Mock Server</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background-color: #1e1e1e;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 40px);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      color: #4fc3f7;
+    }
+    
+    .main-content {
+      display: flex;
+      flex: 1;
+      gap: 20px;
+    }
+    
+    .panel {
+      background-color: #2d2d2d;
+      border-radius: 5px;
+      padding: 15px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    
+    .server-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .right-panels {
+      display: flex;
+      flex-direction: column;
+      flex: 2;
+      gap: 20px;
+    }
+    
+    .game-panel {
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .token-panel {
+      flex: 1;
+    }
+    
+    .clients-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .status-display {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .log {
+      flex: 1;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    
+    .client-list {
+      flex: 1;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    
+    .client-item {
+      background-color: #3d3d3d;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .client-item .client-name {
+      font-weight: bold;
+      color: #4fc3f7;
+    }
+    
+    .client-item .client-info {
+      font-size: 12px;
+      color: #aaa;
+    }
+    
+    .game-state {
+      flex: 1;
+      overflow-y: auto;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    
+    .token-info {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    
+    input, button {
+      background-color: #3d3d3d;
+      border: none;
+      border-radius: 3px;
+      padding: 8px 12px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+    }
+    
+    input {
+      flex: 1;
+      margin-bottom: 10px;
+    }
+    
+    button {
+      background-color: #2196f3;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #1976d2;
+    }
+    
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    
+    .button-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    
+    .status-registered {
+      background-color: #4caf50;
+    }
+    
+    .status-unregistered {
+      background-color: #f44336;
+    }
+    
+    /* ANSI color simulation */
+    .ansi-green {
+      color: #4caf50;
+    }
+    
+    .ansi-red {
+      color: #f44336;
+    }
+    
+    .ansi-yellow {
+      color: #ffeb3b;
+    }
+    
+    .ansi-blue {
+      color: #2196f3;
+    }
+    
+    .ansi-cyan {
+      color: #00bcd4;
+    }
+    
+    .ansi-magenta {
+      color: #e91e63;
+    }
+    
+    .ansi-white {
+      color: #ffffff;
+    }
+    
+    .ansi-gray {
+      color: #9e9e9e;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+    
+    .actions-panel {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .action-buttons button {
+      flex: 1;
+      min-width: 120px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>UniQuake Browser Mock Server</h1>
+    </div>
+    
+    <div class="main-content">
+      <div class="server-panel panel">
+        <div class="status-row">
+          <div>
+            <span class="status-indicator" id="server-status"></span>
+            <span id="status-text">Not Registered</span>
+          </div>
+        </div>
+        
+        <h2>Server Configuration</h2>
+        <div class="form-group">
+          <label for="server-name">Server Name</label>
+          <input type="text" id="server-name" value="Browser Mock Server">
+        </div>
+        
+        <div class="form-group">
+          <label for="server-map">Map</label>
+          <input type="text" id="server-map" value="browser_map">
+        </div>
+        
+        <div class="form-group">
+          <label for="server-max-players">Max Players</label>
+          <input type="number" id="server-max-players" value="16" min="1" max="32">
+        </div>
+        
+        <div class="form-group">
+          <label for="server-token-enabled">Token Enabled</label>
+          <input type="checkbox" id="server-token-enabled" checked>
+        </div>
+        
+        <div class="button-row">
+          <button id="start-button">Start Server</button>
+          <button id="stop-button" disabled>Stop Server</button>
+        </div>
+        
+        <h2>Server Status</h2>
+        <div class="status-display" id="server-status-display">
+          Server not started
+        </div>
+        
+        <div class="actions-panel">
+          <h3>Server Actions</h3>
+          <div class="action-buttons">
+            <button id="broadcast-button" disabled>Broadcast Message</button>
+            <button id="game-state-button" disabled>Send Game State</button>
+            <button id="end-game-button" disabled>End Game</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="right-panels">
+        <div class="game-panel panel">
+          <h2>Game State</h2>
+          <div class="game-state" id="game-state">No game state available</div>
+        </div>
+        
+        <div class="clients-panel panel">
+          <h2>Connected Clients</h2>
+          <div class="client-list" id="client-list">No clients connected</div>
+          
+          <div class="actions-panel">
+            <h3>Client Actions</h3>
+            <div class="action-buttons">
+              <button id="kick-button" disabled>Kick Selected Client</button>
+              <button id="message-button" disabled>Send Message</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="token-panel panel">
+          <h2>Token System</h2>
+          <div class="token-info" id="token-info">Token system initializing...</div>
+          
+          <div class="actions-panel">
+            <h3>Token Actions</h3>
+            <div class="action-buttons">
+              <button id="tokens-button">Show Tokens</button>
+              <button id="award-tokens-button" disabled>Award Tokens</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load scripts -->
+  <script src="lib/client/webrtc-loader.js"></script>
+  <script src="lib/client/uniquake-token-service.js"></script>
+  <script src="lib/client/browser-mock-game.js"></script>
+  <script src="lib/client/browser-mock-server.js"></script>
+  <script src="lib/client/game-integration.js"></script>
+  
+  <script>
+    // Wait for transport to be ready
+    window.addEventListener('uniquake:transport:ready', function(event) {
+      console.log('Transport ready:', event.detail.transportType);
+      initializeServer();
+    });
+    
+    // Main server, game, and integration instances
+    let server, game, integration;
+    let selectedClientId = null;
+    
+    // Initialize server
+    async function initializeServer() {
+      // Get initial configuration from UI
+      const config = getServerConfig();
+      
+      // Create mock game
+      game = new BrowserMockGame({
+        isServer: true,
+        updateInterval: 2000,
+        onStateChange: updateGameState
+      });
+      
+      // Create mock server
+      server = new BrowserMockServer({
+        masterServer: 'localhost:27950',
+        serverName: config.serverName,
+        map: config.map,
+        maxPlayers: config.maxPlayers,
+        tokenEnabled: config.tokenEnabled,
+        debug: true,
+        onStatusUpdate: updateServerStatus,
+        onClientConnect: handleClientConnect,
+        onClientDisconnect: handleClientDisconnect,
+        onChatMessage: handleChatMessage
+      });
+      
+      // Create game integration
+      integration = new GameIntegration({
+        server: server,
+        debug: true,
+        onGameStateUpdate: updateGameState,
+        onTokenEvent: handleTokenEvent,
+        onPlayerJoin: handlePlayerJoin,
+        onPlayerLeave: handlePlayerLeave,
+        onGameEnd: handleGameEnd
+      });
+      
+      // Initialize all components
+      await game.init();
+      await server.init();
+      await integration.init(game);
+      
+      console.log('Server system initialized');
+      
+      // Set up UI event handlers
+      setupUIHandlers();
+      
+      // Update initial token info
+      updateTokenInfo();
+      
+      // Update UI
+      updateServerStatus(server.getStatus());
+    }
+    
+    // Get server configuration from UI
+    function getServerConfig() {
+      return {
+        serverName: document.getElementById('server-name').value,
+        map: document.getElementById('server-map').value,
+        maxPlayers: parseInt(document.getElementById('server-max-players').value) || 16,
+        tokenEnabled: document.getElementById('server-token-enabled').checked
+      };
+    }
+    
+    // Set up UI event handlers
+    function setupUIHandlers() {
+      // Server control buttons
+      document.getElementById('start-button').addEventListener('click', startServer);
+      document.getElementById('stop-button').addEventListener('click', stopServer);
+      
+      // Server action buttons
+      document.getElementById('broadcast-button').addEventListener('click', broadcastMessage);
+      document.getElementById('game-state-button').addEventListener('click', sendGameState);
+      document.getElementById('end-game-button').addEventListener('click', endGame);
+      
+      // Client action buttons
+      document.getElementById('kick-button').addEventListener('click', kickSelectedClient);
+      document.getElementById('message-button').addEventListener('click', sendClientMessage);
+      
+      // Token action buttons
+      document.getElementById('tokens-button').addEventListener('click', showTokens);
+      document.getElementById('award-tokens-button').addEventListener('click', awardTokens);
+    }
+    
+    // Start the server
+    async function startServer() {
+      // Update configuration from UI
+      const config = getServerConfig();
+      
+      // Update server config
+      server.serverInfo.name = config.serverName;
+      server.serverInfo.map = config.map;
+      server.serverInfo.maxPlayers = config.maxPlayers;
+      
+      // Register with master server
+      const success = await server.registerServer();
+      
+      if (success) {
+        // Start the game
+        game.start();
+        
+        // Update UI
+        document.getElementById('start-button').disabled = true;
+        document.getElementById('stop-button').disabled = false;
+        document.getElementById('broadcast-button').disabled = false;
+        document.getElementById('game-state-button').disabled = false;
+        document.getElementById('end-game-button').disabled = false;
+        
+        // Disable configuration inputs
+        document.getElementById('server-name').disabled = true;
+        document.getElementById('server-map').disabled = true;
+        document.getElementById('server-max-players').disabled = true;
+        document.getElementById('server-token-enabled').disabled = true;
+      } else {
+        alert('Failed to register server with master server');
+      }
+    }
+    
+    // Stop the server
+    async function stopServer() {
+      // Unregister from master server
+      await server.unregisterServer();
+      
+      // Stop the game
+      game.stop();
+      
+      // Update UI
+      document.getElementById('start-button').disabled = false;
+      document.getElementById('stop-button').disabled = true;
+      document.getElementById('broadcast-button').disabled = true;
+      document.getElementById('game-state-button').disabled = true;
+      document.getElementById('end-game-button').disabled = true;
+      document.getElementById('kick-button').disabled = true;
+      document.getElementById('message-button').disabled = true;
+      document.getElementById('award-tokens-button').disabled = true;
+      
+      // Enable configuration inputs
+      document.getElementById('server-name').disabled = false;
+      document.getElementById('server-map').disabled = false;
+      document.getElementById('server-max-players').disabled = false;
+      document.getElementById('server-token-enabled').disabled = false;
+    }
+    
+    // Broadcast a message to all clients
+    function broadcastMessage() {
+      const message = prompt('Enter message to broadcast:');
+      if (message) {
+        server.broadcastMessage(message);
+      }
+    }
+    
+    // Send game state to all clients
+    function sendGameState() {
+      if (server.serverState.tokenService) {
+        server.createGameStateToken(true);
+      } else {
+        alert('Token service not available');
+      }
+    }
+    
+    // End the game
+    function endGame() {
+      // Get connected clients
+      const clients = server.getClients();
+      
+      if (clients.length === 0) {
+        alert('No clients connected');
+        return;
+      }
+      
+      // If we have a selected client, use that as the winner
+      let winnerId = selectedClientId;
+      
+      // If no client is selected, ask which client should win
+      if (!winnerId && clients.length > 0) {
+        const clientOptions = clients.map((client, index) => 
+          `${index + 1}. ${client.username || client.id}`
+        ).join('\n');
+        
+        const selection = prompt(`Select winner (enter number):\n${clientOptions}`);
+        const index = parseInt(selection) - 1;
+        
+        if (!isNaN(index) && index >= 0 && index < clients.length) {
+          winnerId = clients[index].id;
+        } else {
+          alert('Invalid selection');
+          return;
+        }
+      }
+      
+      // End the game with the selected winner
+      if (winnerId) {
+        game.endGame(winnerId);
+        integration.endGame(winnerId);
+      }
+    }
+    
+    // Kick the selected client
+    function kickSelectedClient() {
+      if (!selectedClientId) {
+        alert('No client selected');
+        return;
+      }
+      
+      const reason = prompt('Enter kick reason:');
+      server.kickClient(selectedClientId, reason || 'Kicked by server');
+    }
+    
+    // Send a message to the selected client
+    function sendClientMessage() {
+      if (!selectedClientId) {
+        alert('No client selected');
+        return;
+      }
+      
+      const message = prompt('Enter message:');
+      if (message) {
+        server.sendToClient(selectedClientId, {
+          type: 'chat',
+          from: 'SERVER',
+          message: message
+        });
+      }
+    }
+    
+    // Show token information
+    function showTokens() {
+      updateTokenInfo();
+    }
+    
+    // Award tokens to a client
+    function awardTokens() {
+      if (!selectedClientId) {
+        alert('No client selected');
+        return;
+      }
+      
+      // End game with this client as winner
+      integration.endGame(selectedClientId);
+    }
+    
+    // Update server status display
+    function updateServerStatus(status) {
+      const statusIndicator = document.getElementById('server-status');
+      const statusText = document.getElementById('status-text');
+      const statusDisplay = document.getElementById('server-status-display');
+      
+      if (status.registered) {
+        statusIndicator.className = 'status-indicator status-registered';
+        statusText.textContent = 'Registered';
+      } else {
+        statusIndicator.className = 'status-indicator status-unregistered';
+        statusText.textContent = 'Not Registered';
+      }
+      
+      // Update status display
+      statusDisplay.innerHTML = `
+        <strong>Name:</strong> ${status.name}<br>
+        <strong>Map:</strong> ${status.map}<br>
+        <strong>Players:</strong> ${status.players}/${status.maxPlayers}<br>
+        <strong>Peer ID:</strong> ${status.peerId || 'N/A'}<br>
+        <strong>Registered:</strong> ${status.registered ? 'Yes' : 'No'}<br>
+      `;
+      
+      // Update token info if available
+      if (status.tokens) {
+        updateTokenInfo(status.tokens);
+      }
+      
+      // Update client list
+      updateClientList(status.clients);
+    }
+    
+    // Handle client connection
+    function handleClientConnect(client) {
+      console.log('Client connected:', client);
+      
+      // Enable client action buttons if at least one client is connected
+      document.getElementById('kick-button').disabled = false;
+      document.getElementById('message-button').disabled = false;
+      document.getElementById('award-tokens-button').disabled = false;
+      
+      // Update client list
+      updateClientList(server.getClients());
+    }
+    
+    // Handle client disconnection
+    function handleClientDisconnect(client) {
+      console.log('Client disconnected:', client);
+      
+      // Clear selection if this client was selected
+      if (selectedClientId === client.id) {
+        selectedClientId = null;
+      }
+      
+      // Update client list
+      const clients = server.getClients();
+      updateClientList(clients);
+      
+      // Disable client action buttons if no clients are connected
+      if (clients.length === 0) {
+        document.getElementById('kick-button').disabled = true;
+        document.getElementById('message-button').disabled = true;
+        document.getElementById('award-tokens-button').disabled = true;
+      }
+    }
+    
+    // Handle chat message
+    function handleChatMessage(event) {
+      console.log('Chat message:', event);
+    }
+    
+    // Update client list display
+    function updateClientList(clients) {
+      const clientList = document.getElementById('client-list');
+      
+      if (!clients || clients.length === 0) {
+        clientList.innerHTML = 'No clients connected';
+        return;
+      }
+      
+      clientList.innerHTML = '';
+      
+      clients.forEach(client => {
+        const clientElem = document.createElement('div');
+        clientElem.className = 'client-item';
+        
+        if (selectedClientId === client.id) {
+          clientElem.className += ' selected';
+          clientElem.style.borderLeft = '3px solid #4fc3f7';
+        }
+        
+        clientElem.innerHTML = `
+          <div class="client-name">${client.username || client.id}</div>
+          <div class="client-info">ID: ${client.id}</div>
+          <div class="client-info">Public Key: ${client.pubkey ? client.pubkey.substring(0, 10) + '...' : 'N/A'}</div>
+          <div class="client-info">Entry Token: ${client.entryTokenReceived ? 'Received' : 'Not Received'}</div>
+        `;
+        
+        clientElem.addEventListener('click', () => {
+          // Update selection
+          selectedClientId = client.id;
+          
+          // Update client list
+          updateClientList(server.getClients());
+        });
+        
+        clientList.appendChild(clientElem);
+      });
+    }
+    
+    // Update game state display
+    function updateGameState(gameState) {
+      if (!gameState) return;
+      
+      // Update game state display
+      const gameStateElem = document.getElementById('game-state');
+      gameStateElem.innerHTML = `
+        <strong>Game ID:</strong> ${gameState.gameId}<br>
+        <strong>Frame:</strong> ${gameState.frame}<br>
+        <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
+        <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
+        <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
+      `;
+      
+      // Display player information
+      if (Object.keys(gameState.players).length > 0) {
+        gameStateElem.innerHTML += '<br><strong>Player Information:</strong><br>';
+        
+        Object.keys(gameState.players).forEach(playerId => {
+          const player = gameState.players[playerId];
+          const score = gameState.score?.[playerId] || 0;
+          
+          gameStateElem.innerHTML += `
+            - ${player.name}: Health: ${Math.round(player.health)} | Score: ${score}<br>
+          `;
+        });
+      }
+      
+      // Display item information
+      if (gameState.items && Object.keys(gameState.items).length > 0) {
+        gameStateElem.innerHTML += '<br><strong>Items:</strong><br>';
+        
+        Object.keys(gameState.items).forEach(itemId => {
+          const item = gameState.items[itemId];
+          
+          gameStateElem.innerHTML += `
+            - ${itemId}: Type: ${item.type} | Value: ${item.value}<br>
+          `;
+        });
+      }
+      
+      // Display game end information if game has ended
+      if (gameState.ended) {
+        gameStateElem.innerHTML += `
+          <br><strong>Game Ended</strong><br>
+          <strong>Winner:</strong> ${gameState.winner ? gameState.players[gameState.winner]?.name || gameState.winner : 'None'}<br>
+        `;
+        
+        if (gameState.finalScores) {
+          gameStateElem.innerHTML += '<strong>Final Scores:</strong><br>';
+          
+          Object.keys(gameState.finalScores).forEach(playerId => {
+            const playerName = gameState.players[playerId]?.name || playerId;
+            const score = gameState.finalScores[playerId];
+            
+            gameStateElem.innerHTML += `
+              - ${playerName}: ${score}<br>
+            `;
+          });
+        }
+      }
+    }
+    
+    // Update token information
+    function updateTokenInfo(tokens) {
+      const tokenInfo = document.getElementById('token-info');
+      
+      if (!server || !server.serverState.tokenService) {
+        tokenInfo.innerHTML = 'Token service not available';
+        return;
+      }
+      
+      // Get token status from server
+      const status = server.getStatus();
+      const identity = server.serverState.tokenService.getIdentity();
+      
+      tokenInfo.innerHTML = `
+        <strong>Identity:</strong> ${identity.username} (${identity.pubkey.substring(0, 10)}...)<br>
+        <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
+        <strong>Game State Frame:</strong> ${server.serverState.gameState.frame}<br>
+        <strong>Game State Token:</strong> ${server.serverState.tokenService.lastStateToken ? 'Available' : 'Not Created'}<br>
+      `;
+      
+      // Display client token status
+      const clients = server.getClients();
+      if (clients.length > 0) {
+        tokenInfo.innerHTML += '<br><strong>Client Token Status:</strong><br>';
+        
+        clients.forEach(client => {
+          tokenInfo.innerHTML += `
+            - ${client.username || client.id}: ${client.entryTokenReceived ? 'Entry token received' : 'No entry token'}<br>
+          `;
+        });
+      }
+    }
+    
+    // Handle token events
+    function handleTokenEvent(event) {
+      console.log('Token event:', event);
+      
+      // Update token info
+      updateTokenInfo();
+    }
+    
+    // Handle player join event
+    function handlePlayerJoin(player) {
+      console.log('Player joined:', player);
+    }
+    
+    // Handle player leave event
+    function handlePlayerLeave(player) {
+      console.log('Player left:', player);
+    }
+    
+    // Handle game end event
+    function handleGameEnd(result) {
+      console.log('Game ended:', result);
+      
+      // Update token info
+      updateTokenInfo();
+    }
+  </script>
+</body>
+</html>
