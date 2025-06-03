@@ -271,7 +271,7 @@
         <h2>Server Configuration</h2>
         <div class="form-group">
           <label for="server-name">Server Name</label>
-          <input type="text" id="server-name" value="Browser Mock Server">
+          <input type="text" id="server-name" readonly placeholder="Auto-generated on server start">
         </div>
         
         <div class="form-group">
@@ -371,10 +371,29 @@
     let server, game, integration;
     let selectedClientId = null;
     
+    /**
+     * Generate a random server name
+     */
+    function generateServerName() {
+      const adjectives = ['Epic', 'Cosmic', 'Legendary', 'Mystic', 'Quantum', 'Rapid', 'Savage', 'Galactic', 'Neon', 'Shadow'];
+      const nouns = ['Server', 'Arena', 'Battlefield', 'Realm', 'Nexus', 'Dimension', 'Domain', 'Fortress', 'Outpost', 'Hub'];
+      
+      const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+      const noun = nouns[Math.floor(Math.random() * nouns.length)];
+      const num = Math.floor(Math.random() * 1000);
+      
+      return `${adj}${noun}${num}`;
+    }
+    
     // Initialize server
     async function initializeServer() {
       // Get initial configuration from UI
       const config = getServerConfig();
+      
+      // Generate random server name
+      const serverName = generateServerName();
+      document.getElementById('server-name').value = serverName;
+      config.serverName = serverName;
       
       // Create mock game
       game = new BrowserMockGame({
@@ -447,8 +466,12 @@
     
     // Get server configuration from UI
     function getServerConfig() {
+      // Get current server name from input field, or leave undefined to be set later
+      const serverNameElem = document.getElementById('server-name');
+      const serverName = serverNameElem.value || undefined;
+      
       return {
-        serverName: document.getElementById('server-name').value,
+        serverName: serverName, // Will be auto-generated if undefined
         map: document.getElementById('server-map').value,
         maxPlayers: parseInt(document.getElementById('server-max-players').value) || 16,
         tokenEnabled: document.getElementById('server-token-enabled').checked
@@ -479,6 +502,11 @@
     async function startServer() {
       // Update configuration from UI
       const config = getServerConfig();
+      
+      // Generate a new random server name
+      const serverName = generateServerName();
+      document.getElementById('server-name').value = serverName;
+      config.serverName = serverName;
       
       // Update server config
       server.serverInfo.name = config.serverName;
@@ -762,7 +790,6 @@
       }
       
       gameStateElem.innerHTML = `
-        <strong>Game ID:</strong> ${gameState.gameId}<br>
         <strong>Frame:</strong> ${gameState.frame}<br>
         <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
         <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
