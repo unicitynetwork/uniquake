@@ -417,16 +417,21 @@
       // Update initial token info
       updateTokenInfo();
       
-      // Set up automatic game state verification every 5 seconds when connected
+      // Set up automatic game state verification every 2 seconds when connected
+      // This ensures the frame counter is updated frequently
       setInterval(() => {
         if (client.clientState.connected) {
           // Request verification from server
           client.sendMessage({
             type: 'request:game:state:token'
           });
-          console.log('Auto-requesting game state verification...');
+          
+          // Only log in debug mode to avoid console spam
+          if (client.config.debug) {
+            console.log('Auto-requesting game state verification...');
+          }
         }
-      }, 5000);
+      }, 2000);
     }
     
     // Set up UI event handlers
@@ -641,10 +646,16 @@
       const hashesMatch = localStateHash !== 'N/A' && serverHash !== 'Not verified' && 
                          localStateHash === serverHash;
       
+      // Get verified frame number from token verification if available
+      const verifiedFrame = client?.clientState?.lastGameStateVerification?.frame || gameState.frame;
+      const serverFrame = client?.clientState?.lastGameStateVerification?.serverFrame || verifiedFrame;
+      
       // Update game state display
       const gameStateElem = document.getElementById('game-state');
       gameStateElem.innerHTML = `
-        <strong>Frame:</strong> ${gameState.frame}<br>
+        <div style="font-size: 18px; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px;">
+          <strong>Frame:</strong> <span class="ansi-blue" style="font-weight: bold;">${verifiedFrame}</span>
+        </div>
         <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
         <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
         <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
@@ -731,17 +742,13 @@
       if (result.verified) {
         verificationInfo.innerHTML = `
           <strong class="ansi-green">Verification Successful</strong><br>
-          <strong>Frame:</strong> ${result.frame || lastVerification.frame || 'N/A'}<br>
           <strong>State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${result.stateHash ? result.stateHash.substring(0, 16) + '...' : 'N/A'}</span><br>
-          <strong>Server Frame:</strong> ${lastVerification.serverFrame || result.frame || 'N/A'}<br>
           <strong>Last Check:</strong> ${new Date(lastVerification.timestamp || Date.now()).toLocaleTimeString()}<br>
         `;
       } else {
         verificationInfo.innerHTML = `
           <strong class="ansi-red">Verification Failed</strong><br>
           <strong>Error:</strong> ${result.error || 'Unknown error'}<br>
-          <strong>Client Frame:</strong> ${client?.gameIntegration?.game?.state?.frame || 'N/A'}<br>
-          <strong>Server Frame:</strong> ${lastVerification.serverFrame || 'N/A'}<br>
           <strong>Last Check:</strong> ${new Date(lastVerification.timestamp || Date.now()).toLocaleTimeString()}<br>
         `;
       }
