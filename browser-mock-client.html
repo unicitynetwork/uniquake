@@ -663,6 +663,16 @@
       const verifiedFrame = client?.clientState?.lastGameStateVerification?.frame || gameState.frame;
       const serverFrame = client?.clientState?.lastGameStateVerification?.serverFrame || verifiedFrame;
       
+      // Get server info if available
+      const serverInfo = client?.clientState?.lastGameStateVerification?.serverInfo || {
+        playerCount: Object.keys(gameState.players).length,
+        itemCount: Object.keys(gameState.items || {}).length,
+        timestamp: gameState.timestamp
+      };
+      
+      // Format server timestamp
+      const serverTime = new Date(serverInfo.timestamp).toLocaleTimeString();
+      
       // Recalculate the local hash using the EXACT same normalization as the token service
       if (client && client.clientState.tokenService) {
         // Ensure we're using the exactly same state normalization as the server
@@ -678,8 +688,20 @@
           <strong>Frame:</strong> <span class="ansi-blue" style="font-weight: bold;">${verifiedFrame}</span>
           <span style="font-size: 12px; color: #aaa; margin-left: 10px;">Verified with server</span>
         </div>
-        <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
-        <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <div style="flex: 1;">
+            <strong>Client State</strong><br>
+            <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
+            <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
+            <strong>Time:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
+          </div>
+          <div style="flex: 1; border-left: 1px solid #444; padding-left: 10px;">
+            <strong>Server State</strong><br>
+            <strong>Players:</strong> ${serverInfo.playerCount}<br>
+            <strong>Items:</strong> ${serverInfo.itemCount}<br>
+            <strong>Time:</strong> ${serverTime}<br>
+          </div>
+        </div>
         <div style="border: 1px solid ${hashesMatch ? '#4caf50' : '#f44336'}; padding: 8px; border-radius: 4px; margin: 10px 0;">
           <strong>Hash Verification:</strong> 
           <span class="${hashesMatch ? 'ansi-green' : 'ansi-red'}" style="font-weight: bold;">
@@ -689,7 +711,6 @@
           <strong>Server Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${typeof serverHash === 'string' && serverHash.length > 16 ? serverHash.substring(0, 16) + '...' : serverHash}</span><br>
           <strong>Local Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${localStateHash.substring(0, 16)}...</span><br>
         </div>
-        <strong>Last Update:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
       `;
       
       if (gameState.ended) {
