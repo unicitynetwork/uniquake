@@ -384,7 +384,15 @@
         onStatusUpdate: updateClientStatus,
         onChatMessage: displayChatMessage,
         onConnectionChange: handleConnectionChange,
-        onServerList: updateServerList
+        onServerList: updateServerList,
+        // Add handler for the new serverStateUpdate event
+        onServerStateUpdate: function(serverInfo) {
+          console.log("[SERVER_STATE] Received server state update event:", JSON.stringify(serverInfo));
+          // Call updateGameState to refresh the UI with the latest server info
+          if (game) {
+            updateGameState(game.getGameState());
+          }
+        }
       });
       
       // Create game integration
@@ -663,15 +671,62 @@
       const verifiedFrame = client?.clientState?.lastGameStateVerification?.frame || gameState.frame;
       const serverFrame = client?.clientState?.lastGameStateVerification?.serverFrame || verifiedFrame;
       
-      // Get server info if available
-      const serverInfo = client?.clientState?.lastGameStateVerification?.serverInfo || {
-        playerCount: Object.keys(gameState.players).length,
-        itemCount: Object.keys(gameState.items || {}).length,
-        timestamp: gameState.timestamp
-      };
+      // IMPORTANT: Get server info prioritizing the dedicated server state info message
+      console.log("[SERVER_STATE] Looking for server state info sources");
       
-      // Format server timestamp
-      const serverTime = new Date(serverInfo.timestamp).toLocaleTimeString();
+      let serverInfo;
+      // First priority: Use dedicated server state info from client state (from server:state:update message)
+      if (client?.clientState?.serverStateInfo) {
+        serverInfo = client.clientState.serverStateInfo;
+        console.log("[SERVER_STATE] Using dedicated server state info:", JSON.stringify(serverInfo));
+      }
+      // Second priority: Use server info from verification object
+      else if (client?.clientState?.lastGameStateVerification?.serverInfo) {
+        serverInfo = client.clientState.lastGameStateVerification.serverInfo;
+        console.log("[SERVER_STATE] Using server info from verification:", JSON.stringify(serverInfo));
+      }
+      // Fallback: Use client-side data
+      else {
+        serverInfo = {
+          playerCount: Object.keys(gameState.players).length,
+          itemCount: Object.keys(gameState.items || {}).length,
+          timestamp: gameState.timestamp
+        };
+        console.log("[SERVER_STATE] Using fallback client-side server info:", JSON.stringify(serverInfo));
+      }
+      
+      // Check if serverInfo has all required fields and enforce them
+      if (!serverInfo.playerCount && serverInfo.playerCount !== 0) {
+        console.log("[SERVER_STATE] playerCount missing, setting to 0");
+        serverInfo.playerCount = 0;
+      }
+      
+      if (!serverInfo.itemCount && serverInfo.itemCount !== 0) {
+        console.log("[SERVER_STATE] itemCount missing, setting to 0");
+        serverInfo.itemCount = 0;
+      }
+      
+      if (!serverInfo.timestamp) {
+        console.log("[SERVER_STATE] timestamp missing, setting to current time");
+        serverInfo.timestamp = Date.now();
+      }
+      
+      // Format server timestamp with error handling
+      let serverTime = 'Unknown';
+      try {
+        // Make sure timestamp is valid
+        if (serverInfo && serverInfo.timestamp) {
+          const timestamp = new Date(serverInfo.timestamp);
+          // Check if date is valid
+          if (!isNaN(timestamp.getTime())) {
+            serverTime = timestamp.toLocaleTimeString();
+          } else {
+            console.warn('Invalid server timestamp:', serverInfo.timestamp);
+          }
+        }
+      } catch (error) {
+        console.error('Error formatting server timestamp:', error);
+      }
       
       // Recalculate the local hash using the EXACT same normalization as the token service
       if (client && client.clientState.tokenService) {
@@ -688,28 +743,65 @@
           <strong>Frame:</strong> <span class="ansi-blue" style="font-weight: bold;">${verifiedFrame}</span>
           <span style="font-size: 12px; color: #aaa; margin-left: 10px;">Verified with server</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-          <div style="flex: 1;">
-            <strong>Client State</strong><br>
-            <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
-            <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
-            <strong>Time:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
+        
+        <!-- Enhanced Server State Section -->
+        <div style="margin-bottom: 15px; background-color: #2a2a2a; border-radius: 5px; padding: 10px; border-left: 4px solid #00bcd4;">
+          <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px; color: #00bcd4; display: flex; justify-content: space-between; align-items: center;">
+            <span>SERVER STATE</span>
+            <span style="font-size: 12px; background-color: #333; padding: 2px 6px; border-radius: 10px;">Direct from server</span>
           </div>
-          <div style="flex: 1; border-left: 1px solid #444; padding-left: 10px;">
-            <strong>Server State</strong><br>
-            <strong>Players:</strong> ${serverInfo.playerCount}<br>
-            <strong>Items:</strong> ${serverInfo.itemCount}<br>
-            <strong>Time:</strong> ${serverTime}<br>
+          <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center;">
+            <div><strong>Connected Players:</strong></div>
+            <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.playerCount}</div>
+            
+            <div><strong>Active Items:</strong></div>
+            <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.itemCount}</div>
+            
+            <div><strong>Server Timestamp:</strong></div>
+            <div style="font-size: 16px; color: #4fc3f7;">${serverTime}</div>
+            
+            <div><strong>Last Update:</strong></div>
+            <div style="font-size: 16px; color: #4fc3f7;">${(() => {
+              try {
+                if (serverInfo && serverInfo.timestamp && !isNaN(serverInfo.timestamp)) {
+                  const secondsAgo = Math.round((Date.now() - serverInfo.timestamp) / 1000);
+                  if (secondsAgo >= 0) {
+                    return `${secondsAgo} seconds ago`;
+                  } else {
+                    return 'Just now';
+                  }
+                }
+                return 'Unknown';
+              } catch (e) {
+                console.error('Error calculating time since update:', e);
+                return 'Unknown';
+              }
+            })()}</div>
           </div>
         </div>
-        <div style="border: 1px solid ${hashesMatch ? '#4caf50' : '#f44336'}; padding: 8px; border-radius: 4px; margin: 10px 0;">
-          <strong>Hash Verification:</strong> 
-          <span class="${hashesMatch ? 'ansi-green' : 'ansi-red'}" style="font-weight: bold;">
-            ${hashesMatch ? '✓ MATCH' : '✗ MISMATCH'}
-          </span><br>
-          <span style="font-size: 12px; color: #aaa;">Using simplified state for hash calculation (frame + gameId only)</span><br><br>
-          <strong>Server Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${typeof serverHash === 'string' && serverHash.length > 16 ? serverHash.substring(0, 16) + '...' : serverHash}</span><br>
-          <strong>Local Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${localStateHash.substring(0, 16)}...</span><br>
+        
+        <!-- Verification Status Section -->
+        <div style="border: 1px solid ${hashesMatch ? '#4caf50' : '#f44336'}; padding: 10px; border-radius: 4px; margin: 10px 0; background-color: ${hashesMatch ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)'};">
+          <div style="display: flex; align-items: center; margin-bottom: 5px;">
+            <strong style="margin-right: 10px;">Verification Status:</strong> 
+            <span class="${hashesMatch ? 'ansi-green' : 'ansi-red'}" style="font-weight: bold; font-size: 16px;">
+              ${hashesMatch ? '✓ VERIFIED' : '✗ VERIFICATION FAILED'}
+            </span>
+          </div>
+          <div style="font-size: 12px; color: #aaa; margin-bottom: 10px;">
+            Using simplified state for hash calculation (frame + gameId only)
+          </div>
+          <div style="display: grid; grid-template-columns: auto 1fr; gap: 5px; font-family: monospace; font-size: 12px;">
+            <div><strong>Server Hash:</strong></div>
+            <div style="word-break: break-all; color: #ffeb3b;">
+              ${typeof serverHash === 'string' && serverHash.length > 20 ? serverHash.substring(0, 20) + '...' : serverHash}
+            </div>
+            
+            <div><strong>Local Hash:</strong></div>
+            <div style="word-break: break-all; color: #4fc3f7;">
+              ${localStateHash.substring(0, 20)}...
+            </div>
+          </div>
         </div>
       `;
       
