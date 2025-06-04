@@ -416,6 +416,17 @@
       
       // Update initial token info
       updateTokenInfo();
+      
+      // Set up automatic game state verification every 5 seconds when connected
+      setInterval(() => {
+        if (client.clientState.connected) {
+          // Request verification from server
+          client.sendMessage({
+            type: 'request:game:state:token'
+          });
+          console.log('Auto-requesting game state verification...');
+        }
+      }, 5000);
     }
     
     // Set up UI event handlers
@@ -602,14 +613,36 @@
         });
       }
       
+      // Calculate state hash for local state if token service is available
+      let localStateHash = 'N/A';
+      if (client && client.clientState.tokenService && client.clientState.tokenService.hashGameState) {
+        try {
+          localStateHash = client.clientState.tokenService.hashGameState(gameState);
+          console.log('Calculated local game state hash:', localStateHash);
+        } catch (error) {
+          console.error('Failed to calculate game state hash:', error.message);
+        }
+      }
+      
+      // Get server hash from verification if available
+      const serverHash = gameState.serverHash || 
+                         client?.clientState?.lastGameStateVerification?.stateHash || 
+                         'Not verified';
+      
+      // Check if hashes match
+      const hashesMatch = localStateHash !== 'N/A' && serverHash !== 'Not verified' && 
+                         localStateHash === serverHash;
+      
       // Update game state display
       const gameStateElem = document.getElementById('game-state');
       gameStateElem.innerHTML = `
-        <strong>Game ID:</strong> ${gameState.gameId}<br>
         <strong>Frame:</strong> ${gameState.frame}<br>
         <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
         <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
         <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
+        <strong>Local State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${localStateHash.substring(0, 16)}...</span><br>
+        <strong>Server State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${typeof serverHash === 'string' && serverHash.length > 16 ? serverHash.substring(0, 16) + '...' : serverHash}</span><br>
+        <strong>State Consistent:</strong> <span class="${hashesMatch ? 'ansi-green' : 'ansi-red'}">${hashesMatch ? 'Yes' : 'No'}</span><br>
       `;
       
       if (gameState.ended) {
@@ -617,6 +650,16 @@
           <strong>Game Ended</strong><br>
           <strong>Winner:</strong> ${gameState.winner ? gameState.players[gameState.winner]?.name || gameState.winner : 'None'}<br>
         `;
+      }
+      
+      // Also update verification info if we have verification data
+      if (client?.clientState?.lastGameStateVerification?.timestamp) {
+        updateVerificationInfo({
+          verified: hashesMatch,
+          frame: gameState.frame,
+          stateHash: serverHash,
+          error: hashesMatch ? null : 'Local state hash does not match server hash'
+        });
       }
     }
     
@@ -674,20 +717,34 @@
         return;
       }
       
+      // Get last verification info from client state
+      const lastVerification = client?.clientState?.lastGameStateVerification || {};
+      
       if (result.verified) {
         verificationInfo.innerHTML = `
           <strong class="ansi-green">Verification Successful</strong><br>
-          <strong>Frame:</strong> ${result.frame || 'N/A'}<br>
-          <strong>State Hash:</strong> ${result.stateHash ? result.stateHash.substring(0, 10) + '...' : 'N/A'}<br>
-          <strong>Timestamp:</strong> ${new Date().toLocaleTimeString()}<br>
+          <strong>Frame:</strong> ${result.frame || lastVerification.frame || 'N/A'}<br>
+          <strong>State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${result.stateHash ? result.stateHash.substring(0, 16) + '...' : 'N/A'}</span><br>
+          <strong>Server Frame:</strong> ${lastVerification.serverFrame || result.frame || 'N/A'}<br>
+          <strong>Last Check:</strong> ${new Date(lastVerification.timestamp || Date.now()).toLocaleTimeString()}<br>
         `;
       } else {
         verificationInfo.innerHTML = `
           <strong class="ansi-red">Verification Failed</strong><br>
           <strong>Error:</strong> ${result.error || 'Unknown error'}<br>
-          <strong>Timestamp:</strong> ${new Date().toLocaleTimeString()}<br>
+          <strong>Client Frame:</strong> ${client?.gameIntegration?.game?.state?.frame || 'N/A'}<br>
+          <strong>Server Frame:</strong> ${lastVerification.serverFrame || 'N/A'}<br>
+          <strong>Last Check:</strong> ${new Date(lastVerification.timestamp || Date.now()).toLocaleTimeString()}<br>
         `;
       }
+      
+      // Add automatic verification notice
+      verificationInfo.innerHTML += `
+        <div style="margin-top: 10px; font-size: 12px;">
+          State verification occurs automatically when receiving game state tokens from the server.
+          Press "Verify Game State" button to request a fresh verification.
+        </div>
+      `;
     }
     
     // Handle token events
@@ -700,6 +757,18 @@
       // If it's a verification event, update verification info
       if (event.type === 'game_state_verification') {
         updateVerificationInfo(event.result);
+        
+        // Also update game state display to show current hash status
+        if (client?.gameIntegration?.game) {
+          updateGameState(client.gameIntegration.game.state);
+        }
+        
+        // Log verification result for debugging
+        if (event.result.verified) {
+          console.log(`Game state verified at frame ${event.frame}: Hash matches`);
+        } else {
+          console.warn(`Game state verification failed at frame ${event.frame}: ${event.result.error || 'Hash mismatch'}`);
+        }
       }
     }
   </script>
