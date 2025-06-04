@@ -617,8 +617,16 @@
       let localStateHash = 'N/A';
       if (client && client.clientState.tokenService && client.clientState.tokenService.hashGameState) {
         try {
+          // Enable debug mode temporarily to see serialization and hash details
+          const debugEnabled = client.clientState.tokenService.debugMode;
+          client.clientState.tokenService.debugMode = true;
+          
+          // Calculate hash with verbose logging
           localStateHash = client.clientState.tokenService.hashGameState(gameState);
           console.log('Calculated local game state hash:', localStateHash);
+          
+          // Restore previous debug setting
+          client.clientState.tokenService.debugMode = debugEnabled;
         } catch (error) {
           console.error('Failed to calculate game state hash:', error.message);
         }
