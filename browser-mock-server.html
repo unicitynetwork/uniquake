@@ -798,13 +798,43 @@
       let stateHash = 'N/A';
       if (server && server.serverState.tokenService && server.serverState.tokenService.hashGameState) {
         try {
+          // Create a clean copy of the game state with only what's needed for hashing
+          // This ensures consistent hashing between client and server
+          const minimalState = {
+            gameId: gameState.gameId || '',
+            frame: gameState.frame || 0,
+            players: {}
+          };
+          
+          // Only include essential player data for consistent hashing
+          if (gameState.players) {
+            Object.keys(gameState.players).sort().forEach(playerId => {
+              const player = gameState.players[playerId];
+              if (player) {
+                minimalState.players[playerId] = {
+                  name: player.name || 'Unknown',
+                  health: Math.round(player.health || 100)
+                };
+              }
+            });
+          }
+          
+          // Include scores if present
+          if (gameState.score && Object.keys(gameState.score).length > 0) {
+            minimalState.score = {};
+            Object.keys(gameState.score).sort().forEach(playerId => {
+              minimalState.score[playerId] = Math.round(gameState.score[playerId] || 0);
+            });
+          }
+          
           // Enable debug mode temporarily to see serialization and hash details
           const debugEnabled = server.serverState.tokenService.debugMode;
           server.serverState.tokenService.debugMode = true;
           
           // Use the token service's hashGameState method with verbose logging
-          stateHash = server.serverState.tokenService.hashGameState(gameState);
-          console.log('Game State Panel - Hash calculated with token service:', stateHash);
+          // Use the minimal state for consistent hashing
+          stateHash = server.serverState.tokenService.hashGameState(minimalState);
+          console.log(`Server - Hash calculated for frame ${gameState.frame}:`, stateHash);
           
           // Restore previous debug setting
           server.serverState.tokenService.debugMode = debugEnabled;

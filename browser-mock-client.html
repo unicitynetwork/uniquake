@@ -622,13 +622,42 @@
       let localStateHash = 'N/A';
       if (client && client.clientState.tokenService && client.clientState.tokenService.hashGameState) {
         try {
+          // Create a clean copy of the game state with only what's needed for hashing
+          // This ensures we hash exactly the same content as the server
+          const minimalState = {
+            gameId: gameState.gameId || '',
+            frame: gameState.frame || 0,
+            players: {}
+          };
+          
+          // Only include essential player data for consistent hashing
+          if (gameState.players) {
+            Object.keys(gameState.players).sort().forEach(playerId => {
+              const player = gameState.players[playerId];
+              if (player) {
+                minimalState.players[playerId] = {
+                  name: player.name || 'Unknown',
+                  health: Math.round(player.health || 100)
+                };
+              }
+            });
+          }
+          
+          // Include scores if present
+          if (gameState.score && Object.keys(gameState.score).length > 0) {
+            minimalState.score = {};
+            Object.keys(gameState.score).sort().forEach(playerId => {
+              minimalState.score[playerId] = Math.round(gameState.score[playerId] || 0);
+            });
+          }
+          
           // Enable debug mode temporarily to see serialization and hash details
           const debugEnabled = client.clientState.tokenService.debugMode;
           client.clientState.tokenService.debugMode = true;
           
-          // Calculate hash with verbose logging
-          localStateHash = client.clientState.tokenService.hashGameState(gameState);
-          console.log('Calculated local game state hash:', localStateHash);
+          // Calculate hash with verbose logging using the minimal state
+          localStateHash = client.clientState.tokenService.hashGameState(minimalState);
+          console.log(`Calculated local hash for frame ${gameState.frame}:`, localStateHash);
           
           // Restore previous debug setting
           client.clientState.tokenService.debugMode = debugEnabled;
@@ -659,9 +688,15 @@
         </div>
         <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
         <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
-        <strong>Local State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${localStateHash.substring(0, 16)}...</span><br>
-        <strong>Server State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${typeof serverHash === 'string' && serverHash.length > 16 ? serverHash.substring(0, 16) + '...' : serverHash}</span><br>
-        <strong>State Consistent:</strong> <span class="${hashesMatch ? 'ansi-green' : 'ansi-red'}">${hashesMatch ? 'Yes' : 'No'}</span><br>
+        <div style="border: 1px solid ${hashesMatch ? '#4caf50' : '#f44336'}; padding: 8px; border-radius: 4px; margin: 10px 0;">
+          <strong>Hash Verification:</strong> 
+          <span class="${hashesMatch ? 'ansi-green' : 'ansi-red'}" style="font-weight: bold;">
+            ${hashesMatch ? '✓ MATCH' : '✗ MISMATCH'}
+          </span><br>
+          <span style="font-size: 12px; color: #aaa;">Local and server hashes should be identical</span><br><br>
+          <strong>Server Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${typeof serverHash === 'string' && serverHash.length > 16 ? serverHash.substring(0, 16) + '...' : serverHash}</span><br>
+          <strong>Local Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${localStateHash.substring(0, 16)}...</span><br>
+        </div>
         <strong>Last Update:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
       `;
       
