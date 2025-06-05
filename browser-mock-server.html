@@ -354,7 +354,7 @@
     // Load WebRTC adapter directly, bypassing the auto-connect behavior
     window.UNIQUAKE_CONFIG = {
       useWebRTC: true,
-      masterServer: 'ws://gateway-test1.unicity.network:27950',
+      masterServer: 'ws://localhost:27950',
       noAutoConnect: true  // Flag to prevent auto-connection
     };
     
@@ -405,7 +405,7 @@
       
       // Create mock server
       server = new BrowserMockServer({
-        masterServer: window.UNIQUAKE_CONFIG.masterServer || 'ws://gateway-test1.unicity.network:27950',
+        masterServer: window.UNIQUAKE_CONFIG.masterServer || 'ws://localhost:27950',
         serverName: config.serverName,
         map: config.map,
         maxPlayers: config.maxPlayers,
