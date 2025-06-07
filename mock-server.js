@@ -60,7 +60,31 @@ app.get('/index.ejs', function(req, res) {
 
 // Handle the root path for the Quake game
 app.get('/quake', function(req, res) {
-  res.sendfile(path.join(__dirname, 'bin/index.ejs'));
+  // Access query parameters
+  const map = req.query.map || 'q3dm1';
+  const connect = req.query.connect || '';
+  const dedicated = req.query.dedicated || '';
+  
+  // Set up locals for template rendering
+  res.locals = {
+    content: 'content.quakejs.com',
+    useWebRTC: true,
+    masterServer: 'localhost:27950'
+  };
+  
+  // Convert the EJS template to HTML and send it with proper content type
+  const fs = require('fs');
+  const ejs = require('ejs');
+  const template = fs.readFileSync(path.join(__dirname, 'bin/index.ejs'), 'utf8');
+  
+  // Render the EJS template with the locals
+  const html = ejs.render(template, res.locals, {
+    filename: path.join(__dirname, 'bin/index.ejs')
+  });
+  
+  // Set the content type to HTML and send the rendered template
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
 });
 
 // Proxy request to game (handle as if we're the web server)
