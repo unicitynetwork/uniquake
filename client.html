@@ -356,7 +356,7 @@
         <!-- Game View Tab Content -->
         <div class="tab-content active" id="game-tab">
           <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe" src="/quake?cmdline=+set%20sv_pure%200%20+map%20q3dm1"></iframe>
+            <iframe id="game-iframe" class="game-iframe"></iframe>
           </div>
           <div class="button-row">
             <button id="refresh-game">Refresh Game</button>
@@ -727,7 +727,8 @@
         // Start the game
         game.start();
         
-        // Connect Quake to the server
+        // Connect Quake to the server ONLY after our framework client connects to a server
+        console.log('Framework client connected successfully, connecting Quake client to server');
         if (selectedServerId) {
           connectQuakeToServer(selectedServerId);
         }
@@ -746,7 +747,7 @@
         game.stop();
         
         // Reset the Quake iframe
-        document.getElementById('game-iframe').src = '/';
+        document.getElementById('game-iframe').src = '';
       }
     }
     

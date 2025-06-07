@@ -364,7 +364,7 @@
         <!-- Game View Tab Content -->
         <div class="tab-content active" id="game-tab">
           <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe" src="/quake?cmdline=+set%20sv_pure%200%20+exec%20server.cfg%20+map%20q3dm1%20+dedicated%201"></iframe>
+            <iframe id="game-iframe" class="game-iframe"></iframe>
           </div>
           <div class="button-row">
             <button id="refresh-game">Refresh Game</button>
@@ -650,7 +650,8 @@
         // Start the game
         game.start();
         
-        // Refresh the Quake game iframe with the current map
+        // Start the Quake dedicated server ONLY after our framework server is registered
+        console.log('Framework server registered successfully, starting Quake dedicated server');
         initQuakeGame();
         
         // Update UI
@@ -677,6 +678,9 @@
       
       // Stop the game
       game.stop();
+      
+      // Clear the Quake game iframe
+      document.getElementById('game-iframe').src = '';
       
       // Update UI
       document.getElementById('start-button').disabled = false;
