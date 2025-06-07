@@ -364,7 +364,7 @@
         <!-- Game View Tab Content -->
         <div class="tab-content active" id="game-tab">
           <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe" src="/"></iframe>
+            <iframe id="game-iframe" class="game-iframe" src="/quake?dedicated=1"></iframe>
           </div>
           <div class="button-row">
             <button id="refresh-game">Refresh Game</button>
@@ -546,7 +546,7 @@
       const map = document.getElementById('server-map').value;
       
       // Build Quake server URL with parameters
-      const quakeServerUrl = `/?connect=localhost&map=${map}&dedicated=1`;
+      const quakeServerUrl = `/quake?map=${map}&dedicated=1`;
       iframe.src = quakeServerUrl;
       
       console.log('Starting Quake server with URL:', quakeServerUrl);

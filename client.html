@@ -356,7 +356,7 @@
         <!-- Game View Tab Content -->
         <div class="tab-content active" id="game-tab">
           <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe" src="/"></iframe>
+            <iframe id="game-iframe" class="game-iframe" src="/quake"></iframe>
           </div>
           <div class="button-row">
             <button id="refresh-game">Refresh Game</button>
@@ -633,7 +633,7 @@
       }
       
       // Build Quake client URL with connection parameters
-      let quakeClientUrl = `/?connect=localhost`;
+      let quakeClientUrl = `/quake?connect=localhost`;
       
       // Add map parameter if found
       if (serverInfo && serverInfo.map) {

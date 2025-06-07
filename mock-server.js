@@ -48,6 +48,21 @@ app.get('/webrtc-loader.js', function(req, res) {
 // Serve Quake game files from build directory
 app.use('/build', express.static(path.join(__dirname, 'build')));
 
+// Add a route to serve the web.json configuration file
+app.get('/web.json', function(req, res) {
+  res.sendfile(path.join(__dirname, 'bin/web.json'));
+});
+
+// Add a route to serve the index.ejs file
+app.get('/index.ejs', function(req, res) {
+  res.sendfile(path.join(__dirname, 'bin/index.ejs'));
+});
+
+// Handle the root path for the Quake game
+app.get('/quake', function(req, res) {
+  res.sendfile(path.join(__dirname, 'bin/index.ejs'));
+});
+
 // Proxy request to game (handle as if we're the web server)
 app.get('/ioquake3.js', function(req, res) {
   res.sendfile(path.join(__dirname, 'build/ioquake3.js'));
