@@ -356,7 +356,7 @@
         <!-- Game View Tab Content -->
         <div class="tab-content active" id="game-tab">
           <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe" src="/quake"></iframe>
+            <iframe id="game-iframe" class="game-iframe" src="/quake?cmdline=+set%20sv_pure%200%20+map%20q3dm1"></iframe>
           </div>
           <div class="button-row">
             <button id="refresh-game">Refresh Game</button>
@@ -632,12 +632,17 @@
         }
       }
       
-      // Build Quake client URL with connection parameters
-      let quakeClientUrl = `/quake?connect=localhost`;
+      // Build Quake client URL with command line parameters
+      // +set sv_pure 0: Allows custom mods
+      // +connect localhost: Connect to local server
+      // +map <mapname>: Loads the map directly
+      let quakeClientUrl = `/quake?cmdline=+set%20sv_pure%200%20+connect%20localhost`;
       
       // Add map parameter if found
       if (serverInfo && serverInfo.map) {
-        quakeClientUrl += `&map=${serverInfo.map}`;
+        quakeClientUrl += `%20+map%20${serverInfo.map}`;
+      } else {
+        quakeClientUrl += `%20+map%20q3dm1`;
       }
       
       iframe.src = quakeClientUrl;

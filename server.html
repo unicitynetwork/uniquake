@@ -364,7 +364,7 @@
         <!-- Game View Tab Content -->
         <div class="tab-content active" id="game-tab">
           <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe" src="/quake?dedicated=1"></iframe>
+            <iframe id="game-iframe" class="game-iframe" src="/quake?cmdline=+set%20sv_pure%200%20+exec%20server.cfg%20+map%20q3dm1%20+dedicated%201"></iframe>
           </div>
           <div class="button-row">
             <button id="refresh-game">Refresh Game</button>
@@ -546,7 +546,11 @@
       const map = document.getElementById('server-map').value;
       
       // Build Quake server URL with parameters
-      const quakeServerUrl = `/quake?map=${map}&dedicated=1`;
+      // +set sv_pure 0: Allows custom mods
+      // +exec server.cfg: Executes server config
+      // +map <mapname>: Loads the map directly
+      // +dedicated 1: Runs in dedicated server mode
+      const quakeServerUrl = `/quake?cmdline=+set%20sv_pure%200%20+exec%20server.cfg%20+map%20${map}%20+dedicated%201`;
       iframe.src = quakeServerUrl;
       
       console.log('Starting Quake server with URL:', quakeServerUrl);
