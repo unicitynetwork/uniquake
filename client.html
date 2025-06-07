@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniQuake Client with Game</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background-color: #1e1e1e;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 40px);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      color: #4fc3f7;
+    }
+    
+    .main-content {
+      display: flex;
+      flex: 1;
+      gap: 20px;
+    }
+    
+    .panel {
+      background-color: #2d2d2d;
+      border-radius: 5px;
+      padding: 15px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    
+    .server-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+    
+    .server-item {
+      background-color: #3d3d3d;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .server-item:hover {
+      background-color: #4d4d4d;
+    }
+    
+    .server-item.selected {
+      background-color: #2196f3;
+    }
+    
+    .right-panels {
+      display: flex;
+      flex-direction: column;
+      flex: 2;
+      gap: 20px;
+    }
+    
+    .game-panel {
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .token-panel {
+      flex: 1;
+    }
+    
+    .log {
+      flex: 1;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    
+    .chat-log {
+      flex: 1;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    
+    .chat-input {
+      display: flex;
+      gap: 10px;
+    }
+    
+    input, button {
+      background-color: #3d3d3d;
+      border: none;
+      border-radius: 3px;
+      padding: 8px 12px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+    }
+    
+    input {
+      flex: 1;
+    }
+    
+    button {
+      background-color: #2196f3;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #1976d2;
+    }
+    
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    
+    .button-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .ping-display {
+      color: #4caf50;
+    }
+    
+    .player-list {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .game-state {
+      flex: 1;
+      overflow-y: auto;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    
+    .token-info {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .verification-info {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+    }
+    
+    .server-name {
+      font-weight: bold;
+      color: #4fc3f7;
+    }
+    
+    .server-info {
+      font-size: 12px;
+      color: #aaa;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    
+    .status-connected {
+      background-color: #4caf50;
+    }
+    
+    .status-disconnected {
+      background-color: #f44336;
+    }
+    
+    /* ANSI color simulation */
+    .ansi-green {
+      color: #4caf50;
+    }
+    
+    .ansi-red {
+      color: #f44336;
+    }
+    
+    .ansi-yellow {
+      color: #ffeb3b;
+    }
+    
+    .ansi-blue {
+      color: #2196f3;
+    }
+    
+    .ansi-cyan {
+      color: #00bcd4;
+    }
+    
+    .ansi-magenta {
+      color: #e91e63;
+    }
+    
+    .ansi-white {
+      color: #ffffff;
+    }
+    
+    .ansi-gray {
+      color: #9e9e9e;
+    }
+    
+    .chat-message {
+      margin-bottom: 5px;
+    }
+    
+    .chat-timestamp {
+      color: #9e9e9e;
+      font-size: 12px;
+      margin-right: 5px;
+    }
+    
+    .chat-sender {
+      font-weight: bold;
+      margin-right: 5px;
+    }
+    
+    .chat-sender-server {
+      color: #ffeb3b;
+    }
+    
+    .chat-sender-self {
+      color: #4fc3f7;
+    }
+    
+    .chat-text {
+      word-break: break-word;
+    }
+
+    /* Game iframe styles */
+    .game-container {
+      width: 100%;
+      flex: 1;
+      margin-bottom: 10px;
+      position: relative;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    
+    .game-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background-color: #000;
+    }
+
+    /* Tabs for game view and client panel */
+    .tabs {
+      display: flex;
+      margin-bottom: 10px;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      background-color: #3d3d3d;
+      border-radius: 3px 3px 0 0;
+      cursor: pointer;
+      margin-right: 5px;
+    }
+
+    .tab.active {
+      background-color: #2196f3;
+    }
+
+    .tab-content {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+    }
+
+    .tab-content.active {
+      display: flex;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>UniQuake Client with Game</h1>
+    </div>
+    
+    <div class="main-content">
+      <div class="server-list panel">
+        <div class="status-row">
+          <div>
+            <span class="status-indicator" id="connection-status"></span>
+            <span id="connection-text">Disconnected</span>
+          </div>
+          <div class="ping-display" id="ping-display"></div>
+        </div>
+        
+        <h2>Game Servers</h2>
+        <div id="servers-container"></div>
+        
+        <div class="button-row">
+          <button id="refresh-button">Refresh Servers</button>
+          <button id="connect-button" disabled>Connect</button>
+          <button id="disconnect-button" disabled>Disconnect</button>
+        </div>
+      </div>
+      
+      <div class="right-panels">
+        <!-- Tabs for switching between game view and client info -->
+        <div class="tabs">
+          <div class="tab active" data-tab="game">Game View</div>
+          <div class="tab" data-tab="info">Client Info</div>
+        </div>
+
+        <!-- Game View Tab Content -->
+        <div class="tab-content active" id="game-tab">
+          <div class="game-container">
+            <iframe id="game-iframe" class="game-iframe" src="/"></iframe>
+          </div>
+          <div class="button-row">
+            <button id="refresh-game">Refresh Game</button>
+            <button id="fullscreen-button">Fullscreen</button>
+          </div>
+        </div>
+
+        <!-- Client Info Tab Content -->
+        <div class="tab-content" id="info-tab">
+          <div class="game-panel panel">
+            <h2>Game State</h2>
+            <div class="player-list" id="player-list">No players connected</div>
+            <div class="game-state" id="game-state">No game state available</div>
+            
+            <div class="button-row">
+              <button id="ping-button" disabled>Ping Server</button>
+              <button id="verify-button" disabled>Verify Game State</button>
+            </div>
+          </div>
+          
+          <div class="chat-panel panel">
+            <h2>Chat</h2>
+            <div class="chat-log" id="chat-log"></div>
+            <div class="chat-input">
+              <input type="text" id="chat-input" placeholder="Type your message..." disabled>
+              <button id="send-button" disabled>Send</button>
+            </div>
+          </div>
+          
+          <div class="token-panel panel">
+            <h2>Token System</h2>
+            <div class="token-info" id="token-info">Token system initializing...</div>
+            <div class="verification-info" id="verification-info">No verification performed</div>
+            
+            <div class="button-row">
+              <button id="mint-button">Mint Tokens</button>
+              <button id="status-button">Status</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load scripts -->
+  <script src="lib/client/uniquake-token-service.js"></script>
+  <script src="lib/client/browser-mock-game.js"></script>
+  <script src="lib/client/browser-mock-client.js"></script>
+  <script src="lib/client/game-integration.js"></script>
+  
+  <script>
+    // Load WebRTC adapter directly, bypassing the auto-connect behavior
+    window.UNIQUAKE_CONFIG = {
+      useWebRTC: true,
+      masterServer: 'ws://localhost:27950',
+      noAutoConnect: true  // Flag to prevent auto-connection
+    };
+    
+    // Load the adapter script
+    var script = document.createElement('script');
+    script.src = '/webrtc-adapter.js';
+    script.onload = function() {
+      console.log('WebRTC adapter loaded, initializing client');
+      initializeClient();
+    };
+    document.head.appendChild(script);
+    
+    // Main client, game, and integration instances
+    let client, game, integration;
+    let selectedServerId = null;
+    
+    // Initialize client
+    async function initializeClient() {
+      // Create mock game
+      game = new BrowserMockGame({
+        updateInterval: 2000,
+        onStateChange: updateGameState
+      });
+      
+      // Generate a unique player name with random suffix
+      const playerName = 'Player_' + Math.floor(Math.random() * 1000);
+      
+      // Create mock client
+      client = new BrowserMockClient({
+        masterServer: window.UNIQUAKE_CONFIG.masterServer || 'ws://localhost:27950',
+        name: playerName,
+        verbose: true,
+        debug: true,
+        mintTokens: 5,
+        onStatusUpdate: updateClientStatus,
+        onChatMessage: displayChatMessage,
+        onConnectionChange: handleConnectionChange,
+        onServerList: updateServerList,
+        // Add handler for the new serverStateUpdate event
+        onServerStateUpdate: function(serverInfo) {
+          console.log("[SERVER_STATE] Received server state update event:", JSON.stringify(serverInfo));
+          // Call updateGameState to refresh the UI with the latest server info
+          if (game) {
+            updateGameState(game.getGameState());
+          }
+        }
+      });
+      
+      // Create game integration
+      integration = new GameIntegration({
+        client: client,
+        debug: true,
+        onGameStateUpdate: updateGameState,
+        onTokenEvent: handleTokenEvent
+      });
+      
+      // Initialize all components
+      await game.init();
+      await client.init();
+      await integration.init(game);
+      
+      // Store reference to game integration for syncing
+      client.gameIntegration = integration;
+      
+      console.log('Client system initialized');
+      
+      // Set up UI event handlers
+      setupUIHandlers();
+      
+      // Connect to master server and fetch server list
+      client.connectToMasterServer().then(() => {
+        // Automatically request the server list
+        client.requestServerList();
+      });
+      
+      // Update initial token info
+      updateTokenInfo();
+      
+      // Initialize verification info with static message
+      updateVerificationInfo();
+      
+      // Set up automatic game state verification every 2 seconds when connected
+      // This ensures the frame counter is updated frequently
+      setInterval(() => {
+        if (client.clientState.connected) {
+          // Request verification from server
+          client.sendMessage({
+            type: 'request:game:state:token'
+          });
+          
+          // Only log in debug mode to avoid console spam
+          if (client.config.debug) {
+            console.log('Auto-requesting game state verification...');
+          }
+        }
+      }, 2000);
+    }
+    
+    // Set up UI event handlers
+    function setupUIHandlers() {
+      // Tab switching
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+          // Remove active class from all tabs and tab contents
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          
+          // Add active class to clicked tab and corresponding content
+          this.classList.add('active');
+          document.getElementById(this.getAttribute('data-tab') + '-tab').classList.add('active');
+        });
+      });
+
+      // Server list buttons
+      document.getElementById('refresh-button').addEventListener('click', () => {
+        client.requestServerList();
+      });
+      
+      document.getElementById('connect-button').addEventListener('click', () => {
+        if (selectedServerId) {
+          client.connectToServer(selectedServerId);
+          
+          // Update Quake game iframe to connect to the selected server
+          connectQuakeToServer(selectedServerId);
+        }
+      });
+      
+      document.getElementById('disconnect-button').addEventListener('click', () => {
+        client.disconnect();
+        
+        // Reset Quake game iframe
+        document.getElementById('game-iframe').src = '/';
+      });
+      
+      // Game panel buttons
+      document.getElementById('ping-button').addEventListener('click', async () => {
+        const pingResult = await client.ping();
+        if (pingResult > 0) {
+          document.getElementById('ping-display').textContent = `Ping: ${pingResult}ms`;
+        }
+      });
+      
+      document.getElementById('verify-button').addEventListener('click', async () => {
+        const result = await client.verifyGameState();
+        
+        // Update the game state display with the latest info
+        if (client?.gameIntegration?.game) {
+          const gameState = client.gameIntegration.game.getGameState();
+          // Ensure the game state has the latest verification result
+          gameState.serverHash = result.stateHash;
+          updateGameState(gameState);
+        }
+      });
+      
+      // Chat input
+      document.getElementById('chat-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          sendChatMessage();
+        }
+      });
+      
+      document.getElementById('send-button').addEventListener('click', sendChatMessage);
+      
+      // Token panel buttons
+      document.getElementById('mint-button').addEventListener('click', async () => {
+        if (client.clientState.tokenService) {
+          await client.mintTokens(1);
+          updateTokenInfo();
+        }
+      });
+      
+      document.getElementById('status-button').addEventListener('click', () => {
+        updateClientStatus(client.getStatus());
+      });
+      
+      // Game iframe buttons
+      document.getElementById('refresh-game').addEventListener('click', function() {
+        if (client.clientState.connected && selectedServerId) {
+          connectQuakeToServer(selectedServerId);
+        } else {
+          document.getElementById('game-iframe').src = '/';
+        }
+      });
+      
+      document.getElementById('fullscreen-button').addEventListener('click', function() {
+        const iframe = document.getElementById('game-iframe');
+        if (iframe.requestFullscreen) {
+          iframe.requestFullscreen();
+        } else if (iframe.webkitRequestFullscreen) { /* Safari */
+          iframe.webkitRequestFullscreen();
+        } else if (iframe.msRequestFullscreen) { /* IE11 */
+          iframe.msRequestFullscreen();
+        }
+      });
+    }
+    
+    // Connect Quake to the selected server
+    function connectQuakeToServer(serverId) {
+      const iframe = document.getElementById('game-iframe');
+      
+      // Find the server info from the selected server
+      const serverContainer = document.getElementById('servers-container');
+      const serverItems = serverContainer.querySelectorAll('.server-item');
+      let serverInfo = null;
+      
+      for (let i = 0; i < serverItems.length; i++) {
+        if (serverItems[i].getAttribute('data-server-id') === serverId) {
+          const serverName = serverItems[i].querySelector('.server-name').textContent;
+          const mapInfo = serverItems[i].querySelector('.server-info').textContent;
+          const mapMatch = mapInfo.match(/Map:\s+([^\s|]+)/);
+          const map = mapMatch ? mapMatch[1] : 'q3dm1';
+          
+          serverInfo = {
+            name: serverName,
+            map: map
+          };
+          break;
+        }
+      }
+      
+      // Build Quake client URL with connection parameters
+      let quakeClientUrl = `/?connect=localhost`;
+      
+      // Add map parameter if found
+      if (serverInfo && serverInfo.map) {
+        quakeClientUrl += `&map=${serverInfo.map}`;
+      }
+      
+      iframe.src = quakeClientUrl;
+      console.log('Connecting Quake client to server with URL:', quakeClientUrl);
+    }
+    
+    // Send a chat message
+    function sendChatMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      
+      if (message && client.clientState.connected) {
+        client.sendChatMessage(message);
+        input.value = '';
+      }
+    }
+    
+    // Update server list
+    function updateServerList(servers) {
+      const container = document.getElementById('servers-container');
+      container.innerHTML = '';
+      
+      if (servers.length === 0) {
+        container.innerHTML = '<div class="server-item">No servers available</div>';
+        return;
+      }
+      
+      servers.forEach(server => {
+        const serverElem = document.createElement('div');
+        serverElem.className = 'server-item';
+        serverElem.setAttribute('data-server-id', server.peerId);
+        
+        if (selectedServerId === server.peerId) {
+          serverElem.classList.add('selected');
+        }
+        
+        serverElem.innerHTML = `
+          <div class="server-name">${server.name}</div>
+          <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
+          <div class="server-info">ID: ${server.peerId}</div>
+        `;
+        
+        serverElem.addEventListener('click', () => {
+          // Deselect previous selection
+          document.querySelectorAll('.server-item.selected').forEach(item => {
+            item.classList.remove('selected');
+          });
+          
+          // Select this server
+          serverElem.classList.add('selected');
+          selectedServerId = server.peerId;
+          
+          // Enable connect button if not connected
+          document.getElementById('connect-button').disabled = client.clientState.connected;
+        });
+        
+        container.appendChild(serverElem);
+      });
+    }
+    
+    // Handle connection changes
+    function handleConnectionChange(status) {
+      const connectButton = document.getElementById('connect-button');
+      const disconnectButton = document.getElementById('disconnect-button');
+      const pingButton = document.getElementById('ping-button');
+      const verifyButton = document.getElementById('verify-button');
+      const chatInput = document.getElementById('chat-input');
+      const sendButton = document.getElementById('send-button');
+      const connectionStatus = document.getElementById('connection-status');
+      const connectionText = document.getElementById('connection-text');
+      
+      if (status.connected) {
+        connectButton.disabled = true;
+        disconnectButton.disabled = false;
+        pingButton.disabled = false;
+        verifyButton.disabled = false;
+        chatInput.disabled = false;
+        sendButton.disabled = false;
+        connectionStatus.className = 'status-indicator status-connected';
+        connectionText.textContent = 'Connected';
+        
+        // Start the game
+        game.start();
+        
+        // Connect Quake to the server
+        if (selectedServerId) {
+          connectQuakeToServer(selectedServerId);
+        }
+      } else {
+        connectButton.disabled = false;
+        disconnectButton.disabled = true;
+        pingButton.disabled = true;
+        verifyButton.disabled = true;
+        chatInput.disabled = true;
+        sendButton.disabled = true;
+        connectionStatus.className = 'status-indicator status-disconnected';
+        connectionText.textContent = 'Disconnected';
+        document.getElementById('ping-display').textContent = '';
+        
+        // Stop the game
+        game.stop();
+        
+        // Reset the Quake iframe
+        document.getElementById('game-iframe').src = '/';
+      }
+    }
+    
+    // Update client status
+    function updateClientStatus(status) {
+      // Update ping display if available
+      if (status.ping && status.ping.last) {
+        document.getElementById('ping-display').textContent = `Ping: ${status.ping.last}ms`;
+      }
+      
+      // Update token info if available
+      if (status.tokens) {
+        updateTokenInfo(status.tokens);
+      }
+      
+      console.log('Client status updated:', status);
+    }
+    
+    // Update game state display
+    function updateGameState(gameState) {
+      if (!gameState) return;
+      
+      // Update player list
+      const playerListElem = document.getElementById('player-list');
+      if (Object.keys(gameState.players).length === 0) {
+        playerListElem.innerHTML = 'No players connected';
+      } else {
+        playerListElem.innerHTML = '<strong>Players:</strong>';
+        
+        Object.keys(gameState.players).forEach(playerId => {
+          const player = gameState.players[playerId];
+          const score = gameState.score?.[playerId] || 0;
+          
+          const playerElem = document.createElement('div');
+          playerElem.innerHTML = `
+            ${player.name}: Health: ${Math.round(player.health)} | Score: ${score}
+          `;
+          
+          playerListElem.appendChild(playerElem);
+        });
+      }
+      
+      // Calculate state hash for local state if token service is available
+      let localStateHash = 'N/A';
+      if (client && client.clientState.tokenService && client.clientState.tokenService.hashGameState) {
+        try {
+          // Enable debug mode temporarily to see serialization and hash details
+          const debugEnabled = client.clientState.tokenService.debugMode;
+          client.clientState.tokenService.debugMode = true;
+          
+          // Use the token service's normalization and hash calculation
+          // This ensures we use exactly the same process as the server
+          localStateHash = client.clientState.tokenService.hashGameState(gameState);
+          console.log(`Calculated local hash for frame ${gameState.frame}:`, localStateHash);
+          
+          // Restore previous debug setting
+          client.clientState.tokenService.debugMode = debugEnabled;
+        } catch (error) {
+          console.error('Failed to calculate game state hash:', error.message);
+        }
+      }
+      
+      // Get server hash from verification if available
+      const serverHash = gameState.serverHash || 
+                         client?.clientState?.lastGameStateVerification?.stateHash || 
+                         'Not verified';
+      
+      // Check if hashes match
+      const hashesMatch = localStateHash !== 'N/A' && serverHash !== 'Not verified' && 
+                         localStateHash === serverHash;
+      
+      // Get verified frame number from token verification if available
+      const verifiedFrame = client?.clientState?.lastGameStateVerification?.frame || gameState.frame;
+      const serverFrame = client?.clientState?.lastGameStateVerification?.serverFrame || verifiedFrame;
+      
+      // IMPORTANT: Get server info prioritizing the dedicated server state info message
+      console.log("[SERVER_STATE] Looking for server state info sources");
+      
+      let serverInfo;
+      // First priority: Use dedicated server state info from client state (from server:state:update message)
+      if (client?.clientState?.serverStateInfo) {
+        serverInfo = client.clientState.serverStateInfo;
+        console.log("[SERVER_STATE] Using dedicated server state info:", JSON.stringify(serverInfo));
+      }
+      // Second priority: Use server info from verification object
+      else if (client?.clientState?.lastGameStateVerification?.serverInfo) {
+        serverInfo = client.clientState.lastGameStateVerification.serverInfo;
+        console.log("[SERVER_STATE] Using server info from verification:", JSON.stringify(serverInfo));
+      }
+      // Fallback: Use client-side data
+      else {
+        serverInfo = {
+          playerCount: Object.keys(gameState.players).length,
+          itemCount: Object.keys(gameState.items || {}).length,
+          timestamp: gameState.timestamp
+        };
+        console.log("[SERVER_STATE] Using fallback client-side server info:", JSON.stringify(serverInfo));
+      }
+      
+      // Check if serverInfo has all required fields and enforce them
+      if (!serverInfo.playerCount && serverInfo.playerCount !== 0) {
+        console.log("[SERVER_STATE] playerCount missing, setting to 0");
+        serverInfo.playerCount = 0;
+      }
+      
+      if (!serverInfo.itemCount && serverInfo.itemCount !== 0) {
+        console.log("[SERVER_STATE] itemCount missing, setting to 0");
+        serverInfo.itemCount = 0;
+      }
+      
+      if (!serverInfo.timestamp) {
+        console.log("[SERVER_STATE] timestamp missing, setting to current time");
+        serverInfo.timestamp = Date.now();
+      }
+      
+      // Format server timestamp with error handling
+      let serverTime = 'Unknown';
+      try {
+        // Make sure timestamp is valid
+        if (serverInfo && serverInfo.timestamp) {
+          const timestamp = new Date(serverInfo.timestamp);
+          // Check if date is valid
+          if (!isNaN(timestamp.getTime())) {
+            serverTime = timestamp.toLocaleTimeString();
+          } else {
+            console.warn('Invalid server timestamp:', serverInfo.timestamp);
+          }
+        }
+      } catch (error) {
+        console.error('Error formatting server timestamp:', error);
+      }
+      
+      // Recalculate the local hash using the EXACT same normalization as the token service
+      if (client && client.clientState.tokenService) {
+        // Ensure we're using the exactly same state normalization as the server
+        const normalizedState = client.clientState.tokenService.normalizeGameState(gameState);
+        localStateHash = client.clientState.tokenService.hashGameState(normalizedState);
+        console.log(`Recalculated hash using normalized state with only frame and gameId:`, localStateHash);
+      }
+      
+      // Update game state display
+      const gameStateElem = document.getElementById('game-state');
+      gameStateElem.innerHTML = `
+        <div style="font-size: 18px; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px;">
+          <strong>Frame:</strong> <span class="ansi-blue" style="font-weight: bold;">${verifiedFrame}</span>
+          <span style="font-size: 12px; color: #aaa; margin-left: 10px;">Verified with server</span>
+        </div>
+        
+        <!-- Enhanced Server State Section -->
+        <div style="margin-bottom: 15px; background-color: #2a2a2a; border-radius: 5px; padding: 10px; border-left: 4px solid #00bcd4;">
+          <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px; color: #00bcd4; display: flex; justify-content: space-between; align-items: center;">
+            <span>SERVER STATE</span>
+            <span style="font-size: 12px; background-color: #333; padding: 2px 6px; border-radius: 10px;">Direct from server</span>
+          </div>
+          <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center;">
+            <div><strong>Connected Players:</strong></div>
+            <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.playerCount}</div>
+            
+            <div><strong>Active Items:</strong></div>
+            <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.itemCount}</div>
+            
+            <div><strong>Server Timestamp:</strong></div>
+            <div style="font-size: 16px; color: #4fc3f7;">${serverTime}</div>
+            
+            <div><strong>Last Update:</strong></div>
+            <div style="font-size: 16px; color: #4fc3f7;">${(() => {
+              try {
+                if (serverInfo && serverInfo.timestamp && !isNaN(serverInfo.timestamp)) {
+                  const secondsAgo = Math.round((Date.now() - serverInfo.timestamp) / 1000);
+                  if (secondsAgo >= 0) {
+                    return `${secondsAgo} seconds ago`;
+                  } else {
+                    return 'Just now';
+                  }
+                }
+                return 'Unknown';
+              } catch (e) {
+                console.error('Error calculating time since update:', e);
+                return 'Unknown';
+              }
+            })()}</div>
+          </div>
+        </div>
+        
+        <!-- Verification Status Section -->
+        <div style="border: 1px solid ${hashesMatch ? '#4caf50' : '#f44336'}; padding: 10px; border-radius: 4px; margin: 10px 0; background-color: ${hashesMatch ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)'};">
+          <div style="display: flex; align-items: center; margin-bottom: 5px;">
+            <strong style="margin-right: 10px;">Verification Status:</strong> 
+            <span class="${hashesMatch ? 'ansi-green' : 'ansi-red'}" style="font-weight: bold; font-size: 16px;">
+              ${hashesMatch ? '✓ VERIFIED' : '✗ VERIFICATION FAILED'}
+            </span>
+          </div>
+          <div style="display: grid; grid-template-columns: auto 1fr; gap: 5px; font-family: monospace; font-size: 12px;">
+            <div><strong>Server Hash:</strong></div>
+            <div style="word-break: break-all; color: #ffeb3b;">
+              ${typeof serverHash === 'string' && serverHash.length > 20 ? serverHash.substring(0, 20) + '...' : serverHash}
+            </div>
+            
+            <div><strong>Local Hash:</strong></div>
+            <div style="word-break: break-all; color: #4fc3f7;">
+              ${localStateHash.substring(0, 20)}...
+            </div>
+          </div>
+        </div>
+      `;
+      
+      if (gameState.ended) {
+        gameStateElem.innerHTML += `
+          <strong>Game Ended</strong><br>
+          <strong>Winner:</strong> ${gameState.winner ? gameState.players[gameState.winner]?.name || gameState.winner : 'None'}<br>
+        `;
+      }
+      
+      // Also update verification info if we have verification data
+      if (client?.clientState?.lastGameStateVerification?.timestamp) {
+        updateVerificationInfo({
+          verified: hashesMatch,
+          frame: gameState.frame,
+          stateHash: serverHash,
+          error: hashesMatch ? null : 'Local state hash does not match server hash'
+        });
+      }
+    }
+    
+    // Display chat message
+    function displayChatMessage(message) {
+      const chatLog = document.getElementById('chat-log');
+      const messageElem = document.createElement('div');
+      messageElem.className = 'chat-message';
+      
+      const time = new Date(message.timestamp).toLocaleTimeString();
+      let senderClass = '';
+      
+      if (message.from === 'SERVER') {
+        senderClass = 'chat-sender-server';
+      } else if (message.from === client.clientState.clientId) {
+        senderClass = 'chat-sender-self';
+      }
+      
+      messageElem.innerHTML = `
+        <span class="chat-timestamp">[${time}]</span>
+        <span class="chat-sender ${senderClass}">${message.from}:</span>
+        <span class="chat-text">${message.message}</span>
+      `;
+      
+      chatLog.appendChild(messageElem);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+    
+    // Update token information
+    function updateTokenInfo(tokens) {
+      const tokenInfo = document.getElementById('token-info');
+      
+      if (!client || !client.clientState.tokenService) {
+        tokenInfo.innerHTML = 'Token service not available';
+        return;
+      }
+      
+      const inventory = client.getTokenInventory();
+      const identity = client.clientState.tokenService.getIdentity();
+      
+      tokenInfo.innerHTML = `
+        <strong>Identity:</strong> ${identity.username} (${identity.pubkey.substring(0, 10)}...)<br>
+        <strong>Tokens:</strong> ${inventory.total || 0}<br>
+        <strong>Value:</strong> ${inventory.value || '0'}<br>
+        <strong>Entry Token Sent:</strong> ${client.clientState.entryTokenSent ? 'Yes' : 'No'}<br>
+      `;
+    }
+    
+    // Update verification information
+    function updateVerificationInfo(result) {
+      const verificationInfo = document.getElementById('verification-info');
+      
+      // Just display a simpler version that doesn't constantly update
+      verificationInfo.innerHTML = `
+        <strong>Token System Status</strong><br>
+        <div style="margin-top: 10px; font-size: 12px;">
+          Game state verification is now shown in the Game State panel.<br>
+          The verification status is updated automatically whenever a new state token is received.
+        </div>
+      `;
+    }
+    
+    // Handle token events
+    function handleTokenEvent(event) {
+      console.log('Token event:', event);
+      
+      // Update token info
+      updateTokenInfo();
+      
+      // If it's a verification event, update the game state display only
+      if (event.type === 'game_state_verification') {
+        // Update game state display to show current hash status
+        if (client?.gameIntegration?.game) {
+          updateGameState(client.gameIntegration.game.getGameState());
+        }
+        
+        // Log verification result for debugging
+        if (event.result.verified) {
+          console.log(`Game state verified at frame ${event.frame}: Hash matches`);
+        } else {
+          console.warn(`Game state verification failed at frame ${event.frame}: ${event.result.error || 'Hash mismatch'}`);
+        }
+      }
+    }
+  </script>
+</body>
+</html>

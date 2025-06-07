@@ -1,14 +1,17 @@
 # UNIQUAKE (QuakeJS) Project Guide
 
-## Build Commands
+## Build & Run Commands
 - Install dependencies: `npm install`
 - Start web server: `npm start` or `node bin/web.js --config ./bin/web.json`
 - Run master server: `npm run master` or `node bin/webrtc-master.js`
 - Run content server: `npm run content` or `node bin/content.js`
 - Repackage assets: `npm run repak` or `node bin/repak.js --src <assets_src> --dest <assets>`
 - Build engine: `cd ioq3 && make PLATFORM=js EMSCRIPTEN=<path_to_emscripten>`
-- Mock server: `npm run mock-server`
-- Mock client: `npm run mock-client`
+- Start mock components:
+  - Mock server: `npm run mock-server`
+  - Mock client: `npm run mock-client`
+  - Browser mock: `npm run browser-mock`
+  - All browser mocks: `npm run start-browser-mocks`
 
 ## Code Style Guidelines
 - Imports: Node.js require pattern, group external then internal modules
@@ -19,9 +22,11 @@
 - Config: Use default values with safe merging (Object spread or _.extend)
 - Functions: Prefer modern ES6+ syntax for new code
 - Indentation: 2 spaces
+- Dependencies: Use existing dependencies (async, underscore, winston)
 - File structure: Modular components with clear responsibility separation
 
 ## Project Architecture
 - `/bin`: Server executables and configuration files
 - `/lib`: Core libraries and services
 - `/lib/client`: Browser-side client code for WebRTC
+- `/build`: Compiled engine files
