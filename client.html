@@ -17,7 +17,7 @@
       display: flex;
       flex-direction: column;
       height: calc(100vh - 40px);
-      max-width: 1200px;
+      max-width: 1600px;
       margin: 0 auto;
     }
     
@@ -43,9 +43,18 @@
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
     }
     
-    .server-list {
-      flex: 1;
+    .left-panel {
+      width: 350px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
       overflow-y: auto;
+    }
+    
+    .server-list {
+      max-height: 300px;
+      overflow-y: auto;
+      margin-bottom: 15px;
     }
     
     .server-item {
@@ -66,26 +75,25 @@
     }
     
     .right-panels {
+      flex: 1;
       display: flex;
       flex-direction: column;
-      flex: 2;
-      gap: 20px;
     }
     
     .game-panel {
-      flex: 2;
+      flex: 1;
       display: flex;
       flex-direction: column;
     }
     
     .chat-panel {
-      flex: 1;
+      margin-top: 15px;
       display: flex;
       flex-direction: column;
     }
     
     .token-panel {
-      flex: 1;
+      margin-top: 15px;
     }
     
     .log {
@@ -277,7 +285,7 @@
     /* Game iframe styles */
     .game-container {
       width: 100%;
-      flex: 1;
+      aspect-ratio: 16/9;
       margin-bottom: 10px;
       position: relative;
       border-radius: 5px;
@@ -387,7 +395,7 @@
     </div>
     
     <div class="main-content">
-      <div class="server-list panel">
+      <div class="left-panel panel">
         <div class="status-row">
           <div>
             <span class="status-indicator" id="connection-status"></span>
@@ -397,72 +405,54 @@
         </div>
         
         <h2>Game Servers</h2>
-        <div id="servers-container"></div>
+        <div id="servers-container" class="server-list"></div>
         
         <div class="button-row">
           <button id="refresh-button">Refresh Servers</button>
           <button id="connect-button" disabled>Connect</button>
           <button id="disconnect-button" disabled>Disconnect</button>
         </div>
+        
+        <div class="button-row">
+          <button id="ping-button" disabled>Ping Server</button>
+          <button id="verify-button" disabled>Verify Game State</button>
+        </div>
+        
+        <h2>Game State</h2>
+        <div class="player-list" id="player-list">No players connected</div>
+        <div class="game-state" id="game-state">No game state available</div>
+        
+        <h2>Chat</h2>
+        <div class="chat-log" id="chat-log"></div>
+        <div class="chat-input">
+          <input type="text" id="chat-input" placeholder="Type your message..." disabled>
+          <button id="send-button" disabled>Send</button>
+        </div>
+        
+        <h2>Token System</h2>
+        <div class="token-info" id="token-info">Token system initializing...</div>
+        <div class="verification-info" id="verification-info">No verification performed</div>
+        
+        <div class="button-row">
+          <button id="mint-button">Mint Tokens</button>
+          <button id="status-button">Status</button>
+        </div>
       </div>
       
       <div class="right-panels">
-        <!-- Tabs for switching between game view and client info -->
-        <div class="tabs">
-          <div class="tab active" data-tab="game">Game View</div>
-          <div class="tab" data-tab="info">Client Info</div>
-        </div>
-
-        <!-- Game View Tab Content -->
-        <div class="tab-content active" id="game-tab">
-          <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls"></iframe>
-            <div id="game-overlay" class="game-iframe-overlay">
-              <div class="overlay-content">
-                <h3>Click to enable controls</h3>
-                <p>Note: For full mouse capture, use fullscreen mode</p>
-                <button id="overlay-fullscreen-button">Enter Fullscreen</button>
-              </div>
+        <div class="game-container">
+          <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls"></iframe>
+          <div id="game-overlay" class="game-iframe-overlay">
+            <div class="overlay-content">
+              <h3>Click to enable controls</h3>
+              <p>Note: For full mouse capture, use fullscreen mode</p>
+              <button id="overlay-fullscreen-button">Enter Fullscreen</button>
             </div>
-          </div>
-          <div class="button-row">
-            <button id="refresh-game">Refresh Game</button>
-            <button id="fullscreen-button">Fullscreen</button>
           </div>
         </div>
-
-        <!-- Client Info Tab Content -->
-        <div class="tab-content" id="info-tab">
-          <div class="game-panel panel">
-            <h2>Game State</h2>
-            <div class="player-list" id="player-list">No players connected</div>
-            <div class="game-state" id="game-state">No game state available</div>
-            
-            <div class="button-row">
-              <button id="ping-button" disabled>Ping Server</button>
-              <button id="verify-button" disabled>Verify Game State</button>
-            </div>
-          </div>
-          
-          <div class="chat-panel panel">
-            <h2>Chat</h2>
-            <div class="chat-log" id="chat-log"></div>
-            <div class="chat-input">
-              <input type="text" id="chat-input" placeholder="Type your message..." disabled>
-              <button id="send-button" disabled>Send</button>
-            </div>
-          </div>
-          
-          <div class="token-panel panel">
-            <h2>Token System</h2>
-            <div class="token-info" id="token-info">Token system initializing...</div>
-            <div class="verification-info" id="verification-info">No verification performed</div>
-            
-            <div class="button-row">
-              <button id="mint-button">Mint Tokens</button>
-              <button id="status-button">Status</button>
-            </div>
-          </div>
+        <div class="button-row">
+          <button id="refresh-game">Refresh Game</button>
+          <button id="fullscreen-button">Fullscreen</button>
         </div>
       </div>
     </div>

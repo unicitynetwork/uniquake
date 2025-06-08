@@ -17,7 +17,7 @@
       display: flex;
       flex-direction: column;
       height: calc(100vh - 40px);
-      max-width: 1200px;
+      max-width: 1600px;
       margin: 0 auto;
     }
     
@@ -44,16 +44,17 @@
     }
     
     .server-panel {
-      flex: 1;
+      width: 350px;
+      flex-shrink: 0;
       display: flex;
       flex-direction: column;
+      overflow-y: auto;
     }
     
     .right-panels {
+      flex: 1;
       display: flex;
       flex-direction: column;
-      flex: 2;
-      gap: 20px;
     }
     
     .game-panel {
@@ -255,7 +256,7 @@
     /* Game iframe styles */
     .game-container {
       width: 100%;
-      flex: 1;
+      aspect-ratio: 16/9;
       margin-bottom: 10px;
       position: relative;
       border-radius: 5px;
@@ -352,58 +353,40 @@
             <button id="end-game-button" disabled>End Game</button>
           </div>
         </div>
+        
+        <h2>Game State</h2>
+        <div class="game-state" id="game-state">No game state available</div>
+        
+        <h2>Connected Clients</h2>
+        <div class="client-list" id="client-list">No clients connected</div>
+        
+        <div class="actions-panel">
+          <h3>Client Actions</h3>
+          <div class="action-buttons">
+            <button id="kick-button" disabled>Kick Selected Client</button>
+            <button id="message-button" disabled>Send Message</button>
+          </div>
+        </div>
+        
+        <h2>Token System</h2>
+        <div class="token-info" id="token-info">Token system initializing...</div>
+        
+        <div class="actions-panel">
+          <h3>Token Actions</h3>
+          <div class="action-buttons">
+            <button id="tokens-button">Show Tokens</button>
+            <button id="award-tokens-button" disabled>Award Tokens</button>
+          </div>
+        </div>
       </div>
       
       <div class="right-panels">
-        <!-- Tabs for switching between game view and server info -->
-        <div class="tabs">
-          <div class="tab active" data-tab="game">Game View</div>
-          <div class="tab" data-tab="info">Server Info</div>
+        <div class="game-container">
+          <iframe id="game-iframe" class="game-iframe"></iframe>
         </div>
-
-        <!-- Game View Tab Content -->
-        <div class="tab-content active" id="game-tab">
-          <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe"></iframe>
-          </div>
-          <div class="button-row">
-            <button id="refresh-game">Refresh Game</button>
-            <button id="fullscreen-button">Fullscreen</button>
-          </div>
-        </div>
-
-        <!-- Server Info Tab Content -->
-        <div class="tab-content" id="info-tab">
-          <div class="game-panel panel">
-            <h2>Game State</h2>
-            <div class="game-state" id="game-state">No game state available</div>
-          </div>
-          
-          <div class="clients-panel panel">
-            <h2>Connected Clients</h2>
-            <div class="client-list" id="client-list">No clients connected</div>
-            
-            <div class="actions-panel">
-              <h3>Client Actions</h3>
-              <div class="action-buttons">
-                <button id="kick-button" disabled>Kick Selected Client</button>
-                <button id="message-button" disabled>Send Message</button>
-              </div>
-            </div>
-          </div>
-          
-          <div class="token-panel panel">
-            <h2>Token System</h2>
-            <div class="token-info" id="token-info">Token system initializing...</div>
-            
-            <div class="actions-panel">
-              <h3>Token Actions</h3>
-              <div class="action-buttons">
-                <button id="tokens-button">Show Tokens</button>
-                <button id="award-tokens-button" disabled>Award Tokens</button>
-              </div>
-            </div>
-          </div>
+        <div class="button-row">
+          <button id="refresh-game">Refresh Game</button>
+          <button id="fullscreen-button">Fullscreen</button>
         </div>
       </div>
     </div>
