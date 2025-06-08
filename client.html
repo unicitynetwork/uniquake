@@ -290,6 +290,31 @@
       border: none;
       background-color: #000;
     }
+    
+    .game-iframe:focus {
+      outline: 2px solid #4caf50 !important;
+    }
+    
+    .game-iframe-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(0, 0, 0, 0.7);
+      color: white;
+      font-size: 18px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .game-iframe-overlay.visible {
+      opacity: 1;
+    }
 
     /* Tabs for game view and client panel */
     .tabs {
@@ -356,7 +381,8 @@
         <!-- Game View Tab Content -->
         <div class="tab-content active" id="game-tab">
           <div class="game-container">
-            <iframe id="game-iframe" class="game-iframe"></iframe>
+            <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls"></iframe>
+            <div id="game-overlay" class="game-iframe-overlay">Click to enable controls</div>
           </div>
           <div class="button-row">
             <button id="refresh-game">Refresh Game</button>
@@ -606,6 +632,74 @@
           iframe.msRequestFullscreen();
         }
       });
+      
+      // Add keyboard focus management for the game iframe
+      const gameIframe = document.getElementById('game-iframe');
+      
+      // Auto-focus the iframe when game tab is active
+      document.querySelector('.tab[data-tab="game"]').addEventListener('click', function() {
+        setTimeout(() => {
+          gameIframe.focus();
+          console.log("Game iframe focused");
+        }, 100);
+      });
+      
+      // Add a visible focus indicator and click-to-focus functionality
+      gameIframe.addEventListener('mouseenter', function() {
+        if (document.activeElement !== gameIframe) {
+          gameIframe.style.outline = '2px solid #4fc3f7';
+          gameIframe.title = "Click to enable keyboard controls";
+        }
+      });
+      
+      gameIframe.addEventListener('mouseleave', function() {
+        if (document.activeElement === gameIframe) {
+          gameIframe.style.outline = '2px solid #4caf50';
+        } else {
+          gameIframe.style.outline = 'none';
+        }
+      });
+      
+      gameIframe.addEventListener('focus', function() {
+        gameIframe.style.outline = '2px solid #4caf50';
+        gameIframe.title = "Keyboard controls enabled";
+        console.log("Game iframe has keyboard focus now");
+      });
+      
+      gameIframe.addEventListener('blur', function() {
+        gameIframe.style.outline = 'none';
+        gameIframe.title = "Click to enable keyboard controls";
+      });
+      
+      // Add a click handler to focus the iframe
+      gameIframe.addEventListener('click', function() {
+        if (document.activeElement !== gameIframe) {
+          gameIframe.focus();
+        }
+      });
+      
+      // Show overlay with instructions when game iframe is not focused
+      const gameOverlay = document.getElementById('game-overlay');
+      
+      // Initially show the overlay if iframe is not focused
+      if (document.activeElement !== gameIframe) {
+        gameOverlay.classList.add('visible');
+      }
+      
+      // Show overlay when iframe loses focus
+      gameIframe.addEventListener('blur', function() {
+        gameOverlay.classList.add('visible');
+      });
+      
+      // Hide overlay when iframe gains focus
+      gameIframe.addEventListener('focus', function() {
+        gameOverlay.classList.remove('visible');
+      });
+      
+      // Hide overlay when clicking on it
+      gameOverlay.addEventListener('click', function() {
+        gameIframe.focus();
+      });
     }
     
     // Connect Quake to the selected server
@@ -647,6 +741,12 @@
       
       iframe.src = quakeClientUrl;
       console.log('Connecting Quake client to server with URL:', quakeClientUrl);
+      
+      // Focus the iframe after a short delay to ensure it's loaded
+      setTimeout(() => {
+        iframe.focus();
+        console.log("Auto-focused game iframe after connection");
+      }, 1500);
     }
     
     // Send a chat message
@@ -731,6 +831,9 @@
         console.log('Framework client connected successfully, connecting Quake client to server');
         if (selectedServerId) {
           connectQuakeToServer(selectedServerId);
+          
+          // Switch to game tab to make sure the iframe is visible
+          document.querySelector('.tab[data-tab="game"]').click();
         }
       } else {
         connectButton.disabled = false;
