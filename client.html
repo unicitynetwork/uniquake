@@ -304,16 +304,51 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background-color: rgba(0, 0, 0, 0.7);
+      background-color: rgba(0, 0, 0, 0.8);
       color: white;
       font-size: 18px;
       cursor: pointer;
       opacity: 0;
       transition: opacity 0.3s;
+      z-index: 10;
     }
     
     .game-iframe-overlay.visible {
       opacity: 1;
+    }
+    
+    .overlay-content {
+      text-align: center;
+      padding: 20px;
+      background-color: rgba(33, 33, 33, 0.8);
+      border-radius: 8px;
+      max-width: 80%;
+    }
+    
+    .overlay-content h3 {
+      margin-top: 0;
+      color: #4fc3f7;
+    }
+    
+    .overlay-content p {
+      margin-bottom: 15px;
+      font-size: 14px;
+      color: #ccc;
+    }
+    
+    #overlay-fullscreen-button {
+      background-color: #4caf50;
+      border: none;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+    
+    #overlay-fullscreen-button:hover {
+      background-color: #66bb6a;
     }
 
     /* Tabs for game view and client panel */
@@ -382,7 +417,13 @@
         <div class="tab-content active" id="game-tab">
           <div class="game-container">
             <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls"></iframe>
-            <div id="game-overlay" class="game-iframe-overlay">Click to enable controls</div>
+            <div id="game-overlay" class="game-iframe-overlay">
+              <div class="overlay-content">
+                <h3>Click to enable controls</h3>
+                <p>Note: For full mouse capture, use fullscreen mode</p>
+                <button id="overlay-fullscreen-button">Enter Fullscreen</button>
+              </div>
+            </div>
           </div>
           <div class="button-row">
             <button id="refresh-game">Refresh Game</button>
@@ -633,30 +674,64 @@
         }
       });
       
-      // Simplified focus management for the game iframe
+      // Enhanced focus and fullscreen management for the game iframe
       const gameIframe = document.getElementById('game-iframe');
       const gameOverlay = document.getElementById('game-overlay');
+      const overlayFullscreenButton = document.getElementById('overlay-fullscreen-button');
       
       // Always show the overlay initially
       gameOverlay.classList.add('visible');
       
       // When clicking the iframe or overlay, focus the iframe and hide the overlay
-      function enableGameControls() {
-        gameIframe.focus();
-        gameOverlay.classList.remove('visible');
-        console.log("Game controls enabled");
+      function enableGameControls(event) {
+        // If the click is directly on the overlay (not a button), enable controls
+        if (event.target === gameOverlay || event.target === gameIframe) {
+          gameIframe.focus();
+          gameOverlay.classList.remove('visible');
+          console.log("Game controls enabled");
+        }
       }
       
       // Add click handlers to both iframe and overlay
       gameIframe.addEventListener('click', enableGameControls);
       gameOverlay.addEventListener('click', enableGameControls);
       
-      // Show overlay again when Escape key is pressed
+      // Fullscreen button in the overlay
+      overlayFullscreenButton.addEventListener('click', function(event) {
+        event.stopPropagation(); // Prevent the overlay click handler from firing
+        
+        if (gameIframe.requestFullscreen) {
+          gameIframe.requestFullscreen().then(() => {
+            gameIframe.focus();
+            gameOverlay.classList.remove('visible');
+            console.log("Entered fullscreen mode");
+          });
+        } else if (gameIframe.webkitRequestFullscreen) {
+          gameIframe.webkitRequestFullscreen();
+          gameIframe.focus();
+          gameOverlay.classList.remove('visible');
+        } else if (gameIframe.msRequestFullscreen) {
+          gameIframe.msRequestFullscreen();
+          gameIframe.focus();
+          gameOverlay.classList.remove('visible');
+        }
+      });
+      
+      // Show overlay again when Escape key is pressed or fullscreen exits
       window.addEventListener('keydown', function(event) {
         if (event.key === 'Escape' && document.activeElement === gameIframe) {
           gameOverlay.classList.add('visible');
           document.body.focus(); // Remove focus from iframe
           console.log("Game controls disabled (Escape pressed)");
+        }
+      });
+      
+      // Detect fullscreen change
+      document.addEventListener('fullscreenchange', function() {
+        if (!document.fullscreenElement) {
+          // Exited fullscreen
+          gameOverlay.classList.add('visible');
+          console.log("Exited fullscreen mode");
         }
       });
     }
