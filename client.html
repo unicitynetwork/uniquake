@@ -10,19 +10,21 @@
       background-color: #1e1e1e;
       color: #e0e0e0;
       margin: 0;
-      padding: 20px;
+      padding: 10px; /* Reduced padding to maximize space */
+      height: 100vh;
+      overflow: hidden; /* Prevent body scrolling */
     }
     
     .container {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 40px);
-      max-width: 1900px;
+      height: calc(100vh - 20px); /* Adjusted for reduced padding */
+      width: 100%;
       margin: 0 auto;
     }
     
     .header {
-      margin-bottom: 20px;
+      margin-bottom: 10px; /* Reduced margin to give more space to the game */
     }
     
     .header h1 {
@@ -33,7 +35,9 @@
     .main-content {
       display: flex;
       flex: 1;
-      gap: 20px;
+      gap: 15px; /* Reduced gap to save space */
+      height: calc(100vh - 70px); /* Adjusted for header and padding */
+      overflow: hidden; /* Prevent scroll on the main container */
     }
     
     .panel {
@@ -44,11 +48,12 @@
     }
     
     .left-panel {
-      width: 700px;
+      width: 400px; /* Fixed width for left panel */
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
       overflow-y: auto;
+      max-height: 100%; /* Ensure it doesn't overflow the container */
     }
     
     .server-list {
@@ -78,12 +83,16 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+      height: 100%; /* Fill available height */
+      max-height: 100%; /* Don't exceed container */
+      overflow: hidden; /* Prevent scrolling */
     }
     
     .game-panel {
       flex: 1;
       display: flex;
       flex-direction: column;
+      height: 100%; /* Fill available height */
     }
     
     .chat-panel {
@@ -285,11 +294,37 @@
     /* Game iframe styles */
     .game-container {
       width: 100%;
-      aspect-ratio: 16/9;
-      margin-bottom: 10px;
+      flex: 1; /* Take all available space */
+      min-height: 650px; /* Minimum height */
+      height: calc(100vh - 100px); /* Adjusted viewport height calculation */
+      margin-bottom: 5px; /* Reduced margin */
       position: relative;
       border-radius: 5px;
       overflow: hidden;
+      display: flex; /* Enable flex layout */
+      flex-direction: column; /* Stack children vertically */
+    }
+    
+    /* Add keyboard focus indicator as a separate element for better browser compatibility */
+    .keyboard-indicator {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      pointer-events: none; /* Allow clicks to pass through */
+      opacity: 0.8;
+      transition: opacity 0.3s;
+      z-index: 5;
+    }
+    
+    /* Hide the indicator when the game has focus - will be managed by JavaScript */
+    .keyboard-indicator.hidden {
+      opacity: 0;
     }
     
     .game-iframe {
@@ -297,67 +332,22 @@
       height: 100%;
       border: none;
       background-color: #000;
+      flex: 1; /* Take up all available space in the container */
+      object-fit: contain; /* Maintain aspect ratio while filling space */
     }
     
     .game-iframe:focus {
-      outline: 2px solid #4caf50 !important;
+      outline: 4px solid #4caf50 !important; /* Thicker outline for better visibility */
+      box-shadow: 0 0 15px rgba(76, 175, 80, 0.6); /* Add glow effect when focused */
     }
     
-    .game-iframe-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: rgba(0, 0, 0, 0.8);
-      color: white;
-      font-size: 18px;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.3s;
+    /* Fix for Firefox and some browsers to ensure iframe gets keyboard focus */
+    .game-iframe.active-iframe {
       z-index: 10;
+      box-shadow: 0 0 20px rgba(76, 175, 80, 0.7) inset; /* Interior glow effect */
     }
     
-    .game-iframe-overlay.visible {
-      opacity: 1;
-    }
-    
-    .overlay-content {
-      text-align: center;
-      padding: 20px;
-      background-color: rgba(33, 33, 33, 0.8);
-      border-radius: 8px;
-      max-width: 80%;
-    }
-    
-    .overlay-content h3 {
-      margin-top: 0;
-      color: #4fc3f7;
-    }
-    
-    .overlay-content p {
-      margin-bottom: 15px;
-      font-size: 14px;
-      color: #ccc;
-    }
-    
-    #overlay-fullscreen-button {
-      background-color: #4caf50;
-      border: none;
-      color: white;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-      transition: background-color 0.2s;
-    }
-    
-    #overlay-fullscreen-button:hover {
-      background-color: #66bb6a;
-    }
+    /* We'll handle this via JavaScript instead of CSS :has which isn't supported in all browsers */
 
     /* Tabs for game view and client panel */
     .tabs {
@@ -441,18 +431,12 @@
       
       <div class="right-panels">
         <div class="game-container">
-          <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls"></iframe>
-          <div id="game-overlay" class="game-iframe-overlay">
-            <div class="overlay-content">
-              <h3>Click to enable controls</h3>
-              <p>Note: For full mouse capture, use fullscreen mode</p>
-              <button id="overlay-fullscreen-button">Enter Fullscreen</button>
-            </div>
-          </div>
+          <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map" allowfullscreen="true"></iframe>
+          <div id="keyboard-indicator" class="keyboard-indicator">CLICK TO ACTIVATE KEYBOARD</div>
         </div>
         <div class="button-row">
           <button id="refresh-game">Refresh Game</button>
-          <button id="fullscreen-button">Fullscreen</button>
+          <span style="color: #aaa; margin-left: 10px; font-size: 12px;">Click game to focus, press ESC to release focus</span>
         </div>
       </div>
     </div>
@@ -664,65 +648,139 @@
         }
       });
       
-      // Enhanced focus and fullscreen management for the game iframe
+      // Enhanced focus management for the game iframe
       const gameIframe = document.getElementById('game-iframe');
-      const gameOverlay = document.getElementById('game-overlay');
-      const overlayFullscreenButton = document.getElementById('overlay-fullscreen-button');
       
-      // Always show the overlay initially
-      gameOverlay.classList.add('visible');
-      
-      // When clicking the iframe or overlay, focus the iframe and hide the overlay
-      function enableGameControls(event) {
-        // If the click is directly on the overlay (not a button), enable controls
-        if (event.target === gameOverlay || event.target === gameIframe) {
-          gameIframe.focus();
-          gameOverlay.classList.remove('visible');
-          console.log("Game controls enabled");
-        }
-      }
-      
-      // Add click handlers to both iframe and overlay
-      gameIframe.addEventListener('click', enableGameControls);
-      gameOverlay.addEventListener('click', enableGameControls);
-      
-      // Fullscreen button in the overlay
-      overlayFullscreenButton.addEventListener('click', function(event) {
-        event.stopPropagation(); // Prevent the overlay click handler from firing
+      // Enhanced click handler with multiple strategies to ensure keyboard focus
+      gameIframe.addEventListener('click', function() {
+        // Add active class for CSS specificity
+        gameIframe.classList.add('active-iframe');
         
-        if (gameIframe.requestFullscreen) {
-          gameIframe.requestFullscreen().then(() => {
-            gameIframe.focus();
-            gameOverlay.classList.remove('visible');
-            console.log("Entered fullscreen mode");
-          });
-        } else if (gameIframe.webkitRequestFullscreen) {
-          gameIframe.webkitRequestFullscreen();
-          gameIframe.focus();
-          gameOverlay.classList.remove('visible');
-        } else if (gameIframe.msRequestFullscreen) {
-          gameIframe.msRequestFullscreen();
-          gameIframe.focus();
-          gameOverlay.classList.remove('visible');
+        // Basic focus method
+        gameIframe.focus();
+        
+        // Advanced focus for Firefox and other browsers
+        if (gameIframe.contentWindow) {
+          try {
+            // Direct focus on content window
+            gameIframe.contentWindow.focus();
+            
+            // Some browsers need a slight delay
+            setTimeout(function() {
+              gameIframe.focus();
+              try {
+                gameIframe.contentWindow.focus();
+              } catch (e) {
+                console.log("Error in delayed focus:", e);
+              }
+            }, 100);
+          } catch (e) {
+            console.log("Could not focus content window directly:", e);
+          }
         }
+        
+        // Force the browser to acknowledge the iframe is active
+        // This helps in cases where the browser doesn't properly assign focus
+        document.activeElement.blur();
+        gameIframe.focus();
+        
+        console.log("Game controls enabled - multiple methods used to capture keyboard input");
       });
       
-      // Show overlay again when Escape key is pressed or fullscreen exits
+      // Get the keyboard indicator element
+      const keyboardIndicator = document.getElementById('keyboard-indicator');
+      
+      // Get the game container
+      const gameContainer = document.querySelector('.game-container');
+      
+      // Show clear visual indicator when iframe has focus
+      gameIframe.addEventListener('focus', function() {
+        // Add active class
+        gameIframe.classList.add('active-iframe');
+        
+        // Add a thick green outline
+        gameIframe.style.outline = '4px solid #4caf50';
+        
+        // Add glow effect to the container
+        if (gameContainer) {
+          gameContainer.style.boxShadow = '0 0 25px rgba(76, 175, 80, 0.4)';
+        }
+        
+        // Hide the keyboard indicator
+        if (keyboardIndicator) {
+          keyboardIndicator.classList.add('hidden');
+        }
+        
+        // Add a key hint at the bottom of the page
+        const keyHint = document.querySelector('.button-row span');
+        if (keyHint) {
+          keyHint.innerHTML = '<strong style="color: #4caf50;">KEYBOARD ACTIVE</strong> - Press ESC to release focus';
+        }
+        
+        console.log("Game iframe focused - keyboard input active");
+      });
+      
+      gameIframe.addEventListener('blur', function() {
+        // Remove active class
+        gameIframe.classList.remove('active-iframe');
+        
+        // Remove outline
+        gameIframe.style.outline = 'none';
+        
+        // Remove container glow effect
+        if (gameContainer) {
+          gameContainer.style.boxShadow = 'none';
+        }
+        
+        // Show the keyboard indicator
+        if (keyboardIndicator) {
+          keyboardIndicator.classList.remove('hidden');
+        }
+        
+        // Reset key hint
+        const keyHint = document.querySelector('.button-row span');
+        if (keyHint) {
+          keyHint.innerHTML = 'Click game to focus, press ESC to release focus';
+        }
+        
+        console.log("Game iframe lost focus - keyboard input inactive");
+      });
+      
+      // Release focus when Escape key is pressed
       window.addEventListener('keydown', function(event) {
         if (event.key === 'Escape' && document.activeElement === gameIframe) {
-          gameOverlay.classList.add('visible');
-          document.body.focus(); // Remove focus from iframe
+          // Remove active class
+          gameIframe.classList.remove('active-iframe');
+          
+          // Clear outline
+          gameIframe.style.outline = 'none';
+          
+          // Remove container glow effect
+          if (gameContainer) {
+            gameContainer.style.boxShadow = 'none';
+          }
+          
+          // Show the keyboard indicator
+          if (keyboardIndicator) {
+            keyboardIndicator.classList.remove('hidden');
+          }
+          
+          // Reset key hint
+          const keyHint = document.querySelector('.button-row span');
+          if (keyHint) {
+            keyHint.innerHTML = 'Click game to focus, press ESC to release focus';
+          }
+          
+          // Move focus away from iframe
+          document.body.focus();
+          
           console.log("Game controls disabled (Escape pressed)");
         }
       });
       
-      // Detect fullscreen change
-      document.addEventListener('fullscreenchange', function() {
-        if (!document.fullscreenElement) {
-          // Exited fullscreen
-          gameOverlay.classList.add('visible');
-          console.log("Exited fullscreen mode");
-        }
+      // Make sure the iframe is properly loaded before focusing
+      gameIframe.addEventListener('load', function() {
+        console.log("Game iframe loaded, ready for focus");
       });
     }
     
@@ -763,11 +821,37 @@
         quakeClientUrl += `%20+map%20q3dm1`;
       }
       
+      // Additional parameters to help with keyboard capture and input
+      quakeClientUrl += "%20+set%20r_allowSoftwareGL%201";
+      quakeClientUrl += "%20+set%20in_mouse%200"; // Disable mouse capture since we're focusing on keyboard only
+      quakeClientUrl += "%20+set%20cl_mouseAccel%200"; // Disable mouse acceleration
+      quakeClientUrl += "%20+set%20in_disablemacosxmouseaccel%201"; // Disable macOS mouse acceleration
+      quakeClientUrl += "%20+set%20in_nograb%201"; // Prevent the game from grabbing the mouse
+      
+      // Set up a load handler before changing the src
+      iframe.onload = function() {
+        console.log("Game iframe loaded, setting focus after a short delay");
+        
+        // Wait a moment for the game to fully initialize before focusing
+        setTimeout(function() {
+          iframe.focus();
+          
+          // Also try to focus the content window
+          if (iframe.contentWindow) {
+            try {
+              iframe.contentWindow.focus();
+            } catch (e) {
+              console.log("Could not focus content window on load:", e);
+            }
+          }
+          
+          console.log("Game focus set automatically after load");
+        }, 1000);
+      };
+      
+      // Set the iframe source
       iframe.src = quakeClientUrl;
       console.log('Connecting Quake client to server with URL:', quakeClientUrl);
-      
-      // Don't auto-focus, just log that the game is ready
-      console.log("Game loaded and ready - click to enable controls");
     }
     
     // Send a chat message

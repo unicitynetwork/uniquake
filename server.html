@@ -257,6 +257,7 @@
     .game-container {
       width: 100%;
       aspect-ratio: 16/9;
+      height: 500px; /* Larger fixed height */
       margin-bottom: 10px;
       position: relative;
       border-radius: 5px;
@@ -382,11 +383,11 @@
       
       <div class="right-panels">
         <div class="game-container">
-          <iframe id="game-iframe" class="game-iframe"></iframe>
+          <iframe id="game-iframe" class="game-iframe" tabindex="0"></iframe>
         </div>
         <div class="button-row">
           <button id="refresh-game">Refresh Game</button>
-          <button id="fullscreen-button">Fullscreen</button>
+          <span style="color: #aaa; margin-left: 10px; font-size: 12px;">Click game to focus, press ESC to release focus</span>
         </div>
       </div>
     </div>
@@ -590,15 +591,48 @@
         initQuakeGame();
       });
       
-      document.getElementById('fullscreen-button').addEventListener('click', function() {
-        const iframe = document.getElementById('game-iframe');
-        if (iframe.requestFullscreen) {
-          iframe.requestFullscreen();
-        } else if (iframe.webkitRequestFullscreen) { /* Safari */
-          iframe.webkitRequestFullscreen();
-        } else if (iframe.msRequestFullscreen) { /* IE11 */
-          iframe.msRequestFullscreen();
+      // Add focus management for game iframe
+      const gameIframe = document.getElementById('game-iframe');
+      
+      // Improved click handler to focus the iframe and capture keyboard input
+      gameIframe.addEventListener('click', function() {
+        // Focus the iframe to capture keyboard events
+        gameIframe.focus();
+        
+        // This helps in some browsers to ensure keyboard focus
+        if (gameIframe.contentWindow) {
+          try {
+            gameIframe.contentWindow.focus();
+          } catch (e) {
+            console.log("Could not focus content window directly:", e);
+          }
         }
+        
+        console.log("Game controls enabled - keyboard input captured");
+      });
+      
+      // Optional: Show visual indicator when iframe has focus
+      gameIframe.addEventListener('focus', function() {
+        gameIframe.style.outline = '2px solid #4caf50';
+        console.log("Game iframe focused");
+      });
+      
+      gameIframe.addEventListener('blur', function() {
+        gameIframe.style.outline = 'none';
+        console.log("Game iframe lost focus");
+      });
+      
+      // Release focus when Escape key is pressed
+      window.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && document.activeElement === gameIframe) {
+          document.body.focus(); // Move focus away from iframe
+          console.log("Game controls disabled (Escape pressed)");
+        }
+      });
+      
+      // Make sure the iframe is properly loaded before focusing
+      gameIframe.addEventListener('load', function() {
+        console.log("Game iframe loaded, ready for focus");
       });
     }
     
