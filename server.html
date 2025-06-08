@@ -729,6 +729,10 @@
         }
       }
       
+      // Clear the game iframe first
+      document.getElementById('game-iframe').src = '';
+      console.log('Cleared game iframe for game end process');
+      
       // End the game with the selected winner
       if (winnerId) {
         game.endGame(winnerId);
@@ -775,6 +779,10 @@
         alert('No client selected');
         return;
       }
+      
+      // Clear the game iframe first
+      document.getElementById('game-iframe').src = '';
+      console.log('Cleared game iframe for token award process');
       
       // End game with this client as winner
       integration.endGame(selectedClientId);
@@ -1049,6 +1057,17 @@
       
       // Update token info
       updateTokenInfo();
+      
+      // After a delay, restart the game if it was manually ended
+      // This timeout gives the token process time to complete
+      setTimeout(() => {
+        // Only restart if the iframe is empty and the server is still running
+        const iframe = document.getElementById('game-iframe');
+        if (iframe.src === '' && !document.getElementById('start-button').disabled) {
+          console.log('Restarting game after token award');
+          initQuakeGame();
+        }
+      }, 5000); // 5 second delay
     }
   </script>
 </body>
