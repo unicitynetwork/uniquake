@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UniQuake Client with Game</title>
+  <title>Client</title>
   <style>
     body {
       font-family: 'Courier New', monospace;
@@ -48,7 +48,7 @@
     }
     
     .left-panel {
-      width: 400px; /* Fixed width for left panel */
+      width: 533px; /* Reduced from 800px by 1.5 times */
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
@@ -381,7 +381,7 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>UniQuake Client with Game</h1>
+      <h1>Client</h1>
     </div>
     
     <div class="main-content">
@@ -406,6 +406,10 @@
         <div class="button-row">
           <button id="ping-button" disabled>Ping Server</button>
           <button id="verify-button" disabled>Verify Game State</button>
+        </div>
+        
+        <div class="button-row" style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #444;">
+          <button id="direct-connect-button" style="background-color: #4caf50; width: 100%;">Connect to Dedicated Server via Original Web Server</button>
         </div>
         
         <h2>Game State</h2>
@@ -451,8 +455,9 @@
   <script>
     // Load WebRTC adapter directly, bypassing the auto-connect behavior
     window.UNIQUAKE_CONFIG = {
-      useWebRTC: true,
-      masterServer: 'ws://localhost:27950',
+      useWebRTC: false,  // Disable WebRTC, use plain WebSockets
+      masterServer: 'ws://localhost:27950', // Original Quake master server
+      serverAddress: 'ws://localhost:27960',  // Explicitly use WebSocket protocol
       noAutoConnect: true  // Flag to prevent auto-connection
     };
     
@@ -637,6 +642,25 @@
         }
       });
       
+      // Direct connect button
+      document.getElementById('direct-connect-button').addEventListener('click', function() {
+        const iframe = document.getElementById('game-iframe');
+        
+        // Use the original QuakeJS web server to serve the game
+        // The "connect localhost:27960" parameter tells it to connect to our local dedicated server
+        iframe.src = 'http://localhost:8080/?connect%20localhost:27960';
+        
+        console.log('Directly connecting to localhost:27960 using the original QuakeJS web server');
+        
+        // Update connection status
+        if (client && client.clientState) {
+          client.clientState.connected = true;
+          if (typeof handleConnectionChange === 'function') {
+            handleConnectionChange({connected: true});
+          }
+        }
+      });
+      
       document.getElementById('fullscreen-button').addEventListener('click', function() {
         const iframe = document.getElementById('game-iframe');
         if (iframe.requestFullscreen) {
@@ -808,25 +832,10 @@
         }
       }
       
-      // Build Quake client URL with command line parameters
-      // +set sv_pure 0: Allows custom mods
-      // +connect localhost: Connect to local server
-      // +map <mapname>: Loads the map directly
-      let quakeClientUrl = `/quake?cmdline=+set%20sv_pure%200%20+connect%20localhost`;
+      // Use the direct quake URL to connect to the dedicated server
+      let quakeClientUrl = `http://localhost:8080/quake?connect%20localhost:27960`;
       
-      // Add map parameter if found
-      if (serverInfo && serverInfo.map) {
-        quakeClientUrl += `%20+map%20${serverInfo.map}`;
-      } else {
-        quakeClientUrl += `%20+map%20q3dm1`;
-      }
-      
-      // Additional parameters to help with keyboard capture and input
-      quakeClientUrl += "%20+set%20r_allowSoftwareGL%201";
-      quakeClientUrl += "%20+set%20in_mouse%200"; // Disable mouse capture since we're focusing on keyboard only
-      quakeClientUrl += "%20+set%20cl_mouseAccel%200"; // Disable mouse acceleration
-      quakeClientUrl += "%20+set%20in_disablemacosxmouseaccel%201"; // Disable macOS mouse acceleration
-      quakeClientUrl += "%20+set%20in_nograb%201"; // Prevent the game from grabbing the mouse
+      // We're using the quake URL which should connect directly to the server
       
       // Set up a load handler before changing the src
       iframe.onload = function() {
@@ -852,6 +861,24 @@
       // Set the iframe source
       iframe.src = quakeClientUrl;
       console.log('Connecting Quake client to server with URL:', quakeClientUrl);
+      
+      // Add debug info to page
+      const debugInfo = document.createElement('div');
+      debugInfo.style.position = 'fixed';
+      debugInfo.style.bottom = '10px';
+      debugInfo.style.right = '10px';
+      debugInfo.style.background = 'rgba(0,0,0,0.8)';
+      debugInfo.style.color = '#fff';
+      debugInfo.style.padding = '10px';
+      debugInfo.style.borderRadius = '5px';
+      debugInfo.style.zIndex = '9999';
+      debugInfo.innerHTML = `
+        <strong>Connection Debug:</strong><br>
+        URL: ${quakeClientUrl}<br>
+        Server ID: ${serverId}<br>
+        Target: Direct connection to localhost:27960
+      `;
+      document.body.appendChild(debugInfo);
     }
     
     // Send a chat message

@@ -8,7 +8,9 @@
   },
   "scripts": {
     "start": "node bin/web.js --config ./web.json",
-    "master": "node bin/webrtc-master.js",
+    "master": "node ./fresh_quakejs/bin/master.js --config ../master-config.json",
+    "webrtc-master": "node bin/webrtc-master.js",
+    "master-quake": "node bin/combined-master.js",
     "content": "node bin/content.js",
     "repak": "node bin/repak.js",
     "mock-server": "node lib/mock-server-client.js",
