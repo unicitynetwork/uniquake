@@ -465,7 +465,9 @@
         onStatusUpdate: updateServerStatus,
         onClientConnect: handleClientConnect,
         onClientDisconnect: handleClientDisconnect,
-        onChatMessage: handleChatMessage
+        onChatMessage: handleChatMessage,
+        // Add handler for remote server messages
+        onMessage: handleMasterServerMessage
       });
       
       // Create game integration
@@ -486,6 +488,15 @@
       
       // Store reference to game in server for synchronization
       server.gameInstance = game;
+      
+      // Log available methods to help with debugging
+      console.log('Server connection methods:', {
+        sendToMaster: typeof server.sendToMaster === 'function',
+        registerServer: typeof server.registerServer === 'function',
+        unregisterServer: typeof server.unregisterServer === 'function',
+        signaling: !!server.serverState.signaling,
+        signalingState: server.serverState.signaling ? server.serverState.signaling.readyState : 'not initialized'
+      });
       
       // Check if the server was registered during init()
       if (server.serverState.registered) {
@@ -509,8 +520,8 @@
       // Update initial UI - disable event emission to avoid recursion
       updateServerStatus(server.getStatus(false));
       
-      // Initialize Quake game in iframe
-      initQuakeGame();
+      // NOTE: initQuakeGame is now called inside startServer() 
+      // so we don't need to call it here again
       
       // Set up regular UI updates to ensure both panels stay in sync
       setInterval(() => {
@@ -528,6 +539,10 @@
     
     // Initialize Quake game in iframe
     function initQuakeGame() {
+      // ORIGINAL IMPLEMENTATION: In-browser dedicated server
+      // This code launches a Quake dedicated server directly in the browser
+      // by loading it in an iframe with specific command line parameters.
+      // We're preserving this for future use when we return to in-browser implementation.
       const iframe = document.getElementById('game-iframe');
       const map = document.getElementById('server-map').value;
       
@@ -537,9 +552,96 @@
       // +map <mapname>: Loads the map directly
       // +dedicated 1: Runs in dedicated server mode
       const quakeServerUrl = `/quake?cmdline=+set%20sv_pure%200%20+exec%20server.cfg%20+map%20${map}%20+dedicated%201`;
-      iframe.src = quakeServerUrl;
       
-      console.log('Starting Quake server with URL:', quakeServerUrl);
+      // INTERIM SOLUTION: We're using remote server instead of in-browser
+      // Comment out the direct iframe load and use remote server functionality
+      // iframe.src = quakeServerUrl;
+      
+      // Start remote dedicated server and show placeholder in iframe
+      startRemoteServer().then(gameId => {
+        if (gameId) {
+          initGamePlaceholder();
+        }
+      });
+      
+      console.log('Starting server with remote delegation instead of in-browser iframe');
+    }
+    
+    // Start a remote dedicated server on the master server
+    async function startRemoteServer() {
+      const map = document.getElementById('server-map').value;
+      const maxPlayers = parseInt(document.getElementById('server-max-players').value) || 16;
+      const serverName = document.getElementById('server-name').value;
+      
+      // Create a unique game ID
+      const gameId = 'game-' + Date.now();
+      
+      console.log('Requesting master server to start a remote dedicated server...');
+      
+      try {
+        // Request the master server to start a dedicated server
+        const startServerMsg = {
+          unicity: true,
+          type: 'start_game_server',
+          serverInfo: {
+            name: serverName,
+            gameId: gameId,
+            map: map,
+            maxPlayers: maxPlayers,
+            private: false
+          }
+        };
+        
+        // Store game ID in server state for later use
+        server.serverState.gameId = gameId;
+        
+        // Send the request via the server's connection to master
+        if (server && server.serverState.signaling && 
+            server.serverState.signaling.readyState === WebSocket.OPEN) {
+          // Use the server's sendToMaster method
+          server.sendToMaster(startServerMsg);
+          
+          // Display temporary status
+          const statusDisplay = document.getElementById('server-status-display');
+          statusDisplay.innerHTML = `
+            <strong>Status:</strong> Starting remote dedicated server...<br>
+            <strong>Game ID:</strong> ${gameId}<br>
+            <strong>Map:</strong> ${map}<br>
+          `;
+          
+          console.log('Sent request to start remote dedicated server with game ID:', gameId);
+          
+          // Return the game ID
+          return gameId;
+        } else {
+          throw new Error('Not connected to master server');
+        }
+      } catch (error) {
+        console.error('Failed to start remote server:', error);
+        alert('Failed to start remote dedicated server: ' + error.message);
+        return null;
+      }
+    }
+    
+    // Initialize placeholder for the game iframe showing remote server status
+    function initGamePlaceholder() {
+      const iframe = document.getElementById('game-iframe');
+      
+      // Set a placeholder message or image
+      iframe.src = 'about:blank';
+      
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.body.style.backgroundColor = '#1e1e1e';
+      doc.body.style.color = '#4fc3f7';
+      doc.body.style.fontFamily = 'Courier New, monospace';
+      doc.body.style.display = 'flex';
+      doc.body.style.justifyContent = 'center';
+      doc.body.style.alignItems = 'center';
+      doc.body.style.height = '100%';
+      doc.body.style.margin = '0';
+      doc.body.innerHTML = '<div style="text-align: center;"><h2>Remote Dedicated Server</h2><p>Game is running on the master server.</p><p>Use client page to connect.</p></div>';
+      
+      console.log('Initialized game placeholder for remote dedicated server');
     }
     
     // Get server configuration from UI
@@ -671,7 +773,13 @@
         
         // Start the Quake dedicated server ONLY after our framework server is registered
         console.log('Framework server registered successfully, starting Quake dedicated server');
-        initQuakeGame();
+        
+        // Check if we're already running a server (to avoid duplicates)
+        if (!server.serverState.gameId) {
+          initQuakeGame();
+        } else {
+          console.log('A game server is already running with ID:', server.serverState.gameId);
+        }
         
         // Update UI
         document.getElementById('start-button').disabled = true;
@@ -692,11 +800,19 @@
     
     // Stop the server
     async function stopServer() {
+      // ORIGINAL IMPLEMENTATION: Stop in-browser dedicated server
+      // This code stops the in-browser dedicated server and unregisters from master
+      // Commented lines are preserved for future use when we return to in-browser implementation
+      
       // Unregister from master server
       await server.unregisterServer();
       
       // Stop the game
       game.stop();
+      
+      // INTERIM SOLUTION: Stop remote dedicated server
+      // First, stop the remote server on the master server host
+      await stopRemoteServer();
       
       // Clear the Quake game iframe
       document.getElementById('game-iframe').src = '';
@@ -716,6 +832,58 @@
       document.getElementById('server-map').disabled = false;
       document.getElementById('server-max-players').disabled = false;
       document.getElementById('server-token-enabled').disabled = false;
+    }
+    
+    // Stop the remote dedicated server
+    async function stopRemoteServer() {
+      // Get the game ID from server state
+      const gameId = server.serverState.gameId;
+      
+      if (!gameId) {
+        console.warn('No game ID found in server state, cannot stop remote server');
+        return;
+      }
+      
+      console.log('Requesting master server to stop remote dedicated server:', gameId);
+      
+      try {
+        // Request the master server to stop the dedicated server
+        const stopServerMsg = {
+          unicity: true,
+          type: 'stop_game_server',
+          gameId: gameId
+        };
+        
+        // Send the request via the server's connection to master
+        if (server && server.serverState.signaling && 
+            server.serverState.signaling.readyState === WebSocket.OPEN) {
+          // Use the server's sendToMaster method
+          server.sendToMaster(stopServerMsg);
+          
+          // Display temporary status
+          const statusDisplay = document.getElementById('server-status-display');
+          statusDisplay.innerHTML = `
+            <strong>Status:</strong> Stopping remote dedicated server...<br>
+            <strong>Game ID:</strong> ${gameId}<br>
+          `;
+          
+          console.log('Sent request to stop remote dedicated server with game ID:', gameId);
+          
+          // Clear game ID from server state
+          server.serverState.gameId = null;
+          
+          // Wait a moment for the server to stop
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          return true;
+        } else {
+          throw new Error('Not connected to master server');
+        }
+      } catch (error) {
+        console.error('Failed to stop remote server:', error);
+        alert('Failed to stop remote dedicated server: ' + error.message);
+        return false;
+      }
     }
     
     // Broadcast a message to all clients
@@ -1104,6 +1272,125 @@
           initQuakeGame();
         }
       }, 5000); // 5 second delay
+    }
+    
+    // Handle messages from the master server, particularly about remote dedicated servers
+    function handleMasterServerMessage(message) {
+      console.log('Received message from master server:', message);
+      
+      // Skip if not a Unicity message
+      if (!message.unicity) return;
+      
+      // Process by message type
+      switch (message.type) {
+        case 'game_server_started':
+          handleGameServerStarted(message);
+          break;
+          
+        case 'game_server_stopped':
+          handleGameServerStopped(message);
+          break;
+          
+        case 'game_server_status':
+          handleGameServerStatus(message);
+          break;
+          
+        case 'game_server_logs':
+          handleGameServerLogs(message);
+          break;
+          
+        case 'error':
+          handleMasterServerError(message);
+          break;
+      }
+    }
+    
+    // Handle successful game server start
+    function handleGameServerStarted(message) {
+      console.log('Remote dedicated server started successfully:', message);
+      
+      // Update status display
+      const statusDisplay = document.getElementById('server-status-display');
+      statusDisplay.innerHTML = `
+        <strong>Status:</strong> Remote dedicated server running<br>
+        <strong>Game ID:</strong> ${message.gameId}<br>
+        <strong>Name:</strong> ${message.serverInfo.name}<br>
+        <strong>Address:</strong> ${message.serverInfo.address}<br>
+        <strong>Map:</strong> ${message.serverInfo.map}<br>
+        <strong>Max Players:</strong> ${message.serverInfo.maxPlayers}<br>
+      `;
+      
+      // Update server state
+      server.serverState.gameId = message.gameId;
+      server.serverState.remoteServerInfo = message.serverInfo;
+      
+      // Update iframe placeholder with server details
+      initGamePlaceholder();
+    }
+    
+    // Handle successful game server stop
+    function handleGameServerStopped(message) {
+      console.log('Remote dedicated server stopped successfully:', message);
+      
+      // Update status display
+      const statusDisplay = document.getElementById('server-status-display');
+      statusDisplay.innerHTML = `
+        <strong>Status:</strong> Remote dedicated server stopped<br>
+      `;
+      
+      // Clear server state
+      server.serverState.gameId = null;
+      server.serverState.remoteServerInfo = null;
+    }
+    
+    // Handle game server status update
+    function handleGameServerStatus(message) {
+      console.log('Received game server status:', message);
+      
+      // Update status display
+      const statusDisplay = document.getElementById('server-status-display');
+      statusDisplay.innerHTML = `
+        <strong>Status:</strong> ${message.status.state}<br>
+        <strong>Game ID:</strong> ${message.gameId}<br>
+        <strong>Name:</strong> ${message.status.name}<br>
+        <strong>Address:</strong> ${message.status.address}<br>
+        <strong>Map:</strong> ${message.status.map}<br>
+        <strong>Players:</strong> ${message.status.players}/${message.status.maxPlayers}<br>
+        <strong>Uptime:</strong> ${formatUptime(message.status.uptime)}<br>
+      `;
+    }
+    
+    // Handle game server logs
+    function handleGameServerLogs(message) {
+      console.log('Received game server logs:', message);
+      
+      // Could display logs in a modal or dedicated panel
+    }
+    
+    // Handle master server errors
+    function handleMasterServerError(message) {
+      console.error('Master server error:', message);
+      
+      // Show error in UI
+      const statusDisplay = document.getElementById('server-status-display');
+      statusDisplay.innerHTML = `
+        <strong>Error:</strong> ${message.error}<br>
+        <strong>Request:</strong> ${message.requestType || 'Unknown'}<br>
+      `;
+      
+      // Alert the user
+      alert(`Master server error: ${message.error}`);
+    }
+    
+    // Format uptime in seconds to readable format
+    function formatUptime(seconds) {
+      if (!seconds) return 'N/A';
+      
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      
+      return `${hours}h ${minutes}m ${secs}s`;
     }
   </script>
 </body>
