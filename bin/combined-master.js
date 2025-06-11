@@ -78,16 +78,46 @@ async function start() {
     // Handle graceful shutdown
     process.on("SIGINT", async () => {
       logger.info("Received SIGINT, shutting down...");
-      await masterServer.stop();
-      quakeMaster.stop();
-      process.exit(0);
+      try {
+        // Set a shutdown timeout to force exit if graceful shutdown takes too long
+        const forceExitTimeout = setTimeout(() => {
+          logger.error("Shutdown timed out after 10 seconds, forcing exit");
+          process.exit(1);
+        }, 10000);
+        
+        // Attempt graceful shutdown
+        await masterServer.stop();
+        quakeMaster.stop();
+        
+        // Clear the force exit timeout
+        clearTimeout(forceExitTimeout);
+        process.exit(0);
+      } catch (err) {
+        logger.error(`Error during shutdown: ${err.message}`);
+        process.exit(1);
+      }
     });
     
     process.on("SIGTERM", async () => {
       logger.info("Received SIGTERM, shutting down...");
-      await masterServer.stop();
-      quakeMaster.stop();
-      process.exit(0);
+      try {
+        // Set a shutdown timeout to force exit if graceful shutdown takes too long
+        const forceExitTimeout = setTimeout(() => {
+          logger.error("Shutdown timed out after 10 seconds, forcing exit");
+          process.exit(1);
+        }, 10000);
+        
+        // Attempt graceful shutdown
+        await masterServer.stop();
+        quakeMaster.stop();
+        
+        // Clear the force exit timeout
+        clearTimeout(forceExitTimeout);
+        process.exit(0);
+      } catch (err) {
+        logger.error(`Error during shutdown: ${err.message}`);
+        process.exit(1);
+      }
     });
     
     return { masterServer, quakeMaster };
