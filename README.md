@@ -21,7 +21,15 @@ If you already cloned without `--recursive`:
 
 ```bash
 git submodule update --init --recursive
+# Also ensure the nested ioq3 submodule in fresh_quakejs is initialized
+cd fresh_quakejs
+git submodule update --init --recursive
+cd ..
 ```
+
+Note: The project uses nested submodules:
+- `fresh_quakejs`: QuakeJS game server (https://github.com/inolen/quakejs.git)
+- `fresh_quakejs/ioq3`: ioquake3 engine (https://github.com/inolen/ioq3.git)
 
 ### 2. Install Dependencies for Main Project
 
@@ -38,15 +46,17 @@ npm install
 
 ### 4. Download Game Assets
 
-Due to licensing restrictions, you need to accept the EULA and download game assets:
+Due to licensing restrictions, you need to accept the EULA and download game assets. This process requires approximately 1GB of RAM:
 
 ```bash
 cd fresh_quakejs
-node build/js/browserify.js
-node build/js/configure-repos.js
-# Follow prompts to accept EULA
-node build/js/download-assets.js
+# Run the dedicated server to trigger EULA and file download
+node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2
+# Press ENTER to scroll through the EULA, then type 'y' to accept
+# After files download, press Ctrl+C to exit
 ```
+
+If the server exits with "Killed" message, your system needs more memory.
 
 ### 5. Build Content (if needed)
 

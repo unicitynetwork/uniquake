@@ -32,7 +32,15 @@ echo ""
 # Ensure submodules are initialized
 echo "=== Initializing Git submodules ==="
 git submodule update --init --recursive
-echo "Submodules initialized successfully."
+echo "Main submodules initialized successfully."
+echo ""
+
+# Explicitly ensure the nested ioq3 submodule is initialized
+echo "=== Initializing nested ioq3 submodule ==="
+cd fresh_quakejs
+git submodule update --init --recursive
+cd ..
+echo "Nested ioq3 submodule initialized successfully."
 echo ""
 
 # Install main project dependencies
@@ -52,22 +60,24 @@ echo ""
 echo "=== Preparing QuakeJS dedicated server ==="
 echo "This step will download game assets after accepting the EULA."
 echo "IMPORTANT: You will need to accept the EULA to download game assets."
+echo "Note: You'll need approximately 1GB of RAM for this step."
 echo ""
 
-# Run browserify
-echo "Running browserify..."
-node build/js/browserify.js
-
-# Configure repos and accept EULA
+echo "Starting dedicated server to download base game files..."
+echo "When the EULA appears, press ENTER to scroll through it, then type 'y' to accept."
+echo "After the files finish downloading, press Ctrl+C to continue setup."
 echo ""
-echo "Configuring repositories and accepting EULA..."
-echo "When prompted, type 'y' to accept the EULA."
-node build/js/configure-repos.js
+echo "Press ENTER to continue..."
+read
 
-# Download assets
+# Run dedicated server in baseq3 mode to trigger EULA and file download
+node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2
+
 echo ""
-echo "Downloading game assets (this may take a while)..."
-node build/js/download-assets.js
+echo "Game files should now be downloaded. If you encountered any errors or didn't"
+echo "see the EULA prompt, please try running the dedicated server manually:"
+echo "  cd fresh_quakejs"
+echo "  node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2"
 
 # Return to main directory
 cd ..

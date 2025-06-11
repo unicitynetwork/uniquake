@@ -8,9 +8,10 @@
   ```
   cd fresh_quakejs
   npm install
-  node build/js/browserify.js
-  node build/js/configure-repos.js  # Accept EULA when prompted
-  node build/js/download-assets.js
+  # Run dedicated server to download game files (requires ~1GB RAM)
+  node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2
+  # Press ENTER to scroll through EULA, type 'y' to accept
+  # Press Ctrl+C after files download
   ```
 - Environment config: Create `.env` file with `GAME_SERVER_IP=your_server_ip`
 
