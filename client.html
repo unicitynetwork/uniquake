@@ -816,7 +816,9 @@
       const serverContainer = document.getElementById('servers-container');
       const serverItems = serverContainer.querySelectorAll('.server-item');
       let serverInfo = null;
+      let serverAddress = null;
       
+      // First, try to get the server info and address from the UI
       for (let i = 0; i < serverItems.length; i++) {
         if (serverItems[i].getAttribute('data-server-id') === serverId) {
           const serverName = serverItems[i].querySelector('.server-name').textContent;
@@ -824,16 +826,44 @@
           const mapMatch = mapInfo.match(/Map:\s+([^\s|]+)/);
           const map = mapMatch ? mapMatch[1] : 'q3dm1';
           
+          // Extract the server address from the displayed server info
+          const addressInfos = serverItems[i].querySelectorAll('.server-info');
+          for (let j = 0; j < addressInfos.length; j++) {
+            const addressMatch = addressInfos[j].textContent.match(/Address:\s+([^\s]+)/);
+            if (addressMatch && addressMatch[1] !== 'Not specified') {
+              serverAddress = addressMatch[1];
+              break;
+            }
+          }
+          
           serverInfo = {
             name: serverName,
-            map: map
+            map: map,
+            address: serverAddress
           };
+          
+          console.log('Found server info from UI:', serverInfo);
           break;
         }
       }
       
-      // Use the direct quake URL to connect to the dedicated server
-      let quakeClientUrl = `http://localhost:8080/quake?connect%20localhost:27960`;
+      // If address is not found in UI, try to get it from the client state
+      if (!serverAddress && client && client.clientState && client.clientState.serverList) {
+        const serverFromList = client.clientState.serverList.find(s => s.peerId === serverId);
+        if (serverFromList && serverFromList.address) {
+          serverAddress = serverFromList.address;
+          console.log('Found server address from client state:', serverAddress);
+        }
+      }
+      
+      // If we still don't have a server address, use the default
+      if (!serverAddress) {
+        serverAddress = 'localhost:27960';
+        console.log('Using default server address:', serverAddress);
+      }
+      
+      // Use the direct quake URL to connect to the dedicated server with the correct address
+      let quakeClientUrl = `http://localhost:8080/quake?connect%20${serverAddress}`;
       
       // We're using the quake URL which should connect directly to the server
       
@@ -876,7 +906,7 @@
         <strong>Connection Debug:</strong><br>
         URL: ${quakeClientUrl}<br>
         Server ID: ${serverId}<br>
-        Target: Direct connection to localhost:27960
+        Target: Direct connection to ${serverAddress}
       `;
       document.body.appendChild(debugInfo);
     }
@@ -915,6 +945,7 @@
           <div class="server-name">${server.name}</div>
           <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
           <div class="server-info">ID: ${server.peerId}</div>
+          <div class="server-info">Address: ${server.address || 'Not specified'}</div>
         `;
         
         serverElem.addEventListener('click', () => {
