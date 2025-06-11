@@ -73,6 +73,14 @@ echo "IMPORTANT: You will need to accept the EULA to download game assets."
 echo "Note: You'll need approximately 1GB of RAM for this step."
 echo ""
 
+# Create baseq3 directory if it doesn't exist
+echo "Creating baseq3 directory..."
+mkdir -p base/baseq3
+
+# Copy server.cfg to baseq3 directory
+echo "Copying server.cfg to baseq3 directory..."
+cp ../server.cfg base/baseq3/
+
 echo "Starting dedicated server to download base game files..."
 echo "When the EULA appears, press ENTER to scroll through it, then type 'y' to accept."
 echo "After the files finish downloading, press Ctrl+C to continue setup."
