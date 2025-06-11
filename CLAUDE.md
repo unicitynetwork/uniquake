@@ -1,27 +1,63 @@
 # UNIQUAKE (QuakeJS) Project Guide
 
-## Build Commands
+## Project Setup
+- Clone with submodules: `git clone --recursive <repo_url>` 
+- Update submodules: `git submodule update --init --recursive`
+- Fix submodule URLs: 
+  ```
+  cd fresh_quakejs
+  # Check and fix git:// URLs to use https:// instead
+  sed -i 's|git://github.com|https://github.com|g' .gitmodules
+  git config --file=.gitmodules submodule.ioq3.url https://github.com/inolen/ioq3.git
+  git submodule sync
+  git submodule update --init --recursive
+  cd ..
+  ```
+- Main project installation: `npm install`
+- Dedicated server setup:
+  ```
+  cd fresh_quakejs
+  npm install
+  # Run dedicated server to download game files (requires ~1GB RAM)
+  node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2
+  # Press ENTER to scroll through EULA, type 'y' to accept
+  # Press Ctrl+C after files download
+  ```
+- Environment config: Create `.env` file with `GAME_SERVER_IP=your_server_ip`
+
+## Build & Run Commands
 - Install dependencies: `npm install`
 - Start web server: `npm start` or `node bin/web.js --config ./bin/web.json`
 - Run master server: `npm run master` or `node bin/webrtc-master.js`
+- Run combined master: `npm run master-quake` or `node bin/combined-master.js`
 - Run content server: `npm run content` or `node bin/content.js`
-- Repackage assets: `npm run repak` or `node bin/repak.js --src <assets_src> --dest <assets>`
+- Run browser mocks:
+  - All components: `npm run start-browser-mocks`
+  - Individual: `npm run mock-server`, `npm run mock-client`, `npm run browser-mock`
+- Development server: `npm run browser-mock-all` (runs master server + browser mock)
 - Build engine: `cd ioq3 && make PLATFORM=js EMSCRIPTEN=<path_to_emscripten>`
-- Mock server: `npm run mock-server`
-- Mock client: `npm run mock-client`
+- Repackage assets: `npm run repak` or `node bin/repak.js --src <assets_src> --dest <assets>`
+- Testing: Manual testing through browser mocks (no automated tests found)
+- Manage dedicated servers:
+  - Check running servers: `ps aux | grep node | grep quakejs`
+  - Kill server: `kill <pid>`
 
 ## Code Style Guidelines
-- Imports: Node.js require pattern, group external then internal modules
+- Imports: Node.js require pattern; group external modules first, then internal
 - Classes: ES6 class syntax with JSDoc comments for methods
-- Naming: camelCase for variables/functions, PascalCase for classes
-- Errors: Use try/catch with logger (winston) for error handling
-- Async: Mix of Promises and callbacks (newer code uses async/await)
-- Config: Use default values with safe merging (Object spread or _.extend)
-- Functions: Prefer modern ES6+ syntax for new code
-- Indentation: 2 spaces
-- File structure: Modular components with clear responsibility separation
+- Variables: camelCase for variables/functions, PascalCase for classes
+- String quotes: Single quotes preferred, template literals for interpolation
+- Indentation: 2 spaces, no tabs
+- Line length: Soft limit of 80 characters
+- Error handling: Use try/catch with winston logger (`const logger = require('winston')`)
+- Asynchronous code: Mix of Promise chains and callbacks; newer code uses async/await
+- Configuration: Use default values with safe merging (Object.assign or _.extend)
+- Dependencies: Leverage existing deps (async, underscore, winston, express, ws)
+- WebRTC: Use simple-peer library with compatibility handling
 
-## Project Architecture
-- `/bin`: Server executables and configuration files
-- `/lib`: Core libraries and services
-- `/lib/client`: Browser-side client code for WebRTC
+## Development Workflow
+- Branch naming: feature/*, bugfix/*, refactor/*
+- Testing: First in browser mocks, then integrate with the main game
+- Servers: Run multiple concurrently with `npm run start-browser-mocks`
+- Debugging: Browser dev tools for client-side (check WebRTC connections)
+- Logging: Use winston logger throughout the codebase

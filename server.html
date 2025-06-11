@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background-color: #1e1e1e;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 40px);
+      max-width: 1900px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      color: #4fc3f7;
+    }
+    
+    .main-content {
+      display: flex;
+      flex: 1;
+      gap: 20px;
+    }
+    
+    .panel {
+      background-color: #2d2d2d;
+      border-radius: 5px;
+      padding: 15px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    
+    .server-panel {
+      width: 467px; /* Reduced from 700px by 1.5 times */
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    
+    .right-panels {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .game-panel {
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .token-panel {
+      flex: 1;
+    }
+    
+    .clients-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .status-display {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .log {
+      flex: 1;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    
+    .client-list {
+      flex: 1;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    
+    .client-item {
+      background-color: #3d3d3d;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .client-item .client-name {
+      font-weight: bold;
+      color: #4fc3f7;
+    }
+    
+    .client-item .client-info {
+      font-size: 12px;
+      color: #aaa;
+    }
+    
+    .game-state {
+      flex: 1;
+      overflow-y: auto;
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    
+    .token-info {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    
+    input, button {
+      background-color: #3d3d3d;
+      border: none;
+      border-radius: 3px;
+      padding: 8px 12px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+    }
+    
+    input {
+      flex: 1;
+      margin-bottom: 10px;
+    }
+    
+    button {
+      background-color: #2196f3;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #1976d2;
+    }
+    
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    
+    .button-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    
+    .status-registered {
+      background-color: #4caf50;
+    }
+    
+    .status-unregistered {
+      background-color: #f44336;
+    }
+    
+    /* ANSI color simulation */
+    .ansi-green {
+      color: #4caf50;
+    }
+    
+    .ansi-red {
+      color: #f44336;
+    }
+    
+    .ansi-yellow {
+      color: #ffeb3b;
+    }
+    
+    .ansi-blue {
+      color: #2196f3;
+    }
+    
+    .ansi-cyan {
+      color: #00bcd4;
+    }
+    
+    .ansi-magenta {
+      color: #e91e63;
+    }
+    
+    .ansi-white {
+      color: #ffffff;
+    }
+    
+    .ansi-gray {
+      color: #9e9e9e;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+    
+    .actions-panel {
+      background-color: #252525;
+      border-radius: 3px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .action-buttons button {
+      flex: 1;
+      min-width: 120px;
+    }
+
+    /* Game iframe styles */
+    .game-container {
+      width: 50%; /* Reduced from 100% to 50% (shrunk by half) */
+      aspect-ratio: 16/9;
+      height: 500px; /* Larger fixed height */
+      margin-bottom: 10px;
+      position: relative;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-left: auto; /* Center the container by pushing from left */
+      margin-right: auto; /* Center the container by pushing from right */
+    }
+    
+    .game-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background-color: #000;
+    }
+
+    /* Tabs for game view and server panel */
+    .tabs {
+      display: flex;
+      margin-bottom: 10px;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      background-color: #3d3d3d;
+      border-radius: 3px 3px 0 0;
+      cursor: pointer;
+      margin-right: 5px;
+    }
+
+    .tab.active {
+      background-color: #2196f3;
+    }
+
+    .tab-content {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+    }
+
+    .tab-content.active {
+      display: flex;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Server</h1>
+    </div>
+    
+    <div class="main-content">
+      <div class="server-panel panel">
+        <div class="status-row">
+          <div>
+            <span class="status-indicator" id="server-status"></span>
+            <span id="status-text">Not Registered</span>
+          </div>
+        </div>
+        
+        <h2>Server Configuration</h2>
+        <div class="form-group">
+          <label for="server-name">Server Name</label>
+          <input type="text" id="server-name" readonly placeholder="Auto-generated on server start">
+        </div>
+        
+        <div class="form-group">
+          <label for="server-map">Map</label>
+          <input type="text" id="server-map" value="q3dm1">
+        </div>
+        
+        <div class="form-group">
+          <label for="server-max-players">Max Players</label>
+          <input type="number" id="server-max-players" value="16" min="1" max="32">
+        </div>
+        
+        <div class="form-group">
+          <label for="server-token-enabled">Token Enabled</label>
+          <input type="checkbox" id="server-token-enabled" checked>
+        </div>
+        
+        <div class="button-row">
+          <button id="start-button">Start Server</button>
+          <button id="stop-button" disabled>Stop Server</button>
+        </div>
+        
+        <h2>Server Status</h2>
+        <div class="status-display" id="server-status-display">
+          Server not started
+        </div>
+        
+        <div class="actions-panel">
+          <h3>Server Actions</h3>
+          <div class="action-buttons">
+            <button id="broadcast-button" disabled>Broadcast Message</button>
+            <button id="game-state-button" disabled>Send Game State</button>
+            <button id="end-game-button" disabled>End Game</button>
+          </div>
+        </div>
+        
+        <h2>Game State</h2>
+        <div class="game-state" id="game-state">No game state available</div>
+        
+        <h2>Connected Clients</h2>
+        <div class="client-list" id="client-list">No clients connected</div>
+        
+        <div class="actions-panel">
+          <h3>Client Actions</h3>
+          <div class="action-buttons">
+            <button id="kick-button" disabled>Kick Selected Client</button>
+            <button id="message-button" disabled>Send Message</button>
+          </div>
+        </div>
+        
+        <h2>Token System</h2>
+        <div class="token-info" id="token-info">Token system initializing...</div>
+        
+        <div class="actions-panel">
+          <h3>Token Actions</h3>
+          <div class="action-buttons">
+            <button id="tokens-button">Show Tokens</button>
+            <button id="award-tokens-button" disabled>Award Tokens</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="right-panels">
+        <div class="game-container">
+          <iframe id="game-iframe" class="game-iframe" tabindex="0"></iframe>
+        </div>
+        <div class="button-row">
+          <button id="refresh-game">Refresh Game</button>
+          <span style="color: #aaa; margin-left: 10px; font-size: 12px;">Click game to focus, press ESC to release focus</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load scripts -->
+  <script src="lib/client/uniquake-token-service.js"></script>
+  <script src="lib/client/browser-mock-game.js"></script>
+  <script src="lib/client/browser-mock-server.js"></script>
+  <script src="lib/client/game-integration.js"></script>
+  
+  <script>
+    // Load WebRTC adapter directly, bypassing the auto-connect behavior
+    window.UNIQUAKE_CONFIG = {
+      useWebRTC: true,
+      masterServer: 'ws://localhost:27950',
+      noAutoConnect: true  // Flag to prevent auto-connection
+    };
+    
+    // Load the adapter script
+    var script = document.createElement('script');
+    script.src = '/webrtc-adapter.js';
+    script.onload = function() {
+      console.log('WebRTC adapter loaded, initializing server');
+      initializeServer();
+    };
+    document.head.appendChild(script);
+    
+    // Main server, game, and integration instances
+    let server, game, integration;
+    let selectedClientId = null;
+    
+    /**
+     * Generate a random server name
+     */
+    function generateServerName() {
+      const adjectives = ['Epic', 'Cosmic', 'Legendary', 'Mystic', 'Quantum', 'Rapid', 'Savage', 'Galactic', 'Neon', 'Shadow'];
+      const nouns = ['Server', 'Arena', 'Battlefield', 'Realm', 'Nexus', 'Dimension', 'Domain', 'Fortress', 'Outpost', 'Hub'];
+      
+      const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+      const noun = nouns[Math.floor(Math.random() * nouns.length)];
+      const num = Math.floor(Math.random() * 1000);
+      
+      return `${adj}${noun}${num}`;
+    }
+    
+    // Initialize server
+    async function initializeServer() {
+      // Get initial configuration from UI
+      const config = getServerConfig();
+      
+      // Generate random server name - this will be used for registration during init()
+      const serverName = generateServerName();
+      document.getElementById('server-name').value = serverName;
+      config.serverName = serverName;
+      console.log('Generated server name for initial registration:', serverName);
+      
+      // Create mock game
+      game = new BrowserMockGame({
+        isServer: true,
+        updateInterval: 10000, // 10 seconds between game state updates
+        onStateChange: updateGameState
+      });
+      
+      // Create mock server
+      server = new BrowserMockServer({
+        masterServer: window.UNIQUAKE_CONFIG.masterServer || 'ws://localhost:27950',
+        serverName: config.serverName,
+        map: config.map,
+        maxPlayers: config.maxPlayers,
+        tokenEnabled: config.tokenEnabled,
+        debug: true,
+        onStatusUpdate: updateServerStatus,
+        onClientConnect: handleClientConnect,
+        onClientDisconnect: handleClientDisconnect,
+        onChatMessage: handleChatMessage,
+        // Add handler for remote server messages
+        onMessage: handleMasterServerMessage
+      });
+      
+      // Create game integration
+      integration = new GameIntegration({
+        server: server,
+        debug: true,
+        onGameStateUpdate: updateGameState,
+        onTokenEvent: handleTokenEvent,
+        onPlayerJoin: handlePlayerJoin,
+        onPlayerLeave: handlePlayerLeave,
+        onGameEnd: handleGameEnd
+      });
+      
+      // Initialize all components
+      await game.init();
+      await server.init();
+      await integration.init(game);
+      
+      // Store reference to game in server for synchronization
+      server.gameInstance = game;
+      
+      // Log available methods to help with debugging
+      console.log('Server connection methods:', {
+        sendToMaster: typeof server.sendToMaster === 'function',
+        registerServer: typeof server.registerServer === 'function',
+        unregisterServer: typeof server.unregisterServer === 'function',
+        signaling: !!server.serverState.signaling,
+        signalingState: server.serverState.signaling ? server.serverState.signaling.readyState : 'not initialized'
+      });
+      
+      // Check if the server was registered during init()
+      if (server.serverState.registered) {
+        console.log('Server was successfully registered during init(), proceeding to start');
+      } else {
+        console.warn('Server was not registered during init(), registration will be attempted in startServer()');
+      }
+      
+      // Auto-start the server
+      await startServer();
+      
+      console.log('Server system initialized and auto-started');
+      
+      // Note: We no longer need a separate normalizeGameState function
+      // as we now use the token service's hashGameState method directly.
+      // The token service internally handles state normalization and hashing.
+      
+      // Set up UI event handlers
+      setupUIHandlers();
+      
+      // Update initial UI - disable event emission to avoid recursion
+      updateServerStatus(server.getStatus(false));
+      
+      // NOTE: initQuakeGame is now called inside startServer() 
+      // so we don't need to call it here again
+      
+      // Set up regular UI updates to ensure both panels stay in sync
+      setInterval(() => {
+        if (game && server) {
+          // Update game state panel
+          updateGameState(game.getGameState());
+          
+          // Update token info panel
+          updateTokenInfo();
+          
+          console.log(`UI Sync - Game frame: ${game.gameState.frame}, Server frame: ${server.serverState.gameState.frame}`);
+        }
+      }, 10000); // Update every 10 seconds
+    }
+    
+    // Initialize Quake game in iframe
+    function initQuakeGame() {
+      // ORIGINAL IMPLEMENTATION: In-browser dedicated server
+      // This code launches a Quake dedicated server directly in the browser
+      // by loading it in an iframe with specific command line parameters.
+      // We're preserving this for future use when we return to in-browser implementation.
+      const iframe = document.getElementById('game-iframe');
+      const map = document.getElementById('server-map').value;
+      
+      // Build Quake server URL with parameters
+      // +set sv_pure 0: Allows custom mods
+      // +exec server.cfg: Executes server config
+      // +map <mapname>: Loads the map directly
+      // +dedicated 1: Runs in dedicated server mode
+      const quakeServerUrl = `/quake?cmdline=+set%20sv_pure%200%20+exec%20server.cfg%20+map%20${map}%20+dedicated%201`;
+      
+      // INTERIM SOLUTION: We're using remote server instead of in-browser
+      // Comment out the direct iframe load and use remote server functionality
+      // iframe.src = quakeServerUrl;
+      
+      // Start remote dedicated server and show placeholder in iframe
+      startRemoteServer().then(gameId => {
+        if (gameId) {
+          initGamePlaceholder();
+        }
+      });
+      
+      console.log('Starting server with remote delegation instead of in-browser iframe');
+    }
+    
+    // Start a remote dedicated server on the master server
+    async function startRemoteServer() {
+      const map = document.getElementById('server-map').value;
+      const maxPlayers = parseInt(document.getElementById('server-max-players').value) || 16;
+      const serverName = document.getElementById('server-name').value;
+      
+      // Create a unique game ID
+      const gameId = 'game-' + Date.now();
+      
+      console.log('Requesting master server to start a remote dedicated server...');
+      
+      try {
+        // Request the master server to start a dedicated server
+        const startServerMsg = {
+          unicity: true,
+          type: 'start_game_server',
+          serverInfo: {
+            name: serverName,
+            gameId: gameId,
+            map: map,
+            maxPlayers: maxPlayers,
+            private: false
+          }
+        };
+        
+        // Store game ID in server state for later use
+        server.serverState.gameId = gameId;
+        
+        // Send the request via the server's connection to master
+        if (server && server.serverState.signaling && 
+            server.serverState.signaling.readyState === WebSocket.OPEN) {
+          // Use the server's sendToMaster method
+          server.sendToMaster(startServerMsg);
+          
+          // Display temporary status
+          const statusDisplay = document.getElementById('server-status-display');
+          statusDisplay.innerHTML = `
+            <strong>Status:</strong> Starting remote dedicated server...<br>
+            <strong>Game ID:</strong> ${gameId}<br>
+            <strong>Map:</strong> ${map}<br>
+          `;
+          
+          console.log('Sent request to start remote dedicated server with game ID:', gameId);
+          
+          // Return the game ID
+          return gameId;
+        } else {
+          throw new Error('Not connected to master server');
+        }
+      } catch (error) {
+        console.error('Failed to start remote server:', error);
+        alert('Failed to start remote dedicated server: ' + error.message);
+        return null;
+      }
+    }
+    
+    // Initialize placeholder for the game iframe showing remote server status
+    function initGamePlaceholder() {
+      const iframe = document.getElementById('game-iframe');
+      
+      // Set a placeholder message or image
+      iframe.src = 'about:blank';
+      
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.body.style.backgroundColor = '#1e1e1e';
+      doc.body.style.color = '#4fc3f7';
+      doc.body.style.fontFamily = 'Courier New, monospace';
+      doc.body.style.display = 'flex';
+      doc.body.style.justifyContent = 'center';
+      doc.body.style.alignItems = 'center';
+      doc.body.style.height = '100%';
+      doc.body.style.margin = '0';
+      doc.body.innerHTML = '<div style="text-align: center;"><h2>Remote Dedicated Server</h2><p>Game is running on the master server.</p><p>Use client page to connect.</p></div>';
+      
+      console.log('Initialized game placeholder for remote dedicated server');
+    }
+    
+    // Get server configuration from UI
+    function getServerConfig() {
+      // Get current server name from input field, or leave undefined to be set later
+      const serverNameElem = document.getElementById('server-name');
+      const serverName = serverNameElem.value || undefined;
+      
+      return {
+        serverName: serverName, // Will be auto-generated if undefined
+        map: document.getElementById('server-map').value,
+        maxPlayers: parseInt(document.getElementById('server-max-players').value) || 16,
+        tokenEnabled: document.getElementById('server-token-enabled').checked
+      };
+    }
+    
+    // Set up UI event handlers
+    function setupUIHandlers() {
+      // Tab switching
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+          // Remove active class from all tabs and tab contents
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          
+          // Add active class to clicked tab and corresponding content
+          this.classList.add('active');
+          document.getElementById(this.getAttribute('data-tab') + '-tab').classList.add('active');
+        });
+      });
+      
+      // Server control buttons
+      document.getElementById('start-button').addEventListener('click', startServer);
+      document.getElementById('stop-button').addEventListener('click', stopServer);
+      
+      // Server action buttons
+      document.getElementById('broadcast-button').addEventListener('click', broadcastMessage);
+      document.getElementById('game-state-button').addEventListener('click', sendGameState);
+      document.getElementById('end-game-button').addEventListener('click', endGame);
+      
+      // Client action buttons
+      document.getElementById('kick-button').addEventListener('click', kickSelectedClient);
+      document.getElementById('message-button').addEventListener('click', sendClientMessage);
+      
+      // Token action buttons
+      document.getElementById('tokens-button').addEventListener('click', showTokens);
+      document.getElementById('award-tokens-button').addEventListener('click', awardTokens);
+      
+      // Game iframe buttons
+      document.getElementById('refresh-game').addEventListener('click', function() {
+        initQuakeGame();
+      });
+      
+      // Add focus management for game iframe
+      const gameIframe = document.getElementById('game-iframe');
+      
+      // Improved click handler to focus the iframe and capture keyboard input
+      gameIframe.addEventListener('click', function() {
+        // Focus the iframe to capture keyboard events
+        gameIframe.focus();
+        
+        // This helps in some browsers to ensure keyboard focus
+        if (gameIframe.contentWindow) {
+          try {
+            gameIframe.contentWindow.focus();
+          } catch (e) {
+            console.log("Could not focus content window directly:", e);
+          }
+        }
+        
+        console.log("Game controls enabled - keyboard input captured");
+      });
+      
+      // Optional: Show visual indicator when iframe has focus
+      gameIframe.addEventListener('focus', function() {
+        gameIframe.style.outline = '2px solid #4caf50';
+        console.log("Game iframe focused");
+      });
+      
+      gameIframe.addEventListener('blur', function() {
+        gameIframe.style.outline = 'none';
+        console.log("Game iframe lost focus");
+      });
+      
+      // Release focus when Escape key is pressed
+      window.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && document.activeElement === gameIframe) {
+          document.body.focus(); // Move focus away from iframe
+          console.log("Game controls disabled (Escape pressed)");
+        }
+      });
+      
+      // Make sure the iframe is properly loaded before focusing
+      gameIframe.addEventListener('load', function() {
+        console.log("Game iframe loaded, ready for focus");
+      });
+    }
+    
+    // Start the server
+    async function startServer() {
+      // Update configuration from UI
+      const config = getServerConfig();
+      
+      // Use the existing server name instead of generating a new one
+      // This ensures consistency between Server Status and Token System panels
+      const serverName = server.serverInfo.name;
+      document.getElementById('server-name').value = serverName;
+      config.serverName = serverName;
+      
+      // Update server config
+      server.serverInfo.name = config.serverName;
+      server.serverInfo.map = config.map;
+      server.serverInfo.maxPlayers = config.maxPlayers;
+      
+      // Check if the server is already registered
+      let success = server.serverState.registered;
+      
+      if (success) {
+        console.log('Server already registered during init(), skipping explicit registration');
+      } else {
+        // Server wasn't registered during init(), we need to register it now
+        console.log('Server not registered yet, registering now...');
+        success = await server.registerServer();
+      }
+      
+      if (success) {
+        // Start the game
+        game.start();
+        
+        // Start the Quake dedicated server ONLY after our framework server is registered
+        console.log('Framework server registered successfully, starting Quake dedicated server');
+        
+        // Check if we're already running a server (to avoid duplicates)
+        if (!server.serverState.gameId) {
+          initQuakeGame();
+        } else {
+          console.log('A game server is already running with ID:', server.serverState.gameId);
+        }
+        
+        // Update UI
+        document.getElementById('start-button').disabled = true;
+        document.getElementById('stop-button').disabled = false;
+        document.getElementById('broadcast-button').disabled = false;
+        document.getElementById('game-state-button').disabled = false;
+        document.getElementById('end-game-button').disabled = false;
+        
+        // Disable configuration inputs
+        document.getElementById('server-name').disabled = true;
+        document.getElementById('server-map').disabled = true;
+        document.getElementById('server-max-players').disabled = true;
+        document.getElementById('server-token-enabled').disabled = true;
+      } else {
+        alert('Failed to register server with master server');
+      }
+    }
+    
+    // Stop the server
+    async function stopServer() {
+      // ORIGINAL IMPLEMENTATION: Stop in-browser dedicated server
+      // This code stops the in-browser dedicated server and unregisters from master
+      // Commented lines are preserved for future use when we return to in-browser implementation
+      
+      // Unregister from master server
+      await server.unregisterServer();
+      
+      // Stop the game
+      game.stop();
+      
+      // INTERIM SOLUTION: Stop remote dedicated server
+      // First, stop the remote server on the master server host
+      await stopRemoteServer();
+      
+      // Clear the Quake game iframe
+      document.getElementById('game-iframe').src = '';
+      
+      // Update UI
+      document.getElementById('start-button').disabled = false;
+      document.getElementById('stop-button').disabled = true;
+      document.getElementById('broadcast-button').disabled = true;
+      document.getElementById('game-state-button').disabled = true;
+      document.getElementById('end-game-button').disabled = true;
+      document.getElementById('kick-button').disabled = true;
+      document.getElementById('message-button').disabled = true;
+      document.getElementById('award-tokens-button').disabled = true;
+      
+      // Enable configuration inputs
+      document.getElementById('server-name').disabled = false;
+      document.getElementById('server-map').disabled = false;
+      document.getElementById('server-max-players').disabled = false;
+      document.getElementById('server-token-enabled').disabled = false;
+    }
+    
+    // Stop the remote dedicated server
+    async function stopRemoteServer() {
+      // Get the game ID from server state
+      const gameId = server.serverState.gameId;
+      
+      if (!gameId) {
+        console.warn('No game ID found in server state, cannot stop remote server');
+        return;
+      }
+      
+      console.log('Requesting master server to stop remote dedicated server:', gameId);
+      
+      try {
+        // Request the master server to stop the dedicated server
+        const stopServerMsg = {
+          unicity: true,
+          type: 'stop_game_server',
+          gameId: gameId
+        };
+        
+        // Send the request via the server's connection to master
+        if (server && server.serverState.signaling && 
+            server.serverState.signaling.readyState === WebSocket.OPEN) {
+          // Use the server's sendToMaster method
+          server.sendToMaster(stopServerMsg);
+          
+          // Display temporary status
+          const statusDisplay = document.getElementById('server-status-display');
+          statusDisplay.innerHTML = `
+            <strong>Status:</strong> Stopping remote dedicated server...<br>
+            <strong>Game ID:</strong> ${gameId}<br>
+          `;
+          
+          console.log('Sent request to stop remote dedicated server with game ID:', gameId);
+          
+          // Clear game ID from server state
+          server.serverState.gameId = null;
+          
+          // Wait a moment for the server to stop
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          return true;
+        } else {
+          throw new Error('Not connected to master server');
+        }
+      } catch (error) {
+        console.error('Failed to stop remote server:', error);
+        alert('Failed to stop remote dedicated server: ' + error.message);
+        return false;
+      }
+    }
+    
+    // Broadcast a message to all clients
+    function broadcastMessage() {
+      const message = prompt('Enter message to broadcast:');
+      if (message) {
+        server.broadcastMessage(message);
+      }
+    }
+    
+    // Send game state to all clients
+    function sendGameState() {
+      if (server.serverState.tokenService) {
+        server.createGameStateToken(true);
+      } else {
+        alert('Token service not available');
+      }
+    }
+    
+    // End the game
+    function endGame() {
+      // Get connected clients
+      const clients = server.getClients();
+      
+      if (clients.length === 0) {
+        alert('No clients connected');
+        return;
+      }
+      
+      // If we have a selected client, use that as the winner
+      let winnerId = selectedClientId;
+      
+      // If no client is selected, ask which client should win
+      if (!winnerId && clients.length > 0) {
+        const clientOptions = clients.map((client, index) => 
+          `${index + 1}. ${client.username || client.id}`
+        ).join('\n');
+        
+        const selection = prompt(`Select winner (enter number):\n${clientOptions}`);
+        const index = parseInt(selection) - 1;
+        
+        if (!isNaN(index) && index >= 0 && index < clients.length) {
+          winnerId = clients[index].id;
+        } else {
+          alert('Invalid selection');
+          return;
+        }
+      }
+      
+      // Clear the game iframe first
+      document.getElementById('game-iframe').src = '';
+      console.log('Cleared game iframe for game end process');
+      
+      // End the game with the selected winner
+      if (winnerId) {
+        game.endGame(winnerId);
+        integration.endGame(winnerId);
+      }
+    }
+    
+    // Kick the selected client
+    function kickSelectedClient() {
+      if (!selectedClientId) {
+        alert('No client selected');
+        return;
+      }
+      
+      const reason = prompt('Enter kick reason:');
+      server.kickClient(selectedClientId, reason || 'Kicked by server');
+    }
+    
+    // Send a message to the selected client
+    function sendClientMessage() {
+      if (!selectedClientId) {
+        alert('No client selected');
+        return;
+      }
+      
+      const message = prompt('Enter message:');
+      if (message) {
+        server.sendToClient(selectedClientId, {
+          type: 'chat',
+          from: 'SERVER',
+          message: message
+        });
+      }
+    }
+    
+    // Show token information
+    function showTokens() {
+      updateTokenInfo();
+    }
+    
+    // Award tokens to a client
+    function awardTokens() {
+      if (!selectedClientId) {
+        alert('No client selected');
+        return;
+      }
+      
+      // Clear the game iframe first
+      document.getElementById('game-iframe').src = '';
+      console.log('Cleared game iframe for token award process');
+      
+      // End game with this client as winner
+      integration.endGame(selectedClientId);
+    }
+    
+    // Update server status display
+    function updateServerStatus(status) {
+      const statusIndicator = document.getElementById('server-status');
+      const statusText = document.getElementById('status-text');
+      const statusDisplay = document.getElementById('server-status-display');
+      
+      if (status.registered) {
+        statusIndicator.className = 'status-indicator status-registered';
+        statusText.textContent = 'Registered';
+      } else {
+        statusIndicator.className = 'status-indicator status-unregistered';
+        statusText.textContent = 'Not Registered';
+      }
+      
+      // Update status display
+      statusDisplay.innerHTML = `
+        <strong>Name:</strong> ${status.name}<br>
+        <strong>Map:</strong> ${status.map}<br>
+        <strong>Players:</strong> ${status.players}/${status.maxPlayers}<br>
+        <strong>Peer ID:</strong> <span style="font-family: monospace; word-break: break-all;">${status.peerId || 'N/A'}</span><br>
+        <strong>Registered:</strong> ${status.registered ? 'Yes' : 'No'}<br>
+      `;
+      
+      // Update token info if available, but don't trigger another status update
+      if (status.tokens) {
+        updateTokenInfo(status.tokens);
+      }
+      
+      // Update client list
+      updateClientList(status.clients);
+    }
+    
+    // Handle client connection
+    function handleClientConnect(client) {
+      console.log('Client connected:', client);
+      
+      // Enable client action buttons if at least one client is connected
+      document.getElementById('kick-button').disabled = false;
+      document.getElementById('message-button').disabled = false;
+      document.getElementById('award-tokens-button').disabled = false;
+      
+      // Update client list
+      updateClientList(server.getClients());
+    }
+    
+    // Handle client disconnection
+    function handleClientDisconnect(client) {
+      console.log('Client disconnected:', client);
+      
+      // Clear selection if this client was selected
+      if (selectedClientId === client.id) {
+        selectedClientId = null;
+      }
+      
+      // Update client list
+      const clients = server.getClients();
+      updateClientList(clients);
+      
+      // Disable client action buttons if no clients are connected
+      if (clients.length === 0) {
+        document.getElementById('kick-button').disabled = true;
+        document.getElementById('message-button').disabled = true;
+        document.getElementById('award-tokens-button').disabled = true;
+      }
+    }
+    
+    // Handle chat message
+    function handleChatMessage(event) {
+      console.log('Chat message:', event);
+    }
+    
+    // Update client list display
+    function updateClientList(clients) {
+      const clientList = document.getElementById('client-list');
+      
+      if (!clients || clients.length === 0) {
+        clientList.innerHTML = 'No clients connected';
+        return;
+      }
+      
+      clientList.innerHTML = '';
+      
+      clients.forEach(client => {
+        const clientElem = document.createElement('div');
+        clientElem.className = 'client-item';
+        
+        if (selectedClientId === client.id) {
+          clientElem.className += ' selected';
+          clientElem.style.borderLeft = '3px solid #4fc3f7';
+        }
+        
+        clientElem.innerHTML = `
+          <div class="client-name">${client.username || client.id}</div>
+          <div class="client-info">Network ID: <span style="font-family: monospace; word-break: break-all;">${client.id}</span></div>
+          <div class="client-info">Token Public Key Address: <span style="font-family: monospace; word-break: break-all;">${client.pubkey || 'N/A'}</span></div>
+          <div class="client-info">Entry Token: ${client.entryTokenReceived ? 'Received' : 'Not Received'}</div>
+        `;
+        
+        clientElem.addEventListener('click', () => {
+          // Update selection
+          selectedClientId = client.id;
+          
+          // Update client list
+          updateClientList(server.getClients());
+        });
+        
+        clientList.appendChild(clientElem);
+      });
+    }
+    
+    // Update game state display
+    function updateGameState(gameState) {
+      if (!gameState) return;
+      
+      // Update game state display
+      const gameStateElem = document.getElementById('game-state');
+      
+      // Calculate state hash for the game state panel
+      let stateHash = 'N/A';
+      if (server && server.serverState.tokenService && server.serverState.tokenService.hashGameState) {
+        try {
+          // Enable debug mode temporarily to see serialization and hash details
+          const debugEnabled = server.serverState.tokenService.debugMode;
+          server.serverState.tokenService.debugMode = true;
+          
+          // Use the token service's normalization and hash calculation
+          // This ensures we use exactly the same process on server and client
+          stateHash = server.serverState.tokenService.hashGameState(gameState);
+          console.log(`Server - Hash calculated for frame ${gameState.frame}:`, stateHash);
+          
+          // Restore previous debug setting
+          server.serverState.tokenService.debugMode = debugEnabled;
+        } catch (error) {
+          console.error('Failed to calculate game state hash:', error.message);
+        }
+      }
+      
+      gameStateElem.innerHTML = `
+        <strong>Frame:</strong> ${gameState.frame}<br>
+        <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
+        <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
+        <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
+        <strong>State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${stateHash}</span><br>
+      `;
+      
+      // Also update token info to ensure frame numbers are in sync
+      updateTokenInfo();
+      
+      // Display player information
+      if (Object.keys(gameState.players).length > 0) {
+        gameStateElem.innerHTML += '<br><strong>Player Information:</strong><br>';
+        
+        Object.keys(gameState.players).forEach(playerId => {
+          const player = gameState.players[playerId];
+          const score = gameState.score?.[playerId] || 0;
+          
+          gameStateElem.innerHTML += `
+            - ${player.name}: Health: ${Math.round(player.health)} | Score: ${score}<br>
+          `;
+        });
+      }
+      
+      // Display item information
+      if (gameState.items && Object.keys(gameState.items).length > 0) {
+        gameStateElem.innerHTML += '<br><strong>Items:</strong><br>';
+        
+        Object.keys(gameState.items).forEach(itemId => {
+          const item = gameState.items[itemId];
+          
+          gameStateElem.innerHTML += `
+            - ${itemId}: Type: ${item.type} | Value: ${item.value}<br>
+          `;
+        });
+      }
+      
+      // Display game end information if game has ended
+      if (gameState.ended) {
+        gameStateElem.innerHTML += `
+          <br><strong>Game Ended</strong><br>
+          <strong>Winner:</strong> ${gameState.winner ? gameState.players[gameState.winner]?.name || gameState.winner : 'None'}<br>
+        `;
+        
+        if (gameState.finalScores) {
+          gameStateElem.innerHTML += '<strong>Final Scores:</strong><br>';
+          
+          Object.keys(gameState.finalScores).forEach(playerId => {
+            const playerName = gameState.players[playerId]?.name || playerId;
+            const score = gameState.finalScores[playerId];
+            
+            gameStateElem.innerHTML += `
+              - ${playerName}: ${score}<br>
+            `;
+          });
+        }
+      }
+    }
+    
+    // Update token information
+    function updateTokenInfo(tokens) {
+      const tokenInfo = document.getElementById('token-info');
+      
+      if (!server || !server.serverState.tokenService) {
+        tokenInfo.innerHTML = 'Token service not available';
+        return;
+      }
+      
+      // Use the provided token data instead of calling getStatus again
+      const identity = server.serverState.tokenService.getIdentity();
+      
+      // Get token status
+      const tokenStatus = server.serverState.tokenService.getTokenStatus();
+      
+      // Get the server's peer ID for display
+      const peerId = server.serverState.peerId || 'Not registered';
+      
+      // Ensure the displayed username matches the server name in the Server Status panel
+      // Update the token service username if needed to maintain consistency
+      if (identity.username !== server.serverInfo.name) {
+        console.log(`Detected username mismatch: Token service username (${identity.username}) != Server name (${server.serverInfo.name})`);
+        // Note: We can't update the token service username directly as it's set during initialization
+      }
+      
+      // Display server info in the Token System panel, matching the Server Status panel
+      tokenInfo.innerHTML = `
+        <strong>Server Name:</strong> ${server.serverInfo.name}<br>
+        <strong>Token Username:</strong> ${identity.username}<br>
+        <strong>Network ID (Peer ID):</strong> <span style="font-family: monospace; word-break: break-all;">${peerId}</span><br>
+        <strong>Token Public Key Address:</strong> <span style="font-family: monospace; word-break: break-all;">${identity.pubkey}</span><br>
+        <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
+        <strong>Game State Token:</strong> ${server.serverState.tokenService.lastStateToken ? 'Available' : 'Not Created'}<br>
+      `;
+      
+      // Display client token status
+      const clients = server.getClients();
+      if (clients.length > 0) {
+        tokenInfo.innerHTML += '<br><strong>Client Token Status:</strong><br>';
+        
+        clients.forEach(client => {
+          tokenInfo.innerHTML += `
+            - ${client.username || client.id}: ${client.entryTokenReceived ? 'Entry token received' : 'No entry token'}<br>
+          `;
+        });
+      }
+    }
+    
+    // Handle token events
+    function handleTokenEvent(event) {
+      console.log('Token event:', event);
+      
+      // Update token info
+      updateTokenInfo();
+    }
+    
+    // Handle player join event
+    function handlePlayerJoin(player) {
+      console.log('Player joined:', player);
+    }
+    
+    // Handle player leave event
+    function handlePlayerLeave(player) {
+      console.log('Player left:', player);
+    }
+    
+    // Handle game end event
+    function handleGameEnd(result) {
+      console.log('Game ended:', result);
+      
+      // Update token info
+      updateTokenInfo();
+      
+      // After a delay, restart the game if it was manually ended
+      // This timeout gives the token process time to complete
+      setTimeout(() => {
+        // Only restart if the iframe is empty and the server is still running
+        const iframe = document.getElementById('game-iframe');
+        if (iframe.src === '' && !document.getElementById('start-button').disabled) {
+          console.log('Restarting game after token award');
+          initQuakeGame();
+        }
+      }, 5000); // 5 second delay
+    }
+    
+    // Handle messages from the master server, particularly about remote dedicated servers
+    function handleMasterServerMessage(message) {
+      console.log('Received message from master server:', message);
+      
+      // Skip if not a Unicity message
+      if (!message.unicity) return;
+      
+      // Process by message type
+      switch (message.type) {
+        case 'game_server_started':
+          handleGameServerStarted(message);
+          break;
+          
+        case 'game_server_stopped':
+          handleGameServerStopped(message);
+          break;
+          
+        case 'game_server_status':
+          handleGameServerStatus(message);
+          break;
+          
+        case 'game_server_logs':
+          handleGameServerLogs(message);
+          break;
+          
+        case 'error':
+          handleMasterServerError(message);
+          break;
+      }
+    }
+    
+    // Handle successful game server start
+    function handleGameServerStarted(message) {
+      console.log('Remote dedicated server started successfully:', message);
+      
+      // Update status display
+      const statusDisplay = document.getElementById('server-status-display');
+      statusDisplay.innerHTML = `
+        <strong>Status:</strong> Remote dedicated server running<br>
+        <strong>Game ID:</strong> ${message.gameId}<br>
+        <strong>Name:</strong> ${message.serverInfo.name}<br>
+        <strong>Address:</strong> ${message.serverInfo.address}<br>
+        <strong>Map:</strong> ${message.serverInfo.map}<br>
+        <strong>Max Players:</strong> ${message.serverInfo.maxPlayers}<br>
+      `;
+      
+      // Update server state
+      server.serverState.gameId = message.gameId;
+      server.serverState.remoteServerInfo = message.serverInfo;
+      
+      // Update iframe placeholder with server details
+      initGamePlaceholder();
+    }
+    
+    // Handle successful game server stop
+    function handleGameServerStopped(message) {
+      console.log('Remote dedicated server stopped successfully:', message);
+      
+      // Update status display
+      const statusDisplay = document.getElementById('server-status-display');
+      statusDisplay.innerHTML = `
+        <strong>Status:</strong> Remote dedicated server stopped<br>
+      `;
+      
+      // Clear server state
+      server.serverState.gameId = null;
+      server.serverState.remoteServerInfo = null;
+    }
+    
+    // Handle game server status update
+    function handleGameServerStatus(message) {
+      console.log('Received game server status:', message);
+      
+      // Update status display
+      const statusDisplay = document.getElementById('server-status-display');
+      statusDisplay.innerHTML = `
+        <strong>Status:</strong> ${message.status.state}<br>
+        <strong>Game ID:</strong> ${message.gameId}<br>
+        <strong>Name:</strong> ${message.status.name}<br>
+        <strong>Address:</strong> ${message.status.address}<br>
+        <strong>Map:</strong> ${message.status.map}<br>
+        <strong>Players:</strong> ${message.status.players}/${message.status.maxPlayers}<br>
+        <strong>Uptime:</strong> ${formatUptime(message.status.uptime)}<br>
+      `;
+    }
+    
+    // Handle game server logs
+    function handleGameServerLogs(message) {
+      console.log('Received game server logs:', message);
+      
+      // Could display logs in a modal or dedicated panel
+    }
+    
+    // Handle master server errors
+    function handleMasterServerError(message) {
+      console.error('Master server error:', message);
+      
+      // Show error in UI
+      const statusDisplay = document.getElementById('server-status-display');
+      statusDisplay.innerHTML = `
+        <strong>Error:</strong> ${message.error}<br>
+        <strong>Request:</strong> ${message.requestType || 'Unknown'}<br>
+      `;
+      
+      // Alert the user
+      alert(`Master server error: ${message.error}`);
+    }
+    
+    // Format uptime in seconds to readable format
+    function formatUptime(seconds) {
+      if (!seconds) return 'N/A';
+      
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      
+      return `${hours}h ${minutes}m ${secs}s`;
+    }
+  </script>
+</body>
+</html>
