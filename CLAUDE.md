@@ -1,5 +1,19 @@
 # UNIQUAKE (QuakeJS) Project Guide
 
+## Project Setup
+- Clone with submodules: `git clone --recursive <repo_url>` 
+- Update submodules: `git submodule update --init --recursive`
+- Main project installation: `npm install`
+- Dedicated server setup:
+  ```
+  cd fresh_quakejs
+  npm install
+  node build/js/browserify.js
+  node build/js/configure-repos.js  # Accept EULA when prompted
+  node build/js/download-assets.js
+  ```
+- Environment config: Create `.env` file with `GAME_SERVER_IP=your_server_ip`
+
 ## Build & Run Commands
 - Install dependencies: `npm install`
 - Start web server: `npm start` or `node bin/web.js --config ./bin/web.json`
@@ -13,6 +27,9 @@
 - Build engine: `cd ioq3 && make PLATFORM=js EMSCRIPTEN=<path_to_emscripten>`
 - Repackage assets: `npm run repak` or `node bin/repak.js --src <assets_src> --dest <assets>`
 - Testing: Manual testing through browser mocks (no automated tests found)
+- Manage dedicated servers:
+  - Check running servers: `ps aux | grep node | grep quakejs`
+  - Kill server: `kill <pid>`
 
 ## Code Style Guidelines
 - Imports: Node.js require pattern; group external modules first, then internal
