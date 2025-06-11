@@ -408,9 +408,12 @@
           <button id="verify-button" disabled>Verify Game State</button>
         </div>
         
+        <!-- Direct connection button removed for security -->
+        <!--
         <div class="button-row" style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #444;">
           <button id="direct-connect-button" style="background-color: #4caf50; width: 100%;">Connect to Dedicated Server via Original Web Server</button>
         </div>
+        -->
         
         <h2>Game State</h2>
         <div class="player-list" id="player-list">No players connected</div>
@@ -642,7 +645,8 @@
         }
       });
       
-      // Direct connect button
+      // Direct connect button removed for security
+      /*
       document.getElementById('direct-connect-button').addEventListener('click', function() {
         const iframe = document.getElementById('game-iframe');
         
@@ -660,6 +664,7 @@
           }
         }
       });
+      */
       
       document.getElementById('fullscreen-button').addEventListener('click', function() {
         const iframe = document.getElementById('game-iframe');
@@ -904,9 +909,8 @@
       debugInfo.style.zIndex = '9999';
       debugInfo.innerHTML = `
         <strong>Connection Debug:</strong><br>
-        URL: ${quakeClientUrl}<br>
         Server ID: ${serverId}<br>
-        Target: Direct connection to ${serverAddress}
+        Target: Direct connection to server
       `;
       document.body.appendChild(debugInfo);
     }
@@ -945,7 +949,7 @@
           <div class="server-name">${server.name}</div>
           <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
           <div class="server-info">ID: ${server.peerId}</div>
-          <div class="server-info">Address: ${server.address || 'Not specified'}</div>
+          <div class="server-info" style="display:none;">Address: ${server.address || 'Not specified'}</div>
         `;
         
         serverElem.addEventListener('click', () => {
