@@ -3,6 +3,7 @@
 /**
  * Combined master server for UniQuake
  * Provides both WebRTC signaling and QuakeJS protocol support
+ * Includes Unicity Framework integration
  */
 
 const path = require("path");
@@ -38,13 +39,17 @@ logger.level = "debug";
 // Get config file path
 const configPath = argv.config;
 
+// Global server instances
+let masterServer = null;
+let quakeMaster = null;
+
 // Start servers
 async function start() {
   try {
-    logger.info("Starting combined master server...");
+    logger.info("Starting combined master server with Unicity support...");
     
     // Start WebRTC master server
-    const masterServer = new MasterServer(configPath);
+    masterServer = new MasterServer(configPath);
     
     // Override config with command line arguments
     if (argv.port) masterServer.config.port = argv.port;
@@ -53,23 +58,22 @@ async function start() {
     // Get quake port from args or config
     const quakePort = argv["quake-port"] || masterServer.config.port;
     
-    // Start WebRTC master server
-    await masterServer.start();
-    
     // Create QuakeJS master adapter
-    // Instead of starting its own server, we'll manually initialize it
-    // to use the existing HTTP server from our WebRTC master
-    const quakeMaster = new QuakeMasterAdapter({
+    quakeMaster = new QuakeMasterAdapter({
       port: quakePort,
       host: masterServer.config.host || "0.0.0.0",
       publicIp: masterServer.config.publicIp
     });
     
-    // Pass the existing HTTP server to the adapter instead of starting a new one
-    quakeMaster.init(masterServer.httpServer);
+    // Register the Quake protocol handler with the master server
+    masterServer.registerQuakeProtocolHandler(quakeMaster);
+    
+    // Start the master server with integrated Quake support
+    await masterServer.start();
     
     logger.info(`Combined master server running on port ${masterServer.config.port}`);
     logger.info(`QuakeJS master adapter running on port ${quakePort}`);
+    logger.info(`Unicity Framework integration enabled (using same WebSocket endpoint)`);
     
     // Handle graceful shutdown
     process.on("SIGINT", async () => {
@@ -85,11 +89,22 @@ async function start() {
       quakeMaster.stop();
       process.exit(0);
     });
+    
+    return { masterServer, quakeMaster };
   } catch (err) {
     logger.error(`Failed to start master server: ${err.message}`);
     process.exit(1);
   }
 }
 
-// Start everything
-start();
+// Expose server instances for external access
+module.exports = {
+  start,
+  getMasterServer: () => masterServer,
+  getQuakeMaster: () => quakeMaster
+};
+
+// Start everything if this is the main module
+if (require.main === module) {
+  start();
+}
