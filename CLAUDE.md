@@ -3,6 +3,16 @@
 ## Project Setup
 - Clone with submodules: `git clone --recursive <repo_url>` 
 - Update submodules: `git submodule update --init --recursive`
+- Fix submodule URLs: 
+  ```
+  cd fresh_quakejs
+  # Check and fix git:// URLs to use https:// instead
+  sed -i 's|git://github.com|https://github.com|g' .gitmodules
+  git config --file=.gitmodules submodule.ioq3.url https://github.com/inolen/ioq3.git
+  git submodule sync
+  git submodule update --init --recursive
+  cd ..
+  ```
 - Main project installation: `npm install`
 - Dedicated server setup:
   ```

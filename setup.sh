@@ -38,6 +38,16 @@ echo ""
 # Explicitly ensure the nested ioq3 submodule is initialized
 echo "=== Initializing nested ioq3 submodule ==="
 cd fresh_quakejs
+
+# Check if .gitmodules uses git:// protocol and fix it to use https:// if needed
+if grep -q "git://" .gitmodules; then
+  echo "Updating submodule URL from git:// to https:// protocol..."
+  sed -i 's|git://github.com|https://github.com|g' .gitmodules
+  git config --file=.gitmodules submodule.ioq3.url https://github.com/inolen/ioq3.git
+  git submodule sync
+fi
+
+# Initialize the submodule
 git submodule update --init --recursive
 cd ..
 echo "Nested ioq3 submodule initialized successfully."

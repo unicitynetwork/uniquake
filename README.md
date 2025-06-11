@@ -31,6 +31,8 @@ Note: The project uses nested submodules:
 - `fresh_quakejs`: QuakeJS game server (https://github.com/inolen/quakejs.git)
 - `fresh_quakejs/ioq3`: ioquake3 engine (https://github.com/inolen/ioq3.git)
 
+Important: The fresh_quakejs submodule might reference ioq3 using the git:// protocol, which can cause issues with firewalls. The setup script automatically fixes this to use https:// instead. If you're setting up manually, check and update fresh_quakejs/.gitmodules to use https:// URLs.
+
 ### 2. Install Dependencies for Main Project
 
 ```bash
