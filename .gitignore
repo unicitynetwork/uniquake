@@ -3,3 +3,6 @@ assets/
 assets_src/
 node_modules/
 ref_materials/
+
+fresh_quakejs/
+baseq3/

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UniQuake Server with Game</title>
+  <title>Server</title>
   <style>
     body {
       font-family: 'Courier New', monospace;
@@ -44,7 +44,7 @@
     }
     
     .server-panel {
-      width: 700px;
+      width: 467px; /* Reduced from 700px by 1.5 times */
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
@@ -255,13 +255,15 @@
 
     /* Game iframe styles */
     .game-container {
-      width: 100%;
+      width: 50%; /* Reduced from 100% to 50% (shrunk by half) */
       aspect-ratio: 16/9;
       height: 500px; /* Larger fixed height */
       margin-bottom: 10px;
       position: relative;
       border-radius: 5px;
       overflow: hidden;
+      margin-left: auto; /* Center the container by pushing from left */
+      margin-right: auto; /* Center the container by pushing from right */
     }
     
     .game-iframe {
@@ -303,7 +305,7 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>UniQuake Server with Game</h1>
+      <h1>Server</h1>
     </div>
     
     <div class="main-content">

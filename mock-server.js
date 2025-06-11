@@ -60,16 +60,16 @@ app.get('/index.ejs', function(req, res) {
 
 // Handle the root path for the Quake game
 app.get('/quake', function(req, res) {
-  // Access query parameters
-  const map = req.query.map || 'q3dm1';
-  const connect = req.query.connect || '';
-  const dedicated = req.query.dedicated || '';
+  // Extract cmdline parameter from query string
+  const cmdline = req.query.cmdline || '';
   
   // Set up locals for template rendering
   res.locals = {
     content: 'content.quakejs.com',
-    useWebRTC: true,
-    masterServer: 'localhost:27950'
+    useWebRTC: false,  // Disable WebRTC, use plain WebSockets
+    masterServer: 'localhost:27950',
+    // Pass any command line parameters directly to the template
+    cmdline: cmdline
   };
   
   // Convert the EJS template to HTML and send it with proper content type
