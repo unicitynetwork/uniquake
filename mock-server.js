@@ -3,6 +3,10 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 const url = require('url');
+const async = require('async');
+const crc32 = require('buffer-crc32');
+const zlib = require('zlib');
+const send = require('send');
 
 const app = express();
 const port = 8080;
@@ -13,6 +17,91 @@ const DEFAULT_MASTER_SERVER = process.env.MASTER_SERVER_URL || 'ws://localhost:2
 console.log(`Using default master server: ${DEFAULT_MASTER_SERVER}`);
 console.log(`You can override this by setting the MASTER_SERVER_URL environment variable`);
 console.log(`Example: MASTER_SERVER_URL=ws://your-server-ip:27950 npm run browser-mock`);
+
+// Content server configuration
+const ASSETS_ROOT = path.join(__dirname, 'fresh_quakejs/base');
+const validAssets = ['.pk3', '.run', '.sh'];
+let currentManifest = null;
+let currentManifestTimestamp = new Date();
+
+// Content server functions
+function getAssets() {
+  const wrench = require('wrench');
+  try {
+    return wrench.readdirSyncRecursive(ASSETS_ROOT).filter(function (file) {
+      const ext = path.extname(file);
+      return validAssets.indexOf(ext) !== -1;
+    }).map(function (file) {
+      return path.join(ASSETS_ROOT, file);
+    });
+  } catch (err) {
+    console.warn('Assets directory not found, returning empty array:', err.message);
+    return [];
+  }
+}
+
+function generateManifest(callback) {
+  console.log('Generating asset manifest from', ASSETS_ROOT);
+  
+  const assets = getAssets();
+  const start = Date.now();
+
+  if (assets.length === 0) {
+    console.warn('No assets found, creating empty manifest');
+    return callback(null, []);
+  }
+
+  async.map(assets, function (file, cb) {
+    console.log('Processing', file);
+
+    const name = path.relative(ASSETS_ROOT, file);
+    let crc = crc32.unsigned('');
+    let compressed = 0;
+    let size = 0;
+
+    const stream = fs.createReadStream(file);
+    const gzip = zlib.createGzip();
+
+    stream.on('error', function (err) {
+      cb(err);
+    });
+    stream.on('data', function (data) {
+      crc = crc32.unsigned(data, crc);
+      size += data.length;
+      gzip.write(data);
+    });
+    stream.on('end', function () {
+      gzip.end();
+    });
+
+    gzip.on('data', function (data) {
+      compressed += data.length;
+    });
+    gzip.on('end', function () {
+      cb(null, {
+        name: name,
+        compressed: compressed,
+        checksum: crc
+      });
+    });
+  }, function (err, entries) {
+    if (err) return callback(err);
+    console.log(`Generated manifest (${entries.length} entries) in ${(Date.now() - start) / 1000} seconds`);
+    callback(err, entries);
+  });
+}
+
+// Initialize manifest
+generateManifest(function(err, manifest) {
+  if (err) {
+    console.error('Failed to generate manifest:', err);
+    currentManifest = [];
+  } else {
+    currentManifest = manifest;
+    currentManifestTimestamp = new Date();
+    console.log('Asset manifest ready with', manifest.length, 'entries');
+  }
+});
 
 // Serve static files from root directory
 app.use(express.static(__dirname));
@@ -89,6 +178,125 @@ app.get('/webrtc-loader.js', function(req, res) {
   res.sendfile(path.join(__dirname, 'lib/client/webrtc-loader.js'));
 });
 
+// Asset serving routes (content server functionality)
+// Serve manifest at both /assets/ and root paths
+app.get('/manifest.json', function(req, res) {
+  console.log('Serving manifest to', req.ip, 'via', req.path);
+  
+  res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate');
+  res.setHeader('Last-Modified', currentManifestTimestamp.toUTCString());
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  res.json(currentManifest || []);
+});
+
+app.get('/assets/manifest.json', function(req, res) {
+  console.log('Serving manifest to', req.ip, 'via', req.path);
+  
+  res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate');
+  res.setHeader('Last-Modified', currentManifestTimestamp.toUTCString());
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  res.json(currentManifest || []);
+});
+
+// Serve assets from /assets/* path
+app.get('/assets/*', function(req, res) {
+  const assetPath = req.params[0]; // This will be like "baseq3/pak0.pk3"
+  const fullPath = path.join(ASSETS_ROOT, assetPath);
+  
+  console.log('Serving asset:', assetPath, 'to', req.ip);
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Check if file exists
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).send('Asset not found');
+  }
+  
+  // Use send module to serve the file with proper headers
+  send(req, assetPath, { root: ASSETS_ROOT })
+    .on('error', function(err) {
+      console.error('Error serving asset:', err);
+      res.status(err.status || 500).send('Error serving asset');
+    })
+    .pipe(res);
+});
+
+// Serve assets with checksum validation (original content server format)
+app.get(/^\/assets\/(.+\/|)(\d+)-(.+?)$/, function(req, res) {
+  const basedir = req.params[0] || '';
+  const checksum = parseInt(req.params[1], 10);
+  const basename = req.params[2];
+  const relativePath = path.join(basedir, basename);
+  const absolutePath = path.join(ASSETS_ROOT, relativePath);
+
+  console.log('Serving asset with checksum validation:', relativePath, 'checksum:', checksum, 'to', req.ip);
+
+  // Validate asset against manifest
+  let asset = null;
+  for (let i = 0; i < (currentManifest || []).length; i++) {
+    const entry = currentManifest[i];
+    if (entry.name === relativePath && entry.checksum === checksum) {
+      asset = entry;
+      break;
+    }
+  }
+
+  if (!asset) {
+    console.log('Asset not found in manifest or checksum mismatch:', relativePath, checksum);
+    return res.status(400).send('Invalid asset or checksum');
+  }
+
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year cache
+
+  // Check if file exists
+  if (!fs.existsSync(absolutePath)) {
+    return res.status(404).send('Asset file not found');
+  }
+
+  // Send the file
+  res.sendFile(absolutePath);
+});
+
+// Serve assets from /baseq3/* path (fallback for direct access)
+app.get('/baseq3/*', function(req, res) {
+  const fileName = req.params[0]; // This will be like "pak0.pk3"
+  const assetPath = 'baseq3/' + fileName; // Make it "baseq3/pak0.pk3"
+  const fullPath = path.join(ASSETS_ROOT, assetPath);
+  
+  console.log('Serving asset (direct):', assetPath, 'to', req.ip);
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Check if file exists
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).send('Asset not found');
+  }
+  
+  // Use send module to serve the file with proper headers
+  send(req, assetPath, { root: ASSETS_ROOT })
+    .on('error', function(err) {
+      console.error('Error serving asset:', err);
+      res.status(err.status || 500).send('Error serving asset');
+    })
+    .pipe(res);
+});
+
 // Serve Quake game files from build directory
 app.use('/build', express.static(path.join(__dirname, 'build')));
 
@@ -127,9 +335,12 @@ app.get('/quake', function(req, res) {
   
   console.log(`Using master server ${masterServer} for Quake game`);
   
+  // Get the current host from the request to serve assets locally
+  const currentHost = req.get('host') || 'localhost:8080';
+  
   // Set up locals for template rendering
   res.locals = {
-    content: 'content.quakejs.com',
+    content: currentHost,  // Use current host without /assets path - let Quake handle the pathing
     useWebRTC: false,  // Disable WebRTC, use plain WebSockets
     masterServer: masterServer,
     // Pass any command line parameters directly to the template
