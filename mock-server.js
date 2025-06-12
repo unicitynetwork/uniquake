@@ -2,9 +2,13 @@ const express = require('express');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+const url = require('url');
 
 const app = express();
 const port = 8080;
+
+// Default master server configuration
+const DEFAULT_MASTER_SERVER = 'ws://localhost:27950';
 
 // Serve static files from root directory
 app.use(express.static(__dirname));
@@ -17,12 +21,48 @@ app.get('/', function(req, res) {
   res.sendfile(path.join(__dirname, 'browser-mock-client.html'));
 });
 
+// Modified client route to support master server URL parameter
 app.get('/client', function(req, res) {
-  res.sendfile(path.join(__dirname, 'client.html'));
+  // Get the master server URL from query parameter or use default
+  const masterServer = req.query.master || DEFAULT_MASTER_SERVER;
+  
+  // Read the client.html file
+  fs.readFile(path.join(__dirname, 'client.html'), 'utf8', function(err, data) {
+    if (err) {
+      return res.status(500).send('Error loading client page');
+    }
+    
+    // Replace the default master server URL with the provided one
+    const modifiedHtml = data.replace(
+      /masterServer: ['"]ws:\/\/localhost:27950['"]/g, 
+      `masterServer: '${masterServer}'`
+    );
+    
+    // Send the modified HTML
+    res.send(modifiedHtml);
+  });
 });
 
+// Modified server route to support master server URL parameter
 app.get('/server', function(req, res) {
-  res.sendfile(path.join(__dirname, 'server.html'));
+  // Get the master server URL from query parameter or use default
+  const masterServer = req.query.master || DEFAULT_MASTER_SERVER;
+  
+  // Read the server.html file
+  fs.readFile(path.join(__dirname, 'server.html'), 'utf8', function(err, data) {
+    if (err) {
+      return res.status(500).send('Error loading server page');
+    }
+    
+    // Replace the default master server URL with the provided one
+    const modifiedHtml = data.replace(
+      /masterServer: ['"]ws:\/\/localhost:27950['"]/g, 
+      `masterServer: '${masterServer}'`
+    );
+    
+    // Send the modified HTML
+    res.send(modifiedHtml);
+  });
 });
 
 // Serve transport-detector.js
@@ -63,11 +103,31 @@ app.get('/quake', function(req, res) {
   // Extract cmdline parameter from query string
   const cmdline = req.query.cmdline || '';
   
+  // Get the master server URL from query parameter or use default
+  const rawMaster = req.query.master || DEFAULT_MASTER_SERVER;
+  
+  // Convert from WebSocket URL format (ws://host:port) to Quake format (host:port)
+  let masterServer = 'localhost:27950';
+  try {
+    // Extract hostname and port from WebSocket URL
+    if (rawMaster.startsWith('ws://') || rawMaster.startsWith('wss://')) {
+      const parsedUrl = new URL(rawMaster);
+      masterServer = parsedUrl.host; // host includes hostname and port
+    } else {
+      // If it's already in host:port format, use it directly
+      masterServer = rawMaster;
+    }
+  } catch (e) {
+    console.error('Error parsing master server URL:', e);
+  }
+  
+  console.log(`Using master server ${masterServer} for Quake game`);
+  
   // Set up locals for template rendering
   res.locals = {
     content: 'content.quakejs.com',
     useWebRTC: false,  // Disable WebRTC, use plain WebSockets
-    masterServer: 'localhost:27950',
+    masterServer: masterServer,
     // Pass any command line parameters directly to the template
     cmdline: cmdline
   };
@@ -102,4 +162,8 @@ server.listen(port, function() {
   console.log('Mock server listening on port ' + port);
   console.log('Client URL: http://localhost:' + port + '/client');
   console.log('Server URL: http://localhost:' + port + '/server');
+  console.log('');
+  console.log('To use a different master server, append ?master=ws://host:port to the URLs:');
+  console.log('Example: http://localhost:' + port + '/client?master=ws://example.com:27950');
+  console.log('Example: http://localhost:' + port + '/server?master=ws://example.com:27950');
 });

@@ -35,6 +35,9 @@
   - All components: `npm run start-browser-mocks`
   - Individual: `npm run mock-server`, `npm run mock-client`, `npm run browser-mock`
 - Development server: `npm run browser-mock-all` (runs master server + browser mock)
+- Configure master server in browser mocks:
+  - Client: `http://localhost:8080/client?master=ws://your-server-ip:27950`
+  - Server: `http://localhost:8080/server?master=ws://your-server-ip:27950`
 - Build engine: `cd ioq3 && make PLATFORM=js EMSCRIPTEN=<path_to_emscripten>`
 - Repackage assets: `npm run repak` or `node bin/repak.js --src <assets_src> --dest <assets>`
 - Testing: Manual testing through browser mocks (no automated tests found)

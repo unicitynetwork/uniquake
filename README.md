@@ -119,6 +119,17 @@ npm run browser-mock-all
 
 This runs both the master server and the browser mock interface.
 
+### Configuring Master Server URL
+
+When using the browser mocks, you can specify a different master server URL:
+
+```
+http://localhost:8080/client?master=ws://your-server-ip:27950
+http://localhost:8080/server?master=ws://your-server-ip:27950
+```
+
+This allows you to run the browser mock interface on one machine while connecting to a master server running on another machine.
+
 ## Usage
 
 1. Access the web interface at `http://localhost:8080` (default)
