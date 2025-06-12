@@ -652,7 +652,7 @@
         
         // Use the original QuakeJS web server to serve the game
         // The "connect localhost:27960" parameter tells it to connect to our local dedicated server
-        iframe.src = 'http://localhost:8080/?connect%20localhost:27960';
+        iframe.src = '/?connect%20localhost:27960';
         
         console.log('Directly connecting to localhost:27960 using the original QuakeJS web server');
         
@@ -868,9 +868,9 @@
       }
       
       // Use the direct quake URL to connect to the dedicated server with the correct address
-      let quakeClientUrl = `http://localhost:8080/quake?connect%20${serverAddress}`;
+      let quakeClientUrl = `/quake?connect%20${serverAddress}`;
       
-      // We're using the quake URL which should connect directly to the server
+      // We're using a relative URL which should connect directly to the server
       
       // Set up a load handler before changing the src
       iframe.onload = function() {
