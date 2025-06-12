@@ -660,83 +660,104 @@
     
     // Set up UI event handlers
     function setupUIHandlers() {
-      // Tab switching
-      document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', function() {
-          // Remove active class from all tabs and tab contents
-          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-          
-          // Add active class to clicked tab and corresponding content
-          this.classList.add('active');
-          document.getElementById(this.getAttribute('data-tab') + '-tab').classList.add('active');
+      // Helper function to safely add event listeners
+      function addSafeEventListener(elementId, eventType, handler) {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.addEventListener(eventType, handler);
+        } else {
+          console.warn(`Element with ID '${elementId}' not found`);
+        }
+      }
+      
+      // Tab switching - Check if tabs exist first
+      const tabs = document.querySelectorAll('.tab');
+      if (tabs.length > 0) {
+        tabs.forEach(tab => {
+          tab.addEventListener('click', function() {
+            // Remove active class from all tabs and tab contents
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Add active class to clicked tab and corresponding content
+            this.classList.add('active');
+            const tabContent = document.getElementById(this.getAttribute('data-tab') + '-tab');
+            if (tabContent) {
+              tabContent.classList.add('active');
+            }
+          });
         });
-      });
+      }
       
       // Server control buttons
-      document.getElementById('start-button').addEventListener('click', startServer);
-      document.getElementById('stop-button').addEventListener('click', stopServer);
+      addSafeEventListener('start-button', 'click', startServer);
+      addSafeEventListener('stop-button', 'click', stopServer);
       
       // Server action buttons
-      document.getElementById('broadcast-button').addEventListener('click', broadcastMessage);
-      document.getElementById('game-state-button').addEventListener('click', sendGameState);
-      document.getElementById('end-game-button').addEventListener('click', endGame);
+      addSafeEventListener('broadcast-button', 'click', broadcastMessage);
+      addSafeEventListener('game-state-button', 'click', sendGameState);
+      addSafeEventListener('end-game-button', 'click', endGame);
       
       // Client action buttons
-      document.getElementById('kick-button').addEventListener('click', kickSelectedClient);
-      document.getElementById('message-button').addEventListener('click', sendClientMessage);
+      addSafeEventListener('kick-button', 'click', kickSelectedClient);
+      addSafeEventListener('message-button', 'click', sendClientMessage);
       
       // Token action buttons
-      document.getElementById('tokens-button').addEventListener('click', showTokens);
-      document.getElementById('award-tokens-button').addEventListener('click', awardTokens);
+      addSafeEventListener('tokens-button', 'click', showTokens);
+      addSafeEventListener('award-tokens-button', 'click', awardTokens);
       
       // Game iframe buttons
-      document.getElementById('refresh-game').addEventListener('click', function() {
+      addSafeEventListener('refresh-game', 'click', function() {
         initQuakeGame();
       });
       
       // Add focus management for game iframe
       const gameIframe = document.getElementById('game-iframe');
       
-      // Improved click handler to focus the iframe and capture keyboard input
-      gameIframe.addEventListener('click', function() {
-        // Focus the iframe to capture keyboard events
-        gameIframe.focus();
-        
-        // This helps in some browsers to ensure keyboard focus
-        if (gameIframe.contentWindow) {
-          try {
-            gameIframe.contentWindow.focus();
-          } catch (e) {
-            console.log("Could not focus content window directly:", e);
+      // Only set up focus management if the game iframe exists
+      if (gameIframe) {
+        // Improved click handler to focus the iframe and capture keyboard input
+        gameIframe.addEventListener('click', function() {
+          // Focus the iframe to capture keyboard events
+          gameIframe.focus();
+          
+          // This helps in some browsers to ensure keyboard focus
+          if (gameIframe.contentWindow) {
+            try {
+              gameIframe.contentWindow.focus();
+            } catch (e) {
+              console.log("Could not focus content window directly:", e);
+            }
           }
-        }
+          
+          console.log("Game controls enabled - keyboard input captured");
+        });
         
-        console.log("Game controls enabled - keyboard input captured");
-      });
-      
-      // Optional: Show visual indicator when iframe has focus
-      gameIframe.addEventListener('focus', function() {
-        gameIframe.style.outline = '2px solid #4caf50';
-        console.log("Game iframe focused");
-      });
-      
-      gameIframe.addEventListener('blur', function() {
-        gameIframe.style.outline = 'none';
-        console.log("Game iframe lost focus");
-      });
+        // Optional: Show visual indicator when iframe has focus
+        gameIframe.addEventListener('focus', function() {
+          gameIframe.style.outline = '2px solid #4caf50';
+          console.log("Game iframe focused");
+        });
+        
+        gameIframe.addEventListener('blur', function() {
+          gameIframe.style.outline = 'none';
+          console.log("Game iframe lost focus");
+        });
+        
+        // Make sure the iframe is properly loaded before focusing
+        gameIframe.addEventListener('load', function() {
+          console.log("Game iframe loaded, ready for focus");
+        });
+      } else {
+        console.warn("Game iframe not found");
+      }
       
       // Release focus when Escape key is pressed
       window.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape' && document.activeElement === gameIframe) {
+        if (event.key === 'Escape' && gameIframe && document.activeElement === gameIframe) {
           document.body.focus(); // Move focus away from iframe
           console.log("Game controls disabled (Escape pressed)");
         }
-      });
-      
-      // Make sure the iframe is properly loaded before focusing
-      gameIframe.addEventListener('load', function() {
-        console.log("Game iframe loaded, ready for focus");
       });
     }
     

@@ -561,25 +561,43 @@
     
     // Set up UI event handlers
     function setupUIHandlers() {
-      // Tab switching
-      document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', function() {
-          // Remove active class from all tabs and tab contents
-          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-          
-          // Add active class to clicked tab and corresponding content
-          this.classList.add('active');
-          document.getElementById(this.getAttribute('data-tab') + '-tab').classList.add('active');
+      // Tab switching - Check if tabs exist first
+      const tabs = document.querySelectorAll('.tab');
+      if (tabs.length > 0) {
+        tabs.forEach(tab => {
+          tab.addEventListener('click', function() {
+            // Remove active class from all tabs and tab contents
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Add active class to clicked tab and corresponding content
+            this.classList.add('active');
+            const tabContent = document.getElementById(this.getAttribute('data-tab') + '-tab');
+            if (tabContent) {
+              tabContent.classList.add('active');
+            }
+          });
         });
-      });
+      }
 
+      // Add event listeners with null checks for all UI elements
+      
+      // Helper function to safely add event listeners
+      function addSafeEventListener(elementId, eventType, handler) {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.addEventListener(eventType, handler);
+        } else {
+          console.warn(`Element with ID '${elementId}' not found`);
+        }
+      }
+      
       // Server list buttons
-      document.getElementById('refresh-button').addEventListener('click', () => {
+      addSafeEventListener('refresh-button', 'click', () => {
         client.requestServerList();
       });
       
-      document.getElementById('connect-button').addEventListener('click', () => {
+      addSafeEventListener('connect-button', 'click', () => {
         if (selectedServerId) {
           client.connectToServer(selectedServerId);
           
@@ -588,22 +606,28 @@
         }
       });
       
-      document.getElementById('disconnect-button').addEventListener('click', () => {
+      addSafeEventListener('disconnect-button', 'click', () => {
         client.disconnect();
         
         // Reset Quake game iframe
-        document.getElementById('game-iframe').src = '/';
-      });
-      
-      // Game panel buttons
-      document.getElementById('ping-button').addEventListener('click', async () => {
-        const pingResult = await client.ping();
-        if (pingResult > 0) {
-          document.getElementById('ping-display').textContent = `Ping: ${pingResult}ms`;
+        const gameIframe = document.getElementById('game-iframe');
+        if (gameIframe) {
+          gameIframe.src = '/';
         }
       });
       
-      document.getElementById('verify-button').addEventListener('click', async () => {
+      // Game panel buttons
+      addSafeEventListener('ping-button', 'click', async () => {
+        const pingResult = await client.ping();
+        if (pingResult > 0) {
+          const pingDisplay = document.getElementById('ping-display');
+          if (pingDisplay) {
+            pingDisplay.textContent = `Ping: ${pingResult}ms`;
+          }
+        }
+      });
+      
+      addSafeEventListener('verify-button', 'click', async () => {
         const result = await client.verifyGameState();
         
         // Update the game state display with the latest info
@@ -616,32 +640,35 @@
       });
       
       // Chat input
-      document.getElementById('chat-input').addEventListener('keypress', (e) => {
+      addSafeEventListener('chat-input', 'keypress', (e) => {
         if (e.key === 'Enter') {
           sendChatMessage();
         }
       });
       
-      document.getElementById('send-button').addEventListener('click', sendChatMessage);
+      addSafeEventListener('send-button', 'click', sendChatMessage);
       
       // Token panel buttons
-      document.getElementById('mint-button').addEventListener('click', async () => {
+      addSafeEventListener('mint-button', 'click', async () => {
         if (client.clientState.tokenService) {
           await client.mintTokens(1);
           updateTokenInfo();
         }
       });
       
-      document.getElementById('status-button').addEventListener('click', () => {
+      addSafeEventListener('status-button', 'click', () => {
         updateClientStatus(client.getStatus());
       });
       
       // Game iframe buttons
-      document.getElementById('refresh-game').addEventListener('click', function() {
+      addSafeEventListener('refresh-game', 'click', function() {
         if (client.clientState.connected && selectedServerId) {
           connectQuakeToServer(selectedServerId);
         } else {
-          document.getElementById('game-iframe').src = '/';
+          const gameIframe = document.getElementById('game-iframe');
+          if (gameIframe) {
+            gameIframe.src = '/';
+          }
         }
       });
       
@@ -666,122 +693,102 @@
       });
       */
       
-      document.getElementById('fullscreen-button').addEventListener('click', function() {
-        const iframe = document.getElementById('game-iframe');
-        if (iframe.requestFullscreen) {
-          iframe.requestFullscreen();
-        } else if (iframe.webkitRequestFullscreen) { /* Safari */
-          iframe.webkitRequestFullscreen();
-        } else if (iframe.msRequestFullscreen) { /* IE11 */
-          iframe.msRequestFullscreen();
-        }
-      });
+      // Check if fullscreen button exists before adding event listener
+      const fullscreenButton = document.getElementById('fullscreen-button');
+      if (fullscreenButton) {
+        fullscreenButton.addEventListener('click', function() {
+          const iframe = document.getElementById('game-iframe');
+          if (iframe.requestFullscreen) {
+            iframe.requestFullscreen();
+          } else if (iframe.webkitRequestFullscreen) { /* Safari */
+            iframe.webkitRequestFullscreen();
+          } else if (iframe.msRequestFullscreen) { /* IE11 */
+            iframe.msRequestFullscreen();
+          }
+        });
+      }
       
       // Enhanced focus management for the game iframe
       const gameIframe = document.getElementById('game-iframe');
       
-      // Enhanced click handler with multiple strategies to ensure keyboard focus
-      gameIframe.addEventListener('click', function() {
-        // Add active class for CSS specificity
-        gameIframe.classList.add('active-iframe');
-        
-        // Basic focus method
-        gameIframe.focus();
-        
-        // Advanced focus for Firefox and other browsers
-        if (gameIframe.contentWindow) {
-          try {
-            // Direct focus on content window
-            gameIframe.contentWindow.focus();
-            
-            // Some browsers need a slight delay
-            setTimeout(function() {
-              gameIframe.focus();
-              try {
-                gameIframe.contentWindow.focus();
-              } catch (e) {
-                console.log("Error in delayed focus:", e);
-              }
-            }, 100);
-          } catch (e) {
-            console.log("Could not focus content window directly:", e);
+      // Only set up focus management if the game iframe exists
+      if (gameIframe) {
+        // Enhanced click handler with multiple strategies to ensure keyboard focus
+        gameIframe.addEventListener('click', function() {
+          // Add active class for CSS specificity
+          gameIframe.classList.add('active-iframe');
+          
+          // Basic focus method
+          gameIframe.focus();
+          
+          // Advanced focus for Firefox and other browsers
+          if (gameIframe.contentWindow) {
+            try {
+              // Direct focus on content window
+              gameIframe.contentWindow.focus();
+              
+              // Some browsers need a slight delay
+              setTimeout(function() {
+                gameIframe.focus();
+                try {
+                  gameIframe.contentWindow.focus();
+                } catch (e) {
+                  console.log("Error in delayed focus:", e);
+                }
+              }, 100);
+            } catch (e) {
+              console.log("Could not focus content window directly:", e);
+            }
           }
-        }
+          
+          // Force the browser to acknowledge the iframe is active
+          // This helps in cases where the browser doesn't properly assign focus
+          if (document.activeElement) {
+            document.activeElement.blur();
+          }
+          gameIframe.focus();
+          
+          console.log("Game controls enabled - multiple methods used to capture keyboard input");
+        });
         
-        // Force the browser to acknowledge the iframe is active
-        // This helps in cases where the browser doesn't properly assign focus
-        document.activeElement.blur();
-        gameIframe.focus();
+        // Get the keyboard indicator element
+        const keyboardIndicator = document.getElementById('keyboard-indicator');
         
-        console.log("Game controls enabled - multiple methods used to capture keyboard input");
-      });
-      
-      // Get the keyboard indicator element
-      const keyboardIndicator = document.getElementById('keyboard-indicator');
-      
-      // Get the game container
-      const gameContainer = document.querySelector('.game-container');
-      
-      // Show clear visual indicator when iframe has focus
-      gameIframe.addEventListener('focus', function() {
-        // Add active class
-        gameIframe.classList.add('active-iframe');
+        // Get the game container
+        const gameContainer = document.querySelector('.game-container');
         
-        // Add a thick green outline
-        gameIframe.style.outline = '4px solid #4caf50';
+        // Show clear visual indicator when iframe has focus
+        gameIframe.addEventListener('focus', function() {
+          // Add active class
+          gameIframe.classList.add('active-iframe');
+          
+          // Add a thick green outline
+          gameIframe.style.outline = '4px solid #4caf50';
+          
+          // Add glow effect to the container
+          if (gameContainer) {
+            gameContainer.style.boxShadow = '0 0 25px rgba(76, 175, 80, 0.4)';
+          }
+          
+          // Hide the keyboard indicator
+          if (keyboardIndicator) {
+            keyboardIndicator.classList.add('hidden');
+          }
+          
+          // Add a key hint at the bottom of the page
+          const keyHint = document.querySelector('.button-row span');
+          if (keyHint) {
+            keyHint.innerHTML = '<strong style="color: #4caf50;">KEYBOARD ACTIVE</strong> - Press ESC to release focus';
+          }
+          
+          console.log("Game iframe focused - keyboard input active");
+        });
         
-        // Add glow effect to the container
-        if (gameContainer) {
-          gameContainer.style.boxShadow = '0 0 25px rgba(76, 175, 80, 0.4)';
-        }
-        
-        // Hide the keyboard indicator
-        if (keyboardIndicator) {
-          keyboardIndicator.classList.add('hidden');
-        }
-        
-        // Add a key hint at the bottom of the page
-        const keyHint = document.querySelector('.button-row span');
-        if (keyHint) {
-          keyHint.innerHTML = '<strong style="color: #4caf50;">KEYBOARD ACTIVE</strong> - Press ESC to release focus';
-        }
-        
-        console.log("Game iframe focused - keyboard input active");
-      });
-      
-      gameIframe.addEventListener('blur', function() {
-        // Remove active class
-        gameIframe.classList.remove('active-iframe');
-        
-        // Remove outline
-        gameIframe.style.outline = 'none';
-        
-        // Remove container glow effect
-        if (gameContainer) {
-          gameContainer.style.boxShadow = 'none';
-        }
-        
-        // Show the keyboard indicator
-        if (keyboardIndicator) {
-          keyboardIndicator.classList.remove('hidden');
-        }
-        
-        // Reset key hint
-        const keyHint = document.querySelector('.button-row span');
-        if (keyHint) {
-          keyHint.innerHTML = 'Click game to focus, press ESC to release focus';
-        }
-        
-        console.log("Game iframe lost focus - keyboard input inactive");
-      });
-      
-      // Release focus when Escape key is pressed
-      window.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape' && document.activeElement === gameIframe) {
+        gameIframe.addEventListener('blur', function() {
           // Remove active class
           gameIframe.classList.remove('active-iframe');
           
-          // Clear outline
+          // Remove outline
           gameIframe.style.outline = 'none';
           
           // Remove container glow effect
@@ -800,6 +807,40 @@
             keyHint.innerHTML = 'Click game to focus, press ESC to release focus';
           }
           
+          console.log("Game iframe lost focus - keyboard input inactive");
+        });
+      } else {
+        console.warn("Game iframe element not found");
+      }
+      
+      // Release focus when Escape key is pressed
+      window.addEventListener('keydown', function(event) {
+        // Make sure gameIframe exists and is the active element
+        if (event.key === 'Escape' && gameIframe && document.activeElement === gameIframe) {
+          // Remove active class
+          gameIframe.classList.remove('active-iframe');
+          
+          // Clear outline
+          gameIframe.style.outline = 'none';
+          
+          // Remove container glow effect
+          const gameContainer = document.querySelector('.game-container');
+          if (gameContainer) {
+            gameContainer.style.boxShadow = 'none';
+          }
+          
+          // Show the keyboard indicator
+          const keyboardIndicator = document.getElementById('keyboard-indicator');
+          if (keyboardIndicator) {
+            keyboardIndicator.classList.remove('hidden');
+          }
+          
+          // Reset key hint
+          const keyHint = document.querySelector('.button-row span');
+          if (keyHint) {
+            keyHint.innerHTML = 'Click game to focus, press ESC to release focus';
+          }
+          
           // Move focus away from iframe
           document.body.focus();
           
@@ -808,17 +849,28 @@
       });
       
       // Make sure the iframe is properly loaded before focusing
-      gameIframe.addEventListener('load', function() {
-        console.log("Game iframe loaded, ready for focus");
-      });
+      if (gameIframe) {
+        gameIframe.addEventListener('load', function() {
+          console.log("Game iframe loaded, ready for focus");
+        });
+      }
     }
     
     // Connect Quake to the selected server
     function connectQuakeToServer(serverId) {
       const iframe = document.getElementById('game-iframe');
+      if (!iframe) {
+        console.error('Game iframe not found, cannot connect to server');
+        return;
+      }
       
       // Find the server info from the selected server
       const serverContainer = document.getElementById('servers-container');
+      if (!serverContainer) {
+        console.error('Server container not found');
+        return;
+      }
+      
       const serverItems = serverContainer.querySelectorAll('.server-item');
       let serverInfo = null;
       let serverAddress = null;
@@ -826,8 +878,11 @@
       // First, try to get the server info and address from the UI
       for (let i = 0; i < serverItems.length; i++) {
         if (serverItems[i].getAttribute('data-server-id') === serverId) {
-          const serverName = serverItems[i].querySelector('.server-name').textContent;
-          const mapInfo = serverItems[i].querySelector('.server-info').textContent;
+          const serverNameElem = serverItems[i].querySelector('.server-name');
+          const serverName = serverNameElem ? serverNameElem.textContent : 'Unknown Server';
+          
+          const serverInfoElem = serverItems[i].querySelector('.server-info');
+          const mapInfo = serverInfoElem ? serverInfoElem.textContent : '';
           const mapMatch = mapInfo.match(/Map:\s+([^\s|]+)/);
           const map = mapMatch ? mapMatch[1] : 'q3dm1';
           
@@ -878,18 +933,20 @@
         
         // Wait a moment for the game to fully initialize before focusing
         setTimeout(function() {
-          iframe.focus();
-          
-          // Also try to focus the content window
-          if (iframe.contentWindow) {
-            try {
-              iframe.contentWindow.focus();
-            } catch (e) {
-              console.log("Could not focus content window on load:", e);
+          if (iframe) {
+            iframe.focus();
+            
+            // Also try to focus the content window
+            if (iframe.contentWindow) {
+              try {
+                iframe.contentWindow.focus();
+              } catch (e) {
+                console.log("Could not focus content window on load:", e);
+              }
             }
+            
+            console.log("Game focus set automatically after load");
           }
-          
-          console.log("Game focus set automatically after load");
         }, 1000);
       };
       
@@ -897,22 +954,28 @@
       iframe.src = quakeClientUrl;
       console.log('Connecting Quake client to server with URL:', quakeClientUrl);
       
-      // Add debug info to page
-      const debugInfo = document.createElement('div');
-      debugInfo.style.position = 'fixed';
-      debugInfo.style.bottom = '10px';
-      debugInfo.style.right = '10px';
-      debugInfo.style.background = 'rgba(0,0,0,0.8)';
-      debugInfo.style.color = '#fff';
-      debugInfo.style.padding = '10px';
-      debugInfo.style.borderRadius = '5px';
-      debugInfo.style.zIndex = '9999';
-      debugInfo.innerHTML = `
-        <strong>Connection Debug:</strong><br>
-        Server ID: ${serverId}<br>
-        Target: Direct connection to server
-      `;
-      document.body.appendChild(debugInfo);
+      try {
+        // Add debug info to page
+        const debugInfo = document.createElement('div');
+        if (debugInfo) {
+          debugInfo.style.position = 'fixed';
+          debugInfo.style.bottom = '10px';
+          debugInfo.style.right = '10px';
+          debugInfo.style.background = 'rgba(0,0,0,0.8)';
+          debugInfo.style.color = '#fff';
+          debugInfo.style.padding = '10px';
+          debugInfo.style.borderRadius = '5px';
+          debugInfo.style.zIndex = '9999';
+          debugInfo.innerHTML = `
+            <strong>Connection Debug:</strong><br>
+            Server ID: ${serverId}<br>
+            Target: Direct connection to server
+          `;
+          document.body.appendChild(debugInfo);
+        }
+      } catch (e) {
+        console.error("Could not create debug info:", e);
+      }
     }
     
     // Send a chat message
