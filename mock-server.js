@@ -7,8 +7,12 @@ const url = require('url');
 const app = express();
 const port = 8080;
 
-// Default master server configuration
-const DEFAULT_MASTER_SERVER = 'ws://localhost:27950';
+// Get master server URL from environment variable or use default
+const DEFAULT_MASTER_SERVER = process.env.MASTER_SERVER_URL || 'ws://localhost:27950';
+
+console.log(`Using default master server: ${DEFAULT_MASTER_SERVER}`);
+console.log(`You can override this by setting the MASTER_SERVER_URL environment variable`);
+console.log(`Example: MASTER_SERVER_URL=ws://your-server-ip:27950 npm run browser-mock`);
 
 // Serve static files from root directory
 app.use(express.static(__dirname));
@@ -159,11 +163,15 @@ app.get('/ioq3ded.js', function(req, res) {
 // Start server
 const server = http.createServer(app);
 server.listen(port, function() {
+  console.log('======================================================');
   console.log('Mock server listening on port ' + port);
   console.log('Client URL: http://localhost:' + port + '/client');
   console.log('Server URL: http://localhost:' + port + '/server');
   console.log('');
-  console.log('To use a different master server, append ?master=ws://host:port to the URLs:');
+  console.log('Master server configuration:');
+  console.log(`- Default (from env): ${DEFAULT_MASTER_SERVER}`);
+  console.log('- Override via URL: append ?master=ws://host:port to the URLs');
   console.log('Example: http://localhost:' + port + '/client?master=ws://example.com:27950');
   console.log('Example: http://localhost:' + port + '/server?master=ws://example.com:27950');
+  console.log('======================================================');
 });

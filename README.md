@@ -121,14 +121,22 @@ This runs both the master server and the browser mock interface.
 
 ### Configuring Master Server URL
 
-When using the browser mocks, you can specify a different master server URL:
+When using the browser mocks, you can configure the master server URL in two ways:
+
+1. **Using an environment variable** when starting the mock server:
+
+```bash
+MASTER_SERVER_URL=ws://your-server-ip:27950 npm run browser-mock
+```
+
+2. **Using URL parameters** when accessing the pages:
 
 ```
 http://localhost:8080/client?master=ws://your-server-ip:27950
 http://localhost:8080/server?master=ws://your-server-ip:27950
 ```
 
-This allows you to run the browser mock interface on one machine while connecting to a master server running on another machine.
+The URL parameter takes precedence over the environment variable. This allows you to run the browser mock interface on one machine while connecting to a master server running on another machine.
 
 ## Usage
 
