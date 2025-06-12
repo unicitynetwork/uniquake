@@ -439,11 +439,6 @@
       <div class="right-panels">
         <div class="game-container">
           <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map" allowfullscreen="true"></iframe>
-          <div id="keyboard-indicator" class="keyboard-indicator">CLICK TO ACTIVATE KEYBOARD</div>
-        </div>
-        <div class="button-row">
-          <button id="refresh-game">Refresh Game</button>
-          <span style="color: #aaa; margin-left: 10px; font-size: 12px;">Click game to focus, press ESC to release focus</span>
         </div>
       </div>
     </div>
@@ -660,17 +655,6 @@
         updateClientStatus(client.getStatus());
       });
       
-      // Game iframe buttons
-      addSafeEventListener('refresh-game', 'click', function() {
-        if (client.clientState.connected && selectedServerId) {
-          connectQuakeToServer(selectedServerId);
-        } else {
-          const gameIframe = document.getElementById('game-iframe');
-          if (gameIframe) {
-            gameIframe.src = '/';
-          }
-        }
-      });
       
       // Direct connect button removed for security
       /*
@@ -775,11 +759,6 @@
             keyboardIndicator.classList.add('hidden');
           }
           
-          // Add a key hint at the bottom of the page
-          const keyHint = document.querySelector('.button-row span');
-          if (keyHint) {
-            keyHint.innerHTML = '<strong style="color: #4caf50;">KEYBOARD ACTIVE</strong> - Press ESC to release focus';
-          }
           
           console.log("Game iframe focused - keyboard input active");
         });
@@ -801,11 +780,6 @@
             keyboardIndicator.classList.remove('hidden');
           }
           
-          // Reset key hint
-          const keyHint = document.querySelector('.button-row span');
-          if (keyHint) {
-            keyHint.innerHTML = 'Click game to focus, press ESC to release focus';
-          }
           
           console.log("Game iframe lost focus - keyboard input inactive");
         });

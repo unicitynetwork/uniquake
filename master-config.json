@@ -16,7 +16,7 @@
   "logStunRequests": false,
   "turnLogLevel": "WARNING",
   
-  "pruneInterval": 350000,
+  "pruneInterval": 7200000,
   "credentialTTL": 86400,
   "credentialRotationInterval": 86400000
 }

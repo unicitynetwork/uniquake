@@ -1,4 +1,8 @@
-# UNIQUAKE (QuakeJS) Project Guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+# UNIQUAKE (QuakeJS with Dedicated Server Support)
 
 ## Project Setup
 - Clone with submodules: `git clone --recursive <repo_url>` 
@@ -58,9 +62,33 @@
 - Dependencies: Leverage existing deps (async, underscore, winston, express, ws)
 - WebRTC: Use simple-peer library with compatibility handling
 
-## Development Workflow
+## Architecture Overview
+
+This project extends QuakeJS with WebRTC capabilities and dedicated server management:
+
+### Core Components
+- **Master Server** (`lib/master-server.js`): Main WebRTC signaling server that handles peer connections and server registry
+- **Combined Master** (`bin/combined-master.js`): Unified server combining WebRTC master with traditional QuakeJS master protocol
+- **Game Server Manager** (`lib/game-server-manager.js`): Spawns and manages dedicated server processes using Node.js child processes
+- **Transport Services** (`lib/transport-service.js`): Handles WebRTC peer connections and WebSocket fallback
+- **Browser Mocks** (`lib/client/`): Development interfaces for testing client/server interactions
+
+### Key Architecture Patterns
+- **Dual Transport**: WebRTC for peer-to-peer connections with WebSocket fallback for compatibility
+- **Server Registry**: Centralized tracking of available game servers with heartbeat monitoring
+- **Process Management**: Dedicated servers run as separate Node.js processes, managed by the main server
+- **Signaling Protocol**: Custom WebSocket-based signaling for WebRTC negotiation
+- **Unicity Integration**: Support for @unicitylabs packages for advanced networking features
+
+### Server Lifecycle
+1. Combined master starts and initializes both WebRTC and QuakeJS protocol handlers
+2. Game Server Manager spawns dedicated servers on demand (ports 27961+)
+3. Servers register with master server and send periodic heartbeats
+4. Clients connect via WebRTC (preferred) or WebSocket fallback
+5. Master server handles signaling between peers and maintains server list
+
+### Development Workflow
 - Branch naming: feature/*, bugfix/*, refactor/*
-- Testing: First in browser mocks, then integrate with the main game
-- Servers: Run multiple concurrently with `npm run start-browser-mocks`
-- Debugging: Browser dev tools for client-side (check WebRTC connections)
+- Testing: Use browser mocks first (`npm run start-browser-mocks`), then integrate with main game
+- Debugging: Browser dev tools for client-side WebRTC connections, server logs for backend
 - Logging: Use winston logger throughout the codebase
