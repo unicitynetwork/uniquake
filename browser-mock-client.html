@@ -79,7 +79,7 @@
     }
     
     .chat-panel {
-      flex: 1;
+      flex: 0.5;
       display: flex;
       flex-direction: column;
     }
@@ -168,7 +168,7 @@
     
     .game-state {
       flex: 1;
-      overflow-y: auto;
+      overflow-y: visible;
       background-color: #252525;
       border-radius: 3px;
       padding: 10px;
@@ -304,13 +304,12 @@
       <div class="right-panels">
         <div class="game-panel panel">
           <h2>Game State</h2>
-          <div class="player-list" id="player-list">No players connected</div>
           <div class="game-state" id="game-state">No game state available</div>
-          
-          <div class="button-row">
-            <button id="ping-button" disabled>Ping Server</button>
-            <button id="verify-button" disabled>Verify Game State</button>
-          </div>
+        </div>
+        
+        <div class="token-panel panel">
+          <h2>Token System</h2>
+          <div class="token-info" id="token-info">Token system initializing...</div>
         </div>
         
         <div class="chat-panel panel">
@@ -319,17 +318,6 @@
           <div class="chat-input">
             <input type="text" id="chat-input" placeholder="Type your message..." disabled>
             <button id="send-button" disabled>Send</button>
-          </div>
-        </div>
-        
-        <div class="token-panel panel">
-          <h2>Token System</h2>
-          <div class="token-info" id="token-info">Token system initializing...</div>
-          <div class="verification-info" id="verification-info">No verification performed</div>
-          
-          <div class="button-row">
-            <button id="mint-button">Mint Tokens</button>
-            <button id="status-button">Status</button>
           </div>
         </div>
       </div>
@@ -462,27 +450,6 @@
         client.disconnect();
       });
       
-      // Game panel buttons
-      document.getElementById('ping-button').addEventListener('click', async () => {
-        const pingResult = await client.ping();
-        if (pingResult > 0) {
-          document.getElementById('ping-display').textContent = `Ping: ${pingResult}ms`;
-        }
-      });
-      
-      document.getElementById('verify-button').addEventListener('click', async () => {
-        const result = await client.verifyGameState();
-        // Don't update the verification info panel anymore
-        // updateVerificationInfo(result);
-        
-        // Instead update the game state display with the latest info
-        if (client?.gameIntegration?.game) {
-          const gameState = client.gameIntegration.game.getGameState();
-          // Ensure the game state has the latest verification result
-          gameState.serverHash = result.stateHash;
-          updateGameState(gameState);
-        }
-      });
       
       // Chat input
       document.getElementById('chat-input').addEventListener('keypress', (e) => {
@@ -493,17 +460,6 @@
       
       document.getElementById('send-button').addEventListener('click', sendChatMessage);
       
-      // Token panel buttons
-      document.getElementById('mint-button').addEventListener('click', async () => {
-        if (client.clientState.tokenService) {
-          await client.mintTokens(1);
-          updateTokenInfo();
-        }
-      });
-      
-      document.getElementById('status-button').addEventListener('click', () => {
-        updateClientStatus(client.getStatus());
-      });
     }
     
     // Send a chat message
@@ -564,8 +520,6 @@
     function handleConnectionChange(status) {
       const connectButton = document.getElementById('connect-button');
       const disconnectButton = document.getElementById('disconnect-button');
-      const pingButton = document.getElementById('ping-button');
-      const verifyButton = document.getElementById('verify-button');
       const chatInput = document.getElementById('chat-input');
       const sendButton = document.getElementById('send-button');
       const connectionStatus = document.getElementById('connection-status');
@@ -574,8 +528,6 @@
       if (status.connected) {
         connectButton.disabled = true;
         disconnectButton.disabled = false;
-        pingButton.disabled = false;
-        verifyButton.disabled = false;
         chatInput.disabled = false;
         sendButton.disabled = false;
         connectionStatus.className = 'status-indicator status-connected';
@@ -586,8 +538,6 @@
       } else {
         connectButton.disabled = false;
         disconnectButton.disabled = true;
-        pingButton.disabled = true;
-        verifyButton.disabled = true;
         chatInput.disabled = true;
         sendButton.disabled = true;
         connectionStatus.className = 'status-indicator status-disconnected';
@@ -617,26 +567,6 @@
     // Update game state display
     function updateGameState(gameState) {
       if (!gameState) return;
-      
-      // Update player list
-      const playerListElem = document.getElementById('player-list');
-      if (Object.keys(gameState.players).length === 0) {
-        playerListElem.innerHTML = 'No players connected';
-      } else {
-        playerListElem.innerHTML = '<strong>Players:</strong>';
-        
-        Object.keys(gameState.players).forEach(playerId => {
-          const player = gameState.players[playerId];
-          const score = gameState.score?.[playerId] || 0;
-          
-          const playerElem = document.createElement('div');
-          playerElem.innerHTML = `
-            ${player.name}: Health: ${Math.round(player.health)} | Score: ${score}
-          `;
-          
-          playerListElem.appendChild(playerElem);
-        });
-      }
       
       // Calculate state hash for local state if token service is available
       let localStateHash = 'N/A';
@@ -754,9 +684,6 @@
             <div><strong>Connected Players:</strong></div>
             <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.playerCount}</div>
             
-            <div><strong>Active Items:</strong></div>
-            <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.itemCount}</div>
-            
             <div><strong>Server Timestamp:</strong></div>
             <div style="font-size: 16px; color: #4fc3f7;">${serverTime}</div>
             
@@ -867,16 +794,7 @@
     
     // Update verification information
     function updateVerificationInfo(result) {
-      const verificationInfo = document.getElementById('verification-info');
-      
-      // Just display a simpler version that doesn't constantly update
-      verificationInfo.innerHTML = `
-        <strong>Token System Status</strong><br>
-        <div style="margin-top: 10px; font-size: 12px;">
-          Game state verification is now shown in the Game State panel.<br>
-          The verification status is updated automatically whenever a new state token is received.
-        </div>
-      `;
+      // Verification info panel has been removed - no longer needed
     }
     
     // Handle token events

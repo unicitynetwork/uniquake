@@ -115,13 +115,14 @@
     }
     
     .chat-log {
-      flex: 1;
+      flex: 0.5;
       background-color: #252525;
       border-radius: 3px;
       padding: 10px;
       overflow-y: auto;
       font-size: 14px;
       margin-bottom: 10px;
+      max-height: 150px;
     }
     
     .chat-input {
@@ -403,10 +404,6 @@
           <button id="disconnect-button" disabled>Disconnect</button>
         </div>
         
-        <div class="button-row">
-          <button id="ping-button" disabled>Ping Server</button>
-          <button id="verify-button" disabled>Verify Game State</button>
-        </div>
         
         <!-- Direct connection button removed for security -->
         <!--
@@ -416,23 +413,16 @@
         -->
         
         <h2>Game State</h2>
-        <div class="player-list" id="player-list">No players connected</div>
         <div class="game-state" id="game-state">No game state available</div>
+        
+        <h2>Token System</h2>
+        <div class="token-info" id="token-info">Token system initializing...</div>
         
         <h2>Chat</h2>
         <div class="chat-log" id="chat-log"></div>
         <div class="chat-input">
           <input type="text" id="chat-input" placeholder="Type your message..." disabled>
           <button id="send-button" disabled>Send</button>
-        </div>
-        
-        <h2>Token System</h2>
-        <div class="token-info" id="token-info">Token system initializing...</div>
-        <div class="verification-info" id="verification-info">No verification performed</div>
-        
-        <div class="button-row">
-          <button id="mint-button">Mint Tokens</button>
-          <button id="status-button">Status</button>
         </div>
       </div>
       
@@ -611,28 +601,6 @@
         }
       });
       
-      // Game panel buttons
-      addSafeEventListener('ping-button', 'click', async () => {
-        const pingResult = await client.ping();
-        if (pingResult > 0) {
-          const pingDisplay = document.getElementById('ping-display');
-          if (pingDisplay) {
-            pingDisplay.textContent = `Ping: ${pingResult}ms`;
-          }
-        }
-      });
-      
-      addSafeEventListener('verify-button', 'click', async () => {
-        const result = await client.verifyGameState();
-        
-        // Update the game state display with the latest info
-        if (client?.gameIntegration?.game) {
-          const gameState = client.gameIntegration.game.getGameState();
-          // Ensure the game state has the latest verification result
-          gameState.serverHash = result.stateHash;
-          updateGameState(gameState);
-        }
-      });
       
       // Chat input
       addSafeEventListener('chat-input', 'keypress', (e) => {
@@ -643,17 +611,6 @@
       
       addSafeEventListener('send-button', 'click', sendChatMessage);
       
-      // Token panel buttons
-      addSafeEventListener('mint-button', 'click', async () => {
-        if (client.clientState.tokenService) {
-          await client.mintTokens(1);
-          updateTokenInfo();
-        }
-      });
-      
-      addSafeEventListener('status-button', 'click', () => {
-        updateClientStatus(client.getStatus());
-      });
       
       
       // Direct connect button removed for security
@@ -1011,8 +968,6 @@
     function handleConnectionChange(status) {
       const connectButton = document.getElementById('connect-button');
       const disconnectButton = document.getElementById('disconnect-button');
-      const pingButton = document.getElementById('ping-button');
-      const verifyButton = document.getElementById('verify-button');
       const chatInput = document.getElementById('chat-input');
       const sendButton = document.getElementById('send-button');
       const connectionStatus = document.getElementById('connection-status');
@@ -1021,8 +976,6 @@
       if (status.connected) {
         connectButton.disabled = true;
         disconnectButton.disabled = false;
-        pingButton.disabled = false;
-        verifyButton.disabled = false;
         chatInput.disabled = false;
         sendButton.disabled = false;
         connectionStatus.className = 'status-indicator status-connected';
@@ -1039,8 +992,6 @@
       } else {
         connectButton.disabled = false;
         disconnectButton.disabled = true;
-        pingButton.disabled = true;
-        verifyButton.disabled = true;
         chatInput.disabled = true;
         sendButton.disabled = true;
         connectionStatus.className = 'status-indicator status-disconnected';
@@ -1074,26 +1025,6 @@
     function updateGameState(gameState) {
       if (!gameState) return;
       
-      // Update player list
-      const playerListElem = document.getElementById('player-list');
-      if (Object.keys(gameState.players).length === 0) {
-        playerListElem.innerHTML = 'No players connected';
-      } else {
-        playerListElem.innerHTML = '<strong>Players:</strong>';
-        
-        Object.keys(gameState.players).forEach(playerId => {
-          const player = gameState.players[playerId];
-          const score = gameState.score?.[playerId] || 0;
-          
-          const playerElem = document.createElement('div');
-          playerElem.innerHTML = `
-            ${player.name}: Health: ${Math.round(player.health)} | Score: ${score}
-          `;
-          
-          playerListElem.appendChild(playerElem);
-        });
-      }
-      
       // Calculate state hash for local state if token service is available
       let localStateHash = 'N/A';
       if (client && client.clientState.tokenService && client.clientState.tokenService.hashGameState) {
@@ -1119,9 +1050,38 @@
                          client?.clientState?.lastGameStateVerification?.stateHash || 
                          'Not verified';
       
-      // Check if hashes match
-      const hashesMatch = localStateHash !== 'N/A' && serverHash !== 'Not verified' && 
-                         localStateHash === serverHash;
+      // Determine verification status
+      let verificationStatus;
+      let statusColor;
+      let statusBgColor;
+      let statusText;
+      let statusIcon;
+      
+      if (serverHash === 'Not verified') {
+        // Server hash not available yet - show in progress
+        verificationStatus = 'in_progress';
+        statusColor = '#ffeb3b'; // Yellow
+        statusBgColor = 'rgba(255, 235, 59, 0.1)';
+        statusText = '⏳ IN PROGRESS';
+        statusIcon = 'ansi-yellow';
+      } else if (localStateHash !== 'N/A' && localStateHash === serverHash) {
+        // Hashes match - verified
+        verificationStatus = 'verified';
+        statusColor = '#4caf50'; // Green
+        statusBgColor = 'rgba(76, 175, 80, 0.1)';
+        statusText = '✓ VERIFIED';
+        statusIcon = 'ansi-green';
+      } else {
+        // Hashes don't match - failed
+        verificationStatus = 'failed';
+        statusColor = '#f44336'; // Red
+        statusBgColor = 'rgba(244, 67, 54, 0.1)';
+        statusText = '✗ VERIFICATION FAILED';
+        statusIcon = 'ansi-red';
+      }
+      
+      // For backwards compatibility
+      const hashesMatch = verificationStatus === 'verified';
       
       // Get verified frame number from token verification if available
       const verifiedFrame = client?.clientState?.lastGameStateVerification?.frame || gameState.frame;
@@ -1210,9 +1170,6 @@
             <div><strong>Connected Players:</strong></div>
             <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.playerCount}</div>
             
-            <div><strong>Active Items:</strong></div>
-            <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.itemCount}</div>
-            
             <div><strong>Server Timestamp:</strong></div>
             <div style="font-size: 16px; color: #4fc3f7;">${serverTime}</div>
             
@@ -1237,11 +1194,11 @@
         </div>
         
         <!-- Verification Status Section -->
-        <div style="border: 1px solid ${hashesMatch ? '#4caf50' : '#f44336'}; padding: 10px; border-radius: 4px; margin: 10px 0; background-color: ${hashesMatch ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)'};">
+        <div style="border: 1px solid ${statusColor}; padding: 10px; border-radius: 4px; margin: 10px 0; background-color: ${statusBgColor};">
           <div style="display: flex; align-items: center; margin-bottom: 5px;">
             <strong style="margin-right: 10px;">Verification Status:</strong> 
-            <span class="${hashesMatch ? 'ansi-green' : 'ansi-red'}" style="font-weight: bold; font-size: 16px;">
-              ${hashesMatch ? '✓ VERIFIED' : '✗ VERIFICATION FAILED'}
+            <span class="${statusIcon}" style="font-weight: bold; font-size: 16px;">
+              ${statusText}
             </span>
           </div>
           <div style="display: grid; grid-template-columns: auto 1fr; gap: 5px; font-family: monospace; font-size: 12px;">
@@ -1268,10 +1225,11 @@
       // Also update verification info if we have verification data
       if (client?.clientState?.lastGameStateVerification?.timestamp) {
         updateVerificationInfo({
-          verified: hashesMatch,
+          verified: verificationStatus === 'verified',
           frame: gameState.frame,
           stateHash: serverHash,
-          error: hashesMatch ? null : 'Local state hash does not match server hash'
+          error: verificationStatus === 'failed' ? 'Local state hash does not match server hash' : 
+                 verificationStatus === 'in_progress' ? 'Waiting for server verification' : null
         });
       }
     }
