@@ -119,3 +119,11 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 ### Memory Requirements
 - Downloading game assets requires ~1GB RAM
 - Dedicated servers require moderate memory per instance
+
+### Required Installer Files
+- The content server requires QuakeJS installer files to function properly
+- These are automatically downloaded by setup.sh: 
+  - `linuxq3ademo-1.11-6.x86.gz.sh` (demo installer)
+  - `linuxq3apoint-1.32b-3.x86.run` (point release installer)
+- Without these files, the QuakeJS client will encounter "callback is not defined" errors
+- Files are downloaded from official content.quakejs.com during setup
