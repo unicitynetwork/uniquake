@@ -150,3 +150,18 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 1. Edit `HOST_IP` in `.env` file
 2. Run `npm run config` to regenerate all configs
 3. Restart services
+
+## Game State Token Management
+
+### Token Reset System
+- Game state tokens are automatically reset every 10 frames to prevent size growth
+- When frame number is divisible by 10, a fresh token is created (old transactions discarded)
+- State hashes are recorded for performance tracking (last 50 records kept)
+- 10-second periodic token updates are sent to all clients
+- This maintains performance while preserving game state verification
+
+### Token Update Workflow
+1. Server updates game state every frame
+2. At frames 10, 20, 30, etc. - token is reset to prevent growth
+3. Every 10 seconds - current token is broadcast to all clients
+4. Clients verify received tokens and update their state
