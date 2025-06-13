@@ -108,25 +108,8 @@ else
 fi
 echo ""
 
-echo "Starting dedicated server to download base game files..."
-echo "When the EULA appears, press ENTER to scroll through it, then type 'y' to accept."
-echo "After the files finish downloading, press Ctrl+C to continue setup."
-echo ""
-echo "Press ENTER to continue..."
-read
-
-# Run dedicated server in baseq3 mode to trigger EULA and file download
-node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2
-
-echo ""
-echo "Game files should now be downloaded. If you encountered any errors or didn't"
-echo "see the EULA prompt, please try running the dedicated server manually:"
-echo "  cd fresh_quakejs"
-echo "  node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2"
-
-# Return to main directory
+# Return to main directory for environment setup
 cd ..
-echo ""
 
 # Create logs directory if it doesn't exist
 if [ ! -d "logs" ]; then
@@ -173,6 +156,26 @@ echo ""
 echo "=== Generating configuration files ==="
 npm run config
 echo ""
+
+# Go back to fresh_quakejs for final step
+cd fresh_quakejs
+
+echo "Starting dedicated server to download base game files..."
+echo "When the EULA appears, press ENTER to scroll through it, then type 'y' to accept."
+echo "After the files finish downloading, press Ctrl+C to exit."
+echo "NOTE: Ctrl+C will stop the server but setup is already complete!"
+echo ""
+echo "Press ENTER to continue..."
+read
+
+# Run dedicated server in baseq3 mode to trigger EULA and file download
+node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2
+
+echo ""
+echo "Game files should now be downloaded. If you encountered any errors or didn't"
+echo "see the EULA prompt, please try running the dedicated server manually:"
+echo "  cd fresh_quakejs"
+echo "  node build/ioq3ded.js +set fs_game baseq3 +set dedicated 2"
 
 echo "===== Setup Complete ====="
 echo ""
