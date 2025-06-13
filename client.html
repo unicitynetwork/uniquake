@@ -48,7 +48,7 @@
     }
     
     .left-panel {
-      width: 200px;
+      width: 250px; /* Increased from 200px to 250px */
       min-width: 150px; /* Minimum width for usability */
       max-width: 600px; /* Maximum width to prevent taking over */
       flex-shrink: 0;
@@ -62,16 +62,16 @@
     
     /* Scale down all elements in left panel */
     .left-panel h2 {
-      font-size: 1.2em; /* Relative to the reduced base font size */
+      font-size: 2.4em; /* Increased by 2x: was 1.2em, now 2.4em */
     }
     
     .left-panel button {
-      font-size: 1em; /* Relative to the reduced base font size */
-      padding: 4px 6px; /* Smaller padding */
+      font-size: 2em; /* Increased by 2x: was 1em, now 2em */
+      /* Padding defined in the override below */
     }
     
     .left-panel input {
-      font-size: 1em; /* Relative to the reduced base font size */
+      font-size: 1em; /* Keep input fields at normal size for readability */
       padding: 4px 6px; /* Smaller padding */
     }
     
@@ -157,9 +157,14 @@
       border-radius: 3px;
       padding: 10px;
       overflow-y: auto;
-      font-size: 14px;
+      font-size: 7px; /* Reduced by half: was 14px, now 7px */
       margin-bottom: 10px;
       max-height: 150px;
+    }
+    
+    /* Ensure all chat content uses the smaller font */
+    .chat-log * {
+      font-size: inherit !important;
     }
     
     .chat-input {
@@ -171,9 +176,14 @@
       background-color: #3d3d3d;
       border: none;
       border-radius: 3px;
-      padding: 8px 12px;
+      padding: 8px 12px; /* Default padding for inputs and general buttons */
       color: #e0e0e0;
       font-family: 'Courier New', monospace;
+    }
+    
+    /* Override for left panel buttons to be smaller */
+    .left-panel button {
+      padding: 2px 4px; /* Minimal padding for left panel buttons */
     }
     
     input {
@@ -198,7 +208,7 @@
     .button-row {
       display: flex;
       gap: 10px;
-      margin-top: 10px;
+      margin-top: 4px; /* Reduced from 10px to 4px for tighter spacing */
     }
     
     .status-row {
@@ -223,11 +233,24 @@
     
     .game-state {
       flex: 1;
-      overflow-y: auto;
+      overflow-y: visible; /* Changed from auto to visible for non-scrollable */
       background-color: #252525;
       border-radius: 3px;
       padding: 10px;
-      font-size: 14px;
+      font-size: 9px; /* Reduced from 10.5px to 9px */
+    }
+    
+    /* Override inline styles in game-state content */
+    .game-state div {
+      font-size: inherit !important;
+    }
+    
+    .game-state strong {
+      font-size: inherit !important;
+    }
+    
+    .game-state span {
+      font-size: inherit !important;
     }
     
     .token-info {
@@ -235,6 +258,12 @@
       border-radius: 3px;
       padding: 10px;
       margin-bottom: 10px;
+      font-size: 10.5px; /* Same size as Game State text */
+    }
+    
+    /* Ensure all token info content uses the larger font */
+    .token-info * {
+      font-size: inherit !important;
     }
     
     .verification-info {
@@ -246,10 +275,11 @@
     .server-name {
       font-weight: bold;
       color: #4fc3f7;
+      font-size: 12px; /* Larger than server-info (9px) */
     }
     
     .server-info {
-      font-size: 12px;
+      font-size: 9px; /* Reduced to 75% of 12px = 9px */
       color: #aaa;
     }
     
@@ -308,7 +338,7 @@
     
     .chat-timestamp {
       color: #9e9e9e;
-      font-size: 12px;
+      font-size: 6px; /* Reduced by half: was 12px, now 6px */
       margin-right: 5px;
     }
     
@@ -1203,20 +1233,20 @@
         </div>
         
         <!-- Enhanced Server State Section -->
-        <div style="margin-bottom: 15px; background-color: #2a2a2a; border-radius: 5px; padding: 10px; border-left: 4px solid #00bcd4;">
-          <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px; color: #00bcd4; display: flex; justify-content: space-between; align-items: center;">
+        <div style="margin-bottom: 8px; background-color: #2a2a2a; border-radius: 3px; padding: 6px; border-left: 2px solid #00bcd4;">
+          <div style="font-size: inherit; font-weight: normal; margin-bottom: 4px; color: #00bcd4; display: flex; justify-content: space-between; align-items: center;">
             <span>SERVER STATE</span>
-            <span style="font-size: 12px; background-color: #333; padding: 2px 6px; border-radius: 10px;">Direct from server</span>
+            <span style="font-size: inherit; background-color: #333; padding: 1px 3px; border-radius: 5px;">Direct from server</span>
           </div>
-          <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center;">
-            <div><strong>Connected Players:</strong></div>
-            <div style="font-size: 16px; color: #4fc3f7;">${serverInfo.playerCount}</div>
+          <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px; align-items: center; line-height: 1.2;">
+            <div>Connected Players:</div>
+            <div style="color: #4fc3f7;">${serverInfo.playerCount}</div>
             
-            <div><strong>Server Timestamp:</strong></div>
-            <div style="font-size: 16px; color: #4fc3f7;">${serverTime}</div>
+            <div>Server Timestamp:</div>
+            <div style="color: #4fc3f7;">${serverTime}</div>
             
-            <div><strong>Last Update:</strong></div>
-            <div style="font-size: 16px; color: #4fc3f7;">${(() => {
+            <div>Last Update:</div>
+            <div style="color: #4fc3f7;">${(() => {
               try {
                 if (serverInfo && serverInfo.timestamp && !isNaN(serverInfo.timestamp)) {
                   const secondsAgo = Math.round((Date.now() - serverInfo.timestamp) / 1000);
@@ -1437,8 +1467,8 @@
       
       // Handle double-click to reset to default width
       resizer.addEventListener('dblclick', () => {
-        console.log('Resizer double-click: resetting to 200px');
-        leftPanel.style.width = '200px';
+        console.log('Resizer double-click: resetting to 250px');
+        leftPanel.style.width = '250px';
       });
       
       // Test that the resizer is working by adding a hover effect
