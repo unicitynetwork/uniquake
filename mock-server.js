@@ -3,9 +3,10 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 const url = require('url');
+const config = require('./lib/config');
 
 const app = express();
-const port = 8080;
+const port = config.mockPort;
 
 // Add compression middleware (matching original content server)
 app.use(function (req, res, next) {
@@ -14,7 +15,7 @@ app.use(function (req, res, next) {
 });
 
 // Get master server URL from environment variable or use default
-const DEFAULT_MASTER_SERVER = process.env.MASTER_SERVER_URL || 'ws://213.199.61.236:27950';
+const DEFAULT_MASTER_SERVER = process.env.MASTER_SERVER_URL || config.masterServerWs;
 
 console.log(`Using default master server: ${DEFAULT_MASTER_SERVER}`);
 console.log(`You can override this by setting the MASTER_SERVER_URL environment variable`);
@@ -121,7 +122,7 @@ app.get('/quake', function(req, res) {
   const rawMaster = req.query.master || DEFAULT_MASTER_SERVER;
   
   // Convert from WebSocket URL format (ws://host:port) to Quake format (host:port)
-  let masterServer = '213.199.61.236:27950';
+  let masterServer = config.masterServerAddress;
   try {
     // Extract hostname and port from WebSocket URL
     if (rawMaster.startsWith('ws://') || rawMaster.startsWith('wss://')) {
@@ -139,9 +140,9 @@ app.get('/quake', function(req, res) {
   
   // Set up locals for template rendering
   res.locals = {
-    content: '213.199.61.236:9000',  // Use local content server
+    content: config.contentServerAddress,  // QuakeJS expects host:port (no protocol)
     useWebRTC: false,  // Disable WebRTC, use plain WebSockets
-    masterServer: masterServer,
+    masterServer: masterServer,           // QuakeJS expects host:port (no protocol)
     // Pass any command line parameters directly to the template
     cmdline: cmdline
   };

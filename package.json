@@ -7,18 +7,19 @@
     "uniquake-repak": "bin/repak.js"
   },
   "scripts": {
-    "start": "node bin/web.js --config ./web.json",
-    "master": "node ./fresh_quakejs/bin/master.js --config ../master-config.json",
-    "webrtc-master": "node bin/webrtc-master.js --config ./master-config.json",
-    "master-quake": "node bin/combined-master.js --config ./master-config.json",
-    "master-quake-debug": "LOG_LEVEL=debug node bin/combined-master.js --config ./master-config.json",
-    "content": "node bin/content.js --config ./content-config.json",
+    "config": "node bin/generate-configs.js",
+    "start": "npm run config && node bin/web.js --config ./bin/web.json",
+    "master": "npm run config && node ./fresh_quakejs/bin/master.js --config ../master-config.json",
+    "webrtc-master": "npm run config && node bin/webrtc-master.js --config ./master-config.json",
+    "master-quake": "npm run config && node bin/combined-master.js --config ./master-config.json",
+    "master-quake-debug": "npm run config && LOG_LEVEL=debug node bin/combined-master.js --config ./master-config.json",
+    "content": "npm run config && node bin/content.js --config ./content-config.json",
     "repak": "node bin/repak.js",
     "mock-server": "node lib/mock-server-client.js",
     "mock-client": "node lib/mock-game-client.js",
-    "browser-mock": "node mock-server.js",
+    "browser-mock": "npm run config && node mock-server.js",
     "browser-mock-all": "concurrently \"npm run master\" \"npm run browser-mock\"",
-    "start-browser-mocks": "echo \"Starting master server and browser mock web server...\n\nMaster server: http://localhost:27950\nMock client: http://localhost:8080/client\nMock server: http://localhost:8080/server\n\" && npm run browser-mock-all"
+    "start-browser-mocks": "npm run config && npm run browser-mock-all"
   },
   "repository": {
     "type": "git",

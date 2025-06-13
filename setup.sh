@@ -140,8 +140,38 @@ echo "What is the public IP or hostname of your server?"
 read -p "Server IP/hostname (default: localhost): " server_ip
 server_ip=${server_ip:-localhost}
 
-echo "GAME_SERVER_IP=${server_ip}" > .env
-echo "Environment configuration created with GAME_SERVER_IP=${server_ip}"
+# Create comprehensive .env file
+cat > .env << EOF
+# UniQuake Configuration
+# Public server IP or hostname (required)
+HOST_IP=${server_ip}
+
+# Port configurations
+MASTER_PORT=27950
+CONTENT_PORT=9000
+WEB_PORT=8080
+MOCK_PORT=8080
+
+# Game server configuration
+GAME_SERVER_IP=${server_ip}
+GAME_SERVER_BASE_PORT=27961
+
+# STUN/TURN configuration  
+STUN_PORT=3478
+STUN_PORT_SECONDARY=3479
+TURN_PORT=3478
+TURN_REALM=uniquake.com
+
+# Logging
+LOG_LEVEL=info
+EOF
+
+echo "Environment configuration created with HOST_IP=${server_ip}"
+echo ""
+
+# Generate configuration files
+echo "=== Generating configuration files ==="
+npm run config
 echo ""
 
 echo "===== Setup Complete ====="
@@ -152,5 +182,13 @@ echo "2. Start content server: npm run content"
 echo "3. Start web server: npm start"
 echo ""
 echo "For development, you can use: npm run browser-mock-all"
+echo ""
+echo "Your server will be accessible at:"
+echo "- Web interface: http://${server_ip}:8080"
+echo "- Client mock: http://${server_ip}:8080/client"
+echo "- Server mock: http://${server_ip}:8080/server"
+echo "- Game: http://${server_ip}:8080/quake"
+echo ""
+echo "To change the host IP later, edit the .env file and run 'npm run config'"
 echo ""
 echo "Refer to README.md for more information."
