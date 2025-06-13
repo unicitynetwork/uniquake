@@ -311,34 +311,7 @@
       
       <div class="right-panels">
         <div class="game-panel panel">
-          <h2>Game State</h2>
           <div class="game-state" id="game-state">No game state available</div>
-        </div>
-        
-        <div class="clients-panel panel">
-          <h2>Connected Clients</h2>
-          <div class="client-list" id="client-list">No clients connected</div>
-          
-          <div class="actions-panel">
-            <h3>Client Actions</h3>
-            <div class="action-buttons">
-              <button id="kick-button" disabled>Kick Selected Client</button>
-              <button id="message-button" disabled>Send Message</button>
-            </div>
-          </div>
-        </div>
-        
-        <div class="token-panel panel">
-          <h2>Token System</h2>
-          <div class="token-info" id="token-info">Token system initializing...</div>
-          
-          <div class="actions-panel">
-            <h3>Token Actions</h3>
-            <div class="action-buttons">
-              <button id="tokens-button">Show Tokens</button>
-              <button id="award-tokens-button" disabled>Award Tokens</button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -458,14 +431,11 @@
       // Update initial UI - disable event emission to avoid recursion
       updateServerStatus(server.getStatus(false));
       
-      // Set up regular UI updates to ensure both panels stay in sync
+      // Set up regular UI updates to ensure game state stays in sync
       setInterval(() => {
         if (game && server) {
           // Update game state panel
           updateGameState(game.getGameState());
-          
-          // Update token info panel
-          updateTokenInfo();
           
           console.log(`UI Sync - Game frame: ${game.gameState.frame}, Server frame: ${server.serverState.gameState.frame}`);
         }
@@ -497,13 +467,7 @@
       document.getElementById('game-state-button').addEventListener('click', sendGameState);
       document.getElementById('end-game-button').addEventListener('click', endGame);
       
-      // Client action buttons
-      document.getElementById('kick-button').addEventListener('click', kickSelectedClient);
-      document.getElementById('message-button').addEventListener('click', sendClientMessage);
-      
-      // Token action buttons
-      document.getElementById('tokens-button').addEventListener('click', showTokens);
-      document.getElementById('award-tokens-button').addEventListener('click', awardTokens);
+      // Removed client and token action buttons
     }
     
     // Start the server
@@ -568,9 +532,6 @@
       document.getElementById('broadcast-button').disabled = true;
       document.getElementById('game-state-button').disabled = true;
       document.getElementById('end-game-button').disabled = true;
-      document.getElementById('kick-button').disabled = true;
-      document.getElementById('message-button').disabled = true;
-      document.getElementById('award-tokens-button').disabled = true;
       
       // Enable configuration inputs
       document.getElementById('server-name').disabled = false;
@@ -633,49 +594,7 @@
       }
     }
     
-    // Kick the selected client
-    function kickSelectedClient() {
-      if (!selectedClientId) {
-        alert('No client selected');
-        return;
-      }
-      
-      const reason = prompt('Enter kick reason:');
-      server.kickClient(selectedClientId, reason || 'Kicked by server');
-    }
-    
-    // Send a message to the selected client
-    function sendClientMessage() {
-      if (!selectedClientId) {
-        alert('No client selected');
-        return;
-      }
-      
-      const message = prompt('Enter message:');
-      if (message) {
-        server.sendToClient(selectedClientId, {
-          type: 'chat',
-          from: 'SERVER',
-          message: message
-        });
-      }
-    }
-    
-    // Show token information
-    function showTokens() {
-      updateTokenInfo();
-    }
-    
-    // Award tokens to a client
-    function awardTokens() {
-      if (!selectedClientId) {
-        alert('No client selected');
-        return;
-      }
-      
-      // End game with this client as winner
-      integration.endGame(selectedClientId);
-    }
+    // Removed client and token action functions
     
     // Update server status display
     function updateServerStatus(status) {
@@ -700,47 +619,17 @@
         <strong>Registered:</strong> ${status.registered ? 'Yes' : 'No'}<br>
       `;
       
-      // Update token info if available, but don't trigger another status update
-      if (status.tokens) {
-        updateTokenInfo(status.tokens);
-      }
-      
-      // Update client list
-      updateClientList(status.clients);
+      // Token info and client list panels have been removed
     }
     
     // Handle client connection
     function handleClientConnect(client) {
       console.log('Client connected:', client);
-      
-      // Enable client action buttons if at least one client is connected
-      document.getElementById('kick-button').disabled = false;
-      document.getElementById('message-button').disabled = false;
-      document.getElementById('award-tokens-button').disabled = false;
-      
-      // Update client list
-      updateClientList(server.getClients());
     }
     
     // Handle client disconnection
     function handleClientDisconnect(client) {
       console.log('Client disconnected:', client);
-      
-      // Clear selection if this client was selected
-      if (selectedClientId === client.id) {
-        selectedClientId = null;
-      }
-      
-      // Update client list
-      const clients = server.getClients();
-      updateClientList(clients);
-      
-      // Disable client action buttons if no clients are connected
-      if (clients.length === 0) {
-        document.getElementById('kick-button').disabled = true;
-        document.getElementById('message-button').disabled = true;
-        document.getElementById('award-tokens-button').disabled = true;
-      }
     }
     
     // Handle chat message
@@ -748,44 +637,7 @@
       console.log('Chat message:', event);
     }
     
-    // Update client list display
-    function updateClientList(clients) {
-      const clientList = document.getElementById('client-list');
-      
-      if (!clients || clients.length === 0) {
-        clientList.innerHTML = 'No clients connected';
-        return;
-      }
-      
-      clientList.innerHTML = '';
-      
-      clients.forEach(client => {
-        const clientElem = document.createElement('div');
-        clientElem.className = 'client-item';
-        
-        if (selectedClientId === client.id) {
-          clientElem.className += ' selected';
-          clientElem.style.borderLeft = '3px solid #4fc3f7';
-        }
-        
-        clientElem.innerHTML = `
-          <div class="client-name">${client.username || client.id}</div>
-          <div class="client-info">Network ID: <span style="font-family: monospace; word-break: break-all;">${client.id}</span></div>
-          <div class="client-info">Token Public Key Address: <span style="font-family: monospace; word-break: break-all;">${client.pubkey || 'N/A'}</span></div>
-          <div class="client-info">Entry Token: ${client.entryTokenReceived ? 'Received' : 'Not Received'}</div>
-        `;
-        
-        clientElem.addEventListener('click', () => {
-          // Update selection
-          selectedClientId = client.id;
-          
-          // Update client list
-          updateClientList(server.getClients());
-        });
-        
-        clientList.appendChild(clientElem);
-      });
-    }
+    // Client list display removed
     
     // Update game state display
     function updateGameState(gameState) {
@@ -793,6 +645,11 @@
       
       // Update game state display
       const gameStateElem = document.getElementById('game-state');
+      
+      // Get server information
+      const serverName = server ? server.serverInfo.name : 'Unknown';
+      const serverId = server ? (server.serverState.peerId || 'Not registered') : 'N/A';
+      const collectedTokens = server ? server.serverState.collectedTokens.length : 0;
       
       // Calculate state hash for the game state panel
       let stateHash = 'N/A';
@@ -815,15 +672,14 @@
       }
       
       gameStateElem.innerHTML = `
+        <strong>Server Name:</strong> ${serverName}<br>
+        <strong>Server ID:</strong> <span style="font-family: monospace; word-break: break-all;">${serverId}</span><br>
+        <strong>Balance:</strong> ${collectedTokens} tokens collected<br>
         <strong>Frame:</strong> ${gameState.frame}<br>
         <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
         <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
-        <strong>Items:</strong> ${Object.keys(gameState.items || {}).length}<br>
         <strong>State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${stateHash}</span><br>
       `;
-      
-      // Also update token info to ensure frame numbers are in sync
-      updateTokenInfo();
       
       // Display player information
       if (Object.keys(gameState.players).length > 0) {
@@ -835,19 +691,6 @@
           
           gameStateElem.innerHTML += `
             - ${player.name}: Health: ${Math.round(player.health)} | Score: ${score}<br>
-          `;
-        });
-      }
-      
-      // Display item information
-      if (gameState.items && Object.keys(gameState.items).length > 0) {
-        gameStateElem.innerHTML += '<br><strong>Items:</strong><br>';
-        
-        Object.keys(gameState.items).forEach(itemId => {
-          const item = gameState.items[itemId];
-          
-          gameStateElem.innerHTML += `
-            - ${itemId}: Type: ${item.type} | Value: ${item.value}<br>
           `;
         });
       }
@@ -874,60 +717,11 @@
       }
     }
     
-    // Update token information
-    function updateTokenInfo(tokens) {
-      const tokenInfo = document.getElementById('token-info');
-      
-      if (!server || !server.serverState.tokenService) {
-        tokenInfo.innerHTML = 'Token service not available';
-        return;
-      }
-      
-      // Use the provided token data instead of calling getStatus again
-      const identity = server.serverState.tokenService.getIdentity();
-      
-      // Get token status
-      const tokenStatus = server.serverState.tokenService.getTokenStatus();
-      
-      // Get the server's peer ID for display
-      const peerId = server.serverState.peerId || 'Not registered';
-      
-      // Ensure the displayed username matches the server name in the Server Status panel
-      // Update the token service username if needed to maintain consistency
-      if (identity.username !== server.serverInfo.name) {
-        console.log(`Detected username mismatch: Token service username (${identity.username}) != Server name (${server.serverInfo.name})`);
-        // Note: We can't update the token service username directly as it's set during initialization
-      }
-      
-      // Display server info in the Token System panel, matching the Server Status panel
-      tokenInfo.innerHTML = `
-        <strong>Server Name:</strong> ${server.serverInfo.name}<br>
-        <strong>Token Username:</strong> ${identity.username}<br>
-        <strong>Network ID (Peer ID):</strong> <span style="font-family: monospace; word-break: break-all;">${peerId}</span><br>
-        <strong>Token Public Key Address:</strong> <span style="font-family: monospace; word-break: break-all;">${identity.pubkey}</span><br>
-        <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
-        <strong>Game State Token:</strong> ${server.serverState.tokenService.lastStateToken ? 'Available' : 'Not Created'}<br>
-      `;
-      
-      // Display client token status
-      const clients = server.getClients();
-      if (clients.length > 0) {
-        tokenInfo.innerHTML += '<br><strong>Client Token Status:</strong><br>';
-        
-        clients.forEach(client => {
-          tokenInfo.innerHTML += `
-            - ${client.username || client.id}: ${client.entryTokenReceived ? 'Entry token received' : 'No entry token'}<br>
-          `;
-        });
-      }
-    }
+    // Token information display removed
     
     // Handle token events
     function handleTokenEvent(event) {
       console.log('Token event:', event);
-      
-      // Update token info
-      updateTokenInfo();
     }
     
     // Handle player join event
@@ -943,9 +737,6 @@
     // Handle game end event
     function handleGameEnd(result) {
       console.log('Game ended:', result);
-      
-      // Update token info
-      updateTokenInfo();
     }
   </script>
 </body>
