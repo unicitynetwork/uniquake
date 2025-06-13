@@ -27,15 +27,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   # Press ENTER to scroll through EULA, type 'y' to accept
   # Press Ctrl+C after files download
   ```
-- Environment config: Create `.env` file with `GAME_SERVER_IP=your_server_ip`
+- Environment config: Run `./setup.sh` or copy `.env.example` to `.env` and configure `HOST_IP`
 
 ## Build & Run Commands
 - Install dependencies: `npm install`
-- Start web server: `npm start` or `node bin/web.js --config ./bin/web.json`
+- Configure for your host: `npm run config` (generates configs from .env)
+- Start web server: `npm start` (auto-generates config)
 - Run QuakeJS master server: `npm run master` (uses fresh_quakejs submodule)
-- Run WebRTC master server: `npm run webrtc-master` or `node bin/webrtc-master.js`
-- Run combined master: `npm run master-quake` or `node bin/combined-master.js`
-- Run content server: `npm run content` or `node bin/content.js`
+- Run WebRTC master server: `npm run webrtc-master`
+- Run combined master: `npm run master-quake` (recommended)
+- Run content server: `npm run content`
 - Run browser mocks:
   - All components: `npm run start-browser-mocks`
   - Individual: `npm run mock-server`, `npm run mock-client`, `npm run browser-mock`
@@ -127,3 +128,25 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
   - `linuxq3apoint-1.32b-3.x86.run` (point release installer)
 - Without these files, the QuakeJS client will encounter "callback is not defined" errors
 - Files are downloaded from official content.quakejs.com during setup
+
+## Configuration System
+
+### Environment-Based Configuration
+- Configuration is managed through `.env` file and environment variables
+- Key setting: `HOST_IP` - sets the public IP/hostname for all services
+- All npm scripts automatically generate configs based on current .env settings
+- Run `npm run config` to regenerate config files after changing .env
+
+### IP vs URL Usage
+- **QuakeJS configs**: Use `host:port` format (no protocol)
+  - `content: "192.168.1.100:9000"`
+  - `masterServer: "192.168.1.100:27950"`
+- **WebSocket connections**: Use full `ws://` URLs
+  - `ws://192.168.1.100:27950`
+- **STUN/TURN**: Use raw IP addresses
+  - `publicIp: "192.168.1.100"`
+
+### Quick Host Change
+1. Edit `HOST_IP` in `.env` file
+2. Run `npm run config` to regenerate all configs
+3. Restart services
