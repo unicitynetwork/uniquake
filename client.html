@@ -25,12 +25,61 @@
     
     .header {
       margin-bottom: 10px; /* Reduced margin to give more space to the game */
+      display: flex;
+      justify-content: flex-end; /* Align to the right since no title */
+      align-items: center;
     }
     
-    .header h1 {
-      margin: 0;
+    .player-info {
+      font-size: 0.7rem;
+      color: #e0e0e0;
+      display: flex;
+      gap: 15px; /* Space between the three elements */
+      align-items: center;
+    }
+    
+    .player-name {
       color: #4fc3f7;
-      font-size: 0.7rem; /* Reduced by triple fold */
+      font-weight: bold;
+    }
+    
+    .player-pubkey {
+      color: #aaa;
+      font-family: monospace;
+      cursor: pointer;
+      text-decoration: underline;
+      transition: color 0.2s;
+      position: relative;
+    }
+    
+    .player-pubkey:hover {
+      color: #4fc3f7;
+    }
+    
+    .copy-hint {
+      position: absolute;
+      top: -30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #333;
+      color: #4caf50;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.6rem;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    
+    .copy-hint.show {
+      opacity: 1;
+    }
+    
+    .player-balance {
+      color: #4caf50;
+      font-weight: bold;
     }
     
     .main-content {
@@ -152,14 +201,14 @@
     }
     
     .chat-log {
-      flex: 0.5;
+      flex: 1; /* Expanded to fill remaining space */
       background-color: #252525;
       border-radius: 3px;
       padding: 10px;
       overflow-y: auto;
       font-size: 7px; /* Reduced by half: was 14px, now 7px */
       margin-bottom: 10px;
-      max-height: 150px;
+      min-height: 100px; /* Minimum height instead of max-height */
     }
     
     /* Ensure all chat content uses the smaller font */
@@ -253,18 +302,6 @@
       font-size: inherit !important;
     }
     
-    .token-info {
-      background-color: #252525;
-      border-radius: 3px;
-      padding: 10px;
-      margin-bottom: 10px;
-      font-size: 10.5px; /* Same size as Game State text */
-    }
-    
-    /* Ensure all token info content uses the larger font */
-    .token-info * {
-      font-size: inherit !important;
-    }
     
     .verification-info {
       background-color: #252525;
@@ -449,7 +486,13 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>Client</h1>
+      <div class="player-info" id="player-info">
+        <span class="player-name" id="player-name">Loading...</span>
+        <span class="player-pubkey" id="player-pubkey">...
+          <span class="copy-hint" id="copy-hint">Copied to clipboard</span>
+        </span>
+        <span class="player-balance" id="player-balance">Balance: 0</span>
+      </div>
     </div>
     
     <div class="main-content">
@@ -481,9 +524,6 @@
         
         <h2>Game State</h2>
         <div class="game-state" id="game-state">No game state available</div>
-        
-        <h2>Token System</h2>
-        <div class="token-info" id="token-info">Token system initializing...</div>
         
         <h2>Chat</h2>
         <div class="chat-log" id="chat-log"></div>
@@ -682,6 +722,9 @@
       });
       
       addSafeEventListener('send-button', 'click', sendChatMessage);
+      
+      // Pubkey copy functionality
+      addSafeEventListener('player-pubkey', 'click', copyPubkeyToClipboard);
       
       
       
@@ -951,33 +994,73 @@
             console.log("Game focus set automatically after load");
           }
         }, 1000);
+        
+        // Re-add server ID overlay after game loads
+        setTimeout(function() {
+          addServerIdOverlay(serverId);
+        }, 1500);
       };
       
       // Set the iframe source
       iframe.src = quakeClientUrl;
       console.log('Connecting Quake client to server with URL:', quakeClientUrl);
       
+      // Add initial server ID overlay
+      addServerIdOverlay(serverId);
+    }
+    
+    // Add server ID overlay to game window with verification status
+    function addServerIdOverlay(serverId, verificationStatus = 'pending') {
       try {
-        // Add debug info to page
-        const debugInfo = document.createElement('div');
-        if (debugInfo) {
-          debugInfo.style.position = 'fixed';
-          debugInfo.style.bottom = '10px';
-          debugInfo.style.right = '10px';
-          debugInfo.style.background = 'rgba(0,0,0,0.8)';
-          debugInfo.style.color = '#fff';
-          debugInfo.style.padding = '10px';
-          debugInfo.style.borderRadius = '5px';
-          debugInfo.style.zIndex = '9999';
-          debugInfo.innerHTML = `
-            <strong>Connection Debug:</strong><br>
-            Server ID: ${serverId}<br>
-            Target: Direct connection to server
-          `;
-          document.body.appendChild(debugInfo);
+        // Remove any existing server ID overlay first
+        const existingOverlay = document.getElementById('server-id-overlay');
+        if (existingOverlay) {
+          existingOverlay.remove();
+        }
+        
+        // Determine color and message based on verification status
+        let color, integrityMessage;
+        switch (verificationStatus) {
+          case 'verified':
+            color = '#00ff00'; // Bright green
+            integrityMessage = 'game integrity: ok';
+            break;
+          case 'failed':
+            color = '#ff0000'; // Red
+            integrityMessage = 'game integrity: failed';
+            break;
+          case 'in_progress':
+          case 'pending':
+          default:
+            color = '#ffeb3b'; // Yellow
+            integrityMessage = 'game integrity: pending';
+            break;
+        }
+        
+        // Create new server ID overlay
+        const serverIdOverlay = document.createElement('div');
+        serverIdOverlay.id = 'server-id-overlay';
+        serverIdOverlay.style.position = 'absolute';
+        serverIdOverlay.style.top = '10px';
+        serverIdOverlay.style.left = '10px';
+        serverIdOverlay.style.background = 'transparent';
+        serverIdOverlay.style.color = color;
+        serverIdOverlay.style.fontSize = '12px';
+        serverIdOverlay.style.fontFamily = 'monospace';
+        serverIdOverlay.style.zIndex = '10';
+        serverIdOverlay.style.pointerEvents = 'none';
+        serverIdOverlay.textContent = `${serverId} | ${integrityMessage}`;
+        
+        // Add to game container
+        const gameContainer = document.querySelector('.game-container');
+        if (gameContainer) {
+          gameContainer.appendChild(serverIdOverlay);
+          console.log('Server ID overlay added:', serverId, 'status:', verificationStatus);
+        } else {
+          console.warn('Game container not found, cannot add server ID overlay');
         }
       } catch (e) {
-        console.error("Could not create debug info:", e);
+        console.error("Could not create server ID overlay:", e);
       }
     }
     
@@ -989,6 +1072,65 @@
       if (message && client.clientState.connected) {
         client.sendChatMessage(message);
         input.value = '';
+      }
+    }
+    
+    // Copy pubkey to clipboard
+    function copyPubkeyToClipboard() {
+      const playerPubkey = document.getElementById('player-pubkey');
+      const copyHint = document.getElementById('copy-hint');
+      const fullPubkey = playerPubkey.getAttribute('data-full-pubkey');
+      
+      if (!fullPubkey) {
+        return;
+      }
+      
+      // Function to show copy hint
+      function showCopyHint() {
+        copyHint.classList.add('show');
+        setTimeout(() => {
+          copyHint.classList.remove('show');
+        }, 2000);
+      }
+      
+      // Try modern clipboard API first (requires HTTPS)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(fullPubkey).then(() => {
+          console.log('Pubkey copied to clipboard (modern API):', fullPubkey);
+          showCopyHint();
+        }).catch((err) => {
+          console.error('Modern clipboard API failed:', err);
+          // Fall back to legacy method
+          copyWithFallback();
+        });
+      } else {
+        // Use fallback method directly
+        copyWithFallback();
+      }
+      
+      function copyWithFallback() {
+        try {
+          const textArea = document.createElement('textarea');
+          textArea.value = fullPubkey;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          textArea.style.top = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+          
+          if (successful) {
+            console.log('Pubkey copied to clipboard (fallback):', fullPubkey);
+            showCopyHint();
+          } else {
+            console.error('Fallback copy method failed');
+          }
+        } catch (fallbackErr) {
+          console.error('Fallback copy method error:', fallbackErr);
+        }
       }
     }
     
@@ -1150,6 +1292,11 @@
         statusBgColor = 'rgba(244, 67, 54, 0.1)';
         statusText = '✗ VERIFICATION FAILED';
         statusIcon = 'ansi-red';
+      }
+      
+      // Update server ID overlay with verification status
+      if (selectedServerId) {
+        addServerIdOverlay(selectedServerId, verificationStatus);
       }
       
       // For backwards compatibility
@@ -1331,24 +1478,34 @@
       chatLog.scrollTop = chatLog.scrollHeight;
     }
     
-    // Update token information
+    // Update player information in header
     function updateTokenInfo(tokens) {
-      const tokenInfo = document.getElementById('token-info');
+      const playerName = document.getElementById('player-name');
+      const playerPubkey = document.getElementById('player-pubkey');
+      const playerBalance = document.getElementById('player-balance');
       
       if (!client || !client.clientState.tokenService) {
-        tokenInfo.innerHTML = 'Token service not available';
+        playerName.textContent = 'Guest';
+        playerPubkey.innerHTML = 'No identity<span class="copy-hint" id="copy-hint">Copied to clipboard</span>';
+        playerBalance.textContent = 'Balance: 0';
         return;
       }
       
       const inventory = client.getTokenInventory();
       const identity = client.clientState.tokenService.getIdentity();
       
-      tokenInfo.innerHTML = `
-        <strong>Identity:</strong> ${identity.username} (${identity.pubkey.substring(0, 10)}...)<br>
-        <strong>Tokens:</strong> ${inventory.total || 0}<br>
-        <strong>Value:</strong> ${inventory.value || '0'}<br>
-        <strong>Entry Token Sent:</strong> ${client.clientState.entryTokenSent ? 'Yes' : 'No'}<br>
-      `;
+      playerName.textContent = identity.username;
+      
+      // Truncate pubkey to 20 prefix + ... + 20 suffix (40 chars total)
+      const fullPubkey = identity.pubkey;
+      const truncatedPubkey = fullPubkey.length > 40 
+        ? fullPubkey.substring(0, 20) + '...' + fullPubkey.substring(fullPubkey.length - 20)
+        : fullPubkey;
+      
+      playerPubkey.innerHTML = `${truncatedPubkey}<span class="copy-hint" id="copy-hint">Copied to clipboard</span>`;
+      playerPubkey.setAttribute('data-full-pubkey', fullPubkey);
+      
+      playerBalance.textContent = `Balance: ${inventory.value || '0'}`;
     }
     
     // Update verification information
