@@ -514,6 +514,10 @@
           <button id="disconnect-button" disabled>Disconnect</button>
         </div>
         
+        <div class="button-row">
+          <button id="create-server-button" style="background-color: #ffeb3b; color: #000; font-weight: bold; width: 100%;">Create New Server</button>
+        </div>
+        
         
         <!-- Direct connection button removed for security -->
         <!--
@@ -727,6 +731,9 @@
       });
       
       addSafeEventListener('send-button', 'click', sendChatMessage);
+      
+      // Create server button
+      addSafeEventListener('create-server-button', 'click', createNewServer);
       
       // Pubkey copy functionality
       addSafeEventListener('player-pubkey', 'click', copyPubkeyToClipboard);
@@ -1532,6 +1539,20 @@
         } else {
           console.warn(`Game state verification failed at frame ${event.frame}: ${event.result.error || 'Hash mismatch'}`);
         }
+      }
+    }
+    
+    // Create new server function
+    function createNewServer() {
+      console.log('Opening new server window...');
+      
+      // Open the server page in a new window
+      const serverWindow = window.open('/server.html', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+      
+      if (serverWindow) {
+        console.log('Server window opened successfully');
+      } else {
+        alert('Failed to open server window. Please check if pop-ups are blocked.');
       }
     }
     

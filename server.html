@@ -237,6 +237,15 @@
       <h1>Server</h1>
     </div>
     
+    <div class="serving-message" id="serving-message" style="background-color: #2a2a2a; border: 2px solid #4fc3f7; border-radius: 5px; padding: 15px; margin-bottom: 20px; text-align: center;">
+      <div style="font-size: 24px; font-weight: bold; color: #4fc3f7; margin-bottom: 10px;">
+        Serving server name: <span id="server-name-display">Loading...</span>
+      </div>
+      <div style="font-size: 16px; color: #e0e0e0;">
+        You and your friends can pick it from the list of servers and click connect. Close this window to finish the game.
+      </div>
+    </div>
+    
     <div class="main-content">
       <div class="server-panel panel">
         <div class="status-row">
@@ -265,7 +274,7 @@
     // Load WebRTC adapter directly, bypassing the auto-connect behavior
     window.UNIQUAKE_CONFIG = {
       useWebRTC: true,
-      masterServer: 'ws://localhost:27950',
+      masterServer: 'ws://213.199.61.236:27950',
       noAutoConnect: true  // Flag to prevent auto-connection
     };
     
@@ -305,6 +314,12 @@
       const serverName = generateServerName();
       config.serverName = serverName;
       console.log('Generated server name for initial registration:', serverName);
+      
+      // Update the serving message with the server name
+      const serverNameDisplay = document.getElementById('server-name-display');
+      if (serverNameDisplay) {
+        serverNameDisplay.textContent = serverName;
+      }
       
       // Create mock game
       game = new BrowserMockGame({
