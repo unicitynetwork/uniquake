@@ -30,12 +30,12 @@
     .header h1 {
       margin: 0;
       color: #4fc3f7;
+      font-size: 0.7rem; /* Reduced by triple fold */
     }
     
     .main-content {
       display: flex;
       flex: 1;
-      gap: 15px; /* Reduced gap to save space */
       height: calc(100vh - 70px); /* Adjusted for header and padding */
       overflow: hidden; /* Prevent scroll on the main container */
     }
@@ -48,12 +48,57 @@
     }
     
     .left-panel {
-      width: 533px; /* Reduced from 800px by 1.5 times */
+      width: 200px;
+      min-width: 150px; /* Minimum width for usability */
+      max-width: 600px; /* Maximum width to prevent taking over */
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
+      position: relative;
       overflow-y: auto;
       max-height: 100%; /* Ensure it doesn't overflow the container */
+      font-size: 0.33em; /* Reduce all text by triple fold */
+    }
+    
+    /* Scale down all elements in left panel */
+    .left-panel h2 {
+      font-size: 1.2em; /* Relative to the reduced base font size */
+    }
+    
+    .left-panel button {
+      font-size: 1em; /* Relative to the reduced base font size */
+      padding: 4px 6px; /* Smaller padding */
+    }
+    
+    .left-panel input {
+      font-size: 1em; /* Relative to the reduced base font size */
+      padding: 4px 6px; /* Smaller padding */
+    }
+    
+    .resizer {
+      width: 5px;
+      background-color: #444;
+      cursor: col-resize;
+      flex-shrink: 0;
+      transition: background-color 0.2s;
+      position: relative;
+    }
+    
+    .resizer:hover {
+      background-color: #4fc3f7;
+    }
+    
+    .resizer:active {
+      background-color: #2196f3;
+    }
+    
+    .right-panels {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      max-height: 100%;
+      overflow: hidden;
     }
     
     .server-list {
@@ -79,14 +124,6 @@
       background-color: #2196f3;
     }
     
-    .right-panels {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      height: 100%; /* Fill available height */
-      max-height: 100%; /* Don't exceed container */
-      overflow: hidden; /* Prevent scrolling */
-    }
     
     .game-panel {
       flex: 1;
@@ -426,6 +463,8 @@
         </div>
       </div>
       
+      <div class="resizer" id="resizer"></div>
+      
       <div class="right-panels">
         <div class="game-container">
           <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map" allowfullscreen="true"></iframe>
@@ -514,6 +553,9 @@
       
       // Set up UI event handlers
       setupUIHandlers();
+      
+      // Initialize resizer functionality
+      initializeResizer();
       
       // Connect to master server and fetch server list
       client.connectToMasterServer().then(() => {
@@ -1315,6 +1357,112 @@
         }
       }
     }
+    
+    // Panel resizer functionality
+    function initializeResizer() {
+      const resizer = document.getElementById('resizer');
+      const leftPanel = document.querySelector('.left-panel');
+      const rightPanels = document.querySelector('.right-panels');
+      
+      console.log('Initializing resizer...', { resizer, leftPanel, rightPanels });
+      
+      if (!resizer || !leftPanel || !rightPanels) {
+        console.warn('Resizer elements not found:', { 
+          resizer: !!resizer, 
+          leftPanel: !!leftPanel, 
+          rightPanels: !!rightPanels 
+        });
+        return;
+      }
+      
+      let isResizing = false;
+      let startX = 0;
+      let startWidth = 0;
+      
+      // Make sure the resizer is visible and has proper styling
+      resizer.style.cursor = 'col-resize';
+      resizer.style.userSelect = 'none';
+      
+      console.log('Resizer initialized successfully');
+      
+      resizer.addEventListener('mousedown', (e) => {
+        console.log('Resizer mousedown event');
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = parseInt(document.defaultView.getComputedStyle(leftPanel).width, 10);
+        
+        console.log('Starting resize:', { startX, startWidth });
+        
+        // Prevent text selection during resize
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
+        
+        // Add event listeners to document for mouse move and up
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        
+        e.preventDefault();
+      });
+      
+      function handleMouseMove(e) {
+        if (!isResizing) return;
+        
+        const currentX = e.clientX;
+        const width = startWidth + (currentX - startX);
+        const minWidth = parseInt(getComputedStyle(leftPanel).minWidth, 10) || 150;
+        const maxWidth = parseInt(getComputedStyle(leftPanel).maxWidth, 10) || 600;
+        
+        // Constrain width within bounds
+        const constrainedWidth = Math.min(Math.max(width, minWidth), maxWidth);
+        
+        // Apply the new width immediately
+        leftPanel.style.width = constrainedWidth + 'px';
+        
+        // Optional: log during drag (comment out if too noisy)
+        // console.log('Resizing to width:', constrainedWidth);
+      }
+      
+      function handleMouseUp() {
+        console.log('Resizer mouseup event');
+        isResizing = false;
+        
+        // Restore normal cursor and text selection
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        
+        // Remove event listeners
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      }
+      
+      // Handle double-click to reset to default width
+      resizer.addEventListener('dblclick', () => {
+        console.log('Resizer double-click: resetting to 200px');
+        leftPanel.style.width = '200px';
+      });
+      
+      // Test that the resizer is working by adding a hover effect
+      resizer.addEventListener('mouseenter', () => {
+        resizer.style.backgroundColor = '#4fc3f7';
+      });
+      
+      resizer.addEventListener('mouseleave', () => {
+        if (!isResizing) {
+          resizer.style.backgroundColor = '#444';
+        }
+      });
+    }
+    
+    // Initialize resizer when page loads
+    window.addEventListener('DOMContentLoaded', initializeResizer);
+    
+    // Also initialize after scripts load to ensure DOM is fully ready
+    document.addEventListener('readystatechange', function() {
+      if (document.readyState === 'complete') {
+        // Add a small delay to ensure all elements are rendered
+        setTimeout(initializeResizer, 100);
+      }
+    });
   </script>
 </body>
 </html>
