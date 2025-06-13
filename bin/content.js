@@ -12,7 +12,7 @@ var wrench = require('wrench');
 var zlib = require('zlib');
 
 var argv = require('optimist')
-	.describe('config', 'Location of the configuration file').default('config', './config.json')
+	.describe('config', 'Location of the configuration file').default('config', './content-config.json')
 	.argv;
 
 if (argv.h || argv.help) {
@@ -95,6 +95,9 @@ function handleManifest(req, res, next) {
 
 	res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate');
 	res.setHeader('Last-Modified', currentManifestTimestamp.toUTCString());
+	res.setHeader('Access-Control-Allow-Origin', '*');
+	res.setHeader('Access-Control-Allow-Methods', 'GET');
+	res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
 	res.json(currentManifest);
 }
@@ -124,18 +127,23 @@ function handleAsset(req, res, next) {
 
 	logger.info('serving ' + relativePath + ' (crc32 ' + checksum + ') to ' + req.ip);
 
+	// Set CORS headers for asset serving
+	res.setHeader('Access-Control-Allow-Origin', '*');
+	res.setHeader('Access-Control-Allow-Methods', 'GET');
+	res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
 	res.sendfile(absolutePath, { maxAge: Infinity });
 }
 
 function loadConfig(configPath) {
 	var config = {
-		root: path.join(__dirname, '..', 'assets'),
+		root: path.join(__dirname, '..', 'fresh_quakejs', 'base'),
 		port: 9000
 	};
 
 	try {
 		logger.info('loading config file from ' + configPath + '..');
-		var data = require(configPath);
+		var data = require(path.resolve(configPath));
 		_.extend(config, data);
 	} catch (e) {
 		logger.warn('failed to load config', e);

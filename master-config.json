@@ -9,8 +9,8 @@
   "turnPortRange": [49152, 65535],
   "turnRealm": "uniquake.com",
   
-  "publicIp": "127.0.0.1",
-  "publicHostname": "localhost",
+  "publicIp": "213.199.61.236",
+  "publicHostname": "213.199.61.236",
   
   "logLevel": "info",
   "logStunRequests": false,

@@ -32,7 +32,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run Commands
 - Install dependencies: `npm install`
 - Start web server: `npm start` or `node bin/web.js --config ./bin/web.json`
-- Run master server: `npm run master` or `node bin/webrtc-master.js`
+- Run QuakeJS master server: `npm run master` (uses fresh_quakejs submodule)
+- Run WebRTC master server: `npm run webrtc-master` or `node bin/webrtc-master.js`
 - Run combined master: `npm run master-quake` or `node bin/combined-master.js`
 - Run content server: `npm run content` or `node bin/content.js`
 - Run browser mocks:
@@ -43,7 +44,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Via env var: `MASTER_SERVER_URL=ws://your-server-ip:27950 npm run browser-mock`
   - Via URL: `http://localhost:8080/client?master=ws://your-server-ip:27950`
 - Build engine: `cd ioq3 && make PLATFORM=js EMSCRIPTEN=<path_to_emscripten>`
-- Repackage assets: `npm run repak` or `node bin/repak.js --src <assets_src> --dest <assets>`
+- Repackage assets: `npm run repak` or `node bin/repak.js`
 - Testing: Manual testing through browser mocks (no automated tests found)
 - Manage dedicated servers:
   - Check running servers: `ps aux | grep node | grep quakejs`
@@ -69,8 +70,12 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 ### Core Components
 - **Master Server** (`lib/master-server.js`): Main WebRTC signaling server that handles peer connections and server registry
 - **Combined Master** (`bin/combined-master.js`): Unified server combining WebRTC master with traditional QuakeJS master protocol
-- **Game Server Manager** (`lib/game-server-manager.js`): Spawns and manages dedicated server processes using Node.js child processes
+- **Game Server Manager** (`lib/game-server-manager.js`): Spawns and manages dedicated server processes using Node.js child processes (ports 27961+)
 - **Transport Services** (`lib/transport-service.js`): Handles WebRTC peer connections and WebSocket fallback
+- **Signaling Service** (`lib/signaling-service.js`): WebRTC connection negotiation and peer management
+- **Server Registry** (`lib/server-registry.js`): Tracks available game servers with heartbeat monitoring
+- **STUN/TURN Servers** (`lib/stun-server.js`, `lib/turn-server.js`): NAT traversal support for WebRTC
+- **Quake Protocol Adapter** (`lib/quake/master-adapter.js`): Bridges WebRTC master with traditional QuakeJS protocol
 - **Browser Mocks** (`lib/client/`): Development interfaces for testing client/server interactions
 
 ### Key Architecture Patterns
@@ -92,3 +97,25 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 - Testing: Use browser mocks first (`npm run start-browser-mocks`), then integrate with main game
 - Debugging: Browser dev tools for client-side WebRTC connections, server logs for backend
 - Logging: Use winston logger throughout the codebase
+
+## Important Notes
+
+### Submodule Management
+- The project uses nested submodules: `fresh_quakejs` contains the `ioq3` submodule
+- Always use `git clone --recursive` or `git submodule update --init --recursive`
+- Fix git:// URLs to https:// in fresh_quakejs/.gitmodules if needed
+
+### WebSocket Library Compatibility
+- Main project uses ws v7.2.5+
+- fresh_quakejs submodule uses ws v0.4.32 (do not update)
+- These different versions are intentional for compatibility
+
+### Port Management
+- Master server: 27950 (WebSocket)
+- Dedicated servers: 27961+ (auto-assigned)
+- Web server: 8080 (default)
+- Content server: varies (configured in content.js)
+
+### Memory Requirements
+- Downloading game assets requires ~1GB RAM
+- Dedicated servers require moderate memory per instance
