@@ -86,9 +86,15 @@ app.get('/server', function(req, res) {
     }
     
     // Replace the default master server URL with the provided one
-    const modifiedHtml = data.replace(
+    let modifiedHtml = data.replace(
       /masterServer: ['"]ws:\/\/localhost:27950['"]/g, 
       `masterServer: '${masterServer}'`
+    );
+    
+    // Also replace the fallback pattern in BrowserMockServer constructor
+    modifiedHtml = modifiedHtml.replace(
+      /window\.UNIQUAKE_CONFIG\.masterServer \|\| ['"]ws:\/\/localhost:27950['"]/g,
+      `window.UNIQUAKE_CONFIG.masterServer || '${masterServer}'`
     );
     
     // Send the modified HTML

@@ -1546,8 +1546,8 @@
     function createNewServer() {
       console.log('Opening new server window...');
       
-      // Open the server page in a new window
-      const serverWindow = window.open('/server.html', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+      // Open the server page in a new window (use /server route for proper config)
+      const serverWindow = window.open('/server', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
       
       if (serverWindow) {
         console.log('Server window opened successfully');
