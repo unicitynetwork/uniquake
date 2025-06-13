@@ -6,3 +6,5 @@ ref_materials/
 
 baseq3/
 logs/
+
+*.log
