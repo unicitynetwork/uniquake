@@ -32,7 +32,24 @@ app.use('/lib/client', express.static(path.join(__dirname, 'lib/client')));
 
 // Define routes for the application
 app.get('/', function(req, res) {
-  res.sendfile(path.join(__dirname, 'browser-mock-client.html'));
+  // Get the master server URL from query parameter or use default
+  const masterServer = req.query.master || DEFAULT_MASTER_SERVER;
+  
+  // Read the client.html file
+  fs.readFile(path.join(__dirname, 'client.html'), 'utf8', function(err, data) {
+    if (err) {
+      return res.status(500).send('Error loading client page');
+    }
+    
+    // Replace the default master server URL with the provided one
+    const modifiedHtml = data.replace(
+      /masterServer: ['"]ws:\/\/localhost:27950['"]/g, 
+      `masterServer: '${masterServer}'`
+    );
+    
+    // Send the modified HTML
+    res.send(modifiedHtml);
+  });
 });
 
 // Modified client route to support master server URL parameter
