@@ -636,9 +636,6 @@
       // Update initial token info
       updateTokenInfo();
       
-      // Initialize verification info with static message
-      updateVerificationInfo();
-      
       // Set up automatic game state verification every 2 seconds when connected
       // This ensures the frame counter is updated frequently
       setInterval(() => {
@@ -1441,16 +1438,8 @@
         `;
       }
       
-      // Also update verification info if we have verification data
-      if (client?.clientState?.lastGameStateVerification?.timestamp) {
-        updateVerificationInfo({
-          verified: verificationStatus === 'verified',
-          frame: gameState.frame,
-          stateHash: serverHash,
-          error: verificationStatus === 'failed' ? 'Local state hash does not match server hash' : 
-                 verificationStatus === 'in_progress' ? 'Waiting for server verification' : null
-        });
-      }
+      // Verification info is now handled by the game overlay and Game State panel
+      // No need for separate verification info updates
     }
     
     // Display chat message
@@ -1508,18 +1497,11 @@
       playerBalance.textContent = `Balance: ${inventory.value || '0'}`;
     }
     
-    // Update verification information
+    // Update verification information (deprecated - now handled by game overlay)
     function updateVerificationInfo(result) {
-      const verificationInfo = document.getElementById('verification-info');
-      
-      // Just display a simpler version that doesn't constantly update
-      verificationInfo.innerHTML = `
-        <strong>Token System Status</strong><br>
-        <div style="margin-top: 10px; font-size: 12px;">
-          Game state verification is now shown in the Game State panel.<br>
-          The verification status is updated automatically whenever a new state token is received.
-        </div>
-      `;
+      // No longer needed since verification-info element was removed with Token System panel
+      // Verification status is now shown in the game overlay and Game State panel
+      return;
     }
     
     // Handle token events
