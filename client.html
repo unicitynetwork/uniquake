@@ -159,8 +159,8 @@
     .server-item {
       background-color: #3d3d3d;
       border-radius: 3px;
-      padding: 10px;
-      margin-bottom: 10px;
+      padding: 2px 4px; /* Smaller padding like other buttons */
+      margin-bottom: 4px; /* Reduced margin for tighter spacing */
       cursor: pointer;
       transition: background-color 0.2s;
     }
@@ -631,6 +631,14 @@
       client.connectToMasterServer().then(() => {
         // Automatically request the server list
         client.requestServerList();
+        
+        // Set up periodic server list refresh every 5 seconds
+        setInterval(() => {
+          if (client && client.requestServerList) {
+            console.log('Auto-refreshing server list...');
+            client.requestServerList();
+          }
+        }, 5000);
       });
       
       // Update initial token info
