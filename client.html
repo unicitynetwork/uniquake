@@ -151,7 +151,7 @@
     }
     
     .server-list {
-      max-height: 300px;
+      height: 450px; /* Fixed height for server list */
       overflow-y: auto;
       margin-bottom: 15px;
     }
@@ -201,14 +201,14 @@
     }
     
     .chat-log {
-      flex: 1; /* Expanded to fill remaining space */
+      flex: 0 0 auto; /* Don't grow, use fixed height */
+      height: 80px; /* Reduced from 150px to 80px to save space */
       background-color: #252525;
       border-radius: 3px;
       padding: 10px;
       overflow-y: auto;
       font-size: 7px; /* Reduced by half: was 14px, now 7px */
       margin-bottom: 10px;
-      min-height: 100px; /* Minimum height instead of max-height */
     }
     
     /* Ensure all chat content uses the smaller font */
