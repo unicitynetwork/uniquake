@@ -81,6 +81,33 @@ mkdir -p base/baseq3
 echo "Copying server.cfg to baseq3 directory..."
 cp ../server.cfg base/baseq3/
 
+# Download required QuakeJS installer files
+echo "=== Downloading required QuakeJS installer files ==="
+echo "Downloading linuxq3ademo-1.11-6.x86.gz.sh..."
+if [ ! -f "base/linuxq3ademo-1.11-6.x86.gz.sh" ]; then
+  wget -q http://content.quakejs.com/assets/857908472-linuxq3ademo-1.11-6.x86.gz.sh -O base/linuxq3ademo-1.11-6.x86.gz.sh
+  if [ $? -eq 0 ]; then
+    echo "✓ linuxq3ademo-1.11-6.x86.gz.sh downloaded successfully"
+  else
+    echo "✗ Failed to download linuxq3ademo-1.11-6.x86.gz.sh"
+  fi
+else
+  echo "✓ linuxq3ademo-1.11-6.x86.gz.sh already exists"
+fi
+
+echo "Downloading linuxq3apoint-1.32b-3.x86.run..."
+if [ ! -f "base/linuxq3apoint-1.32b-3.x86.run" ]; then
+  wget -q http://content.quakejs.com/assets/296843703-linuxq3apoint-1.32b-3.x86.run -O base/linuxq3apoint-1.32b-3.x86.run
+  if [ $? -eq 0 ]; then
+    echo "✓ linuxq3apoint-1.32b-3.x86.run downloaded successfully"
+  else
+    echo "✗ Failed to download linuxq3apoint-1.32b-3.x86.run"
+  fi
+else
+  echo "✓ linuxq3apoint-1.32b-3.x86.run already exists"
+fi
+echo ""
+
 echo "Starting dedicated server to download base game files..."
 echo "When the EULA appears, press ENTER to scroll through it, then type 'y' to accept."
 echo "After the files finish downloading, press Ctrl+C to continue setup."
