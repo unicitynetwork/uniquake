@@ -975,17 +975,15 @@
     }
     
     // Handle client connection (from real game server via master server)
-    function handleClientConnect(clientData) {
+    function handleClientConnect(clientData, isRejoin = false) {
+      if (isRejoin) {
+        console.log(`🔄 Player ${clientData.username} rejoined the server`);  
+      } else {
+        console.log(`🆕 New player ${clientData.username} connected`);  
+      }
       
-      
-      // Add to our client registry
-      serverState.clients.set(clientData.id, {
-        id: clientData.id,
-        username: clientData.username || clientData.id,
-        pubkey: clientData.pubkey || null,
-        connected: true,
-        joinTime: Date.now()
-      });
+      // Client data is already set in handleConnectionRequest, no need to overwrite it
+      // Just update the UI to reflect the connection
       
       // Enable client action buttons if at least one client is connected
       const kickButton = document.getElementById('kick-button');
@@ -1242,6 +1240,10 @@
           handleMasterServerError(message);
           break;
           
+        case 'client_disconnected':
+          handleClientDisconnectedByMaster(message);
+          break;
+          
         default:
           
           break;
@@ -1252,21 +1254,45 @@
     function handleConnectionRequest(message) {
       const { connectionId, clientId, identity } = message;
       
+      console.log(`🔗 Connection request from client ${clientId}`);
       
-      // Add client to our registry
+      // Check if we already have this player by pubkey (for rejoining players)
+      let existingClient = null;
+      if (identity?.pubkey) {
+        // Look for existing client with same pubkey
+        for (const [existingClientId, client] of serverState.clients.entries()) {
+          if (client.pubkey === identity.pubkey) {
+            console.log(`🔄 Found existing player with pubkey ${identity.pubkey.substring(0, 10)}... - this is a rejoin`);
+            existingClient = client;
+            
+            // Remove the old connection ID entry
+            serverState.clients.delete(existingClientId);
+            console.log(`🗑️ Removed old connection ${existingClientId} for rejoining player`);
+            break;
+          }
+        }
+      }
+      
+      // Create client data - preserve existing data for rejoining players
       const clientData = {
         id: clientId,
-        username: identity?.username || clientId,
-        pubkey: identity?.pubkey || null,
+        username: identity?.username || existingClient?.username || clientId,
+        pubkey: identity?.pubkey || existingClient?.pubkey || null,
         connected: true,
-        joinTime: Date.now(),
-        entryTokenReceived: false
+        joinTime: existingClient?.joinTime || Date.now(), // Preserve original join time
+        entryTokenReceived: existingClient?.entryTokenReceived || false // Preserve entry token status
       };
+      
+      if (existingClient) {
+        console.log(`✅ Rejoining player: ${clientData.username} - preserving entry token status: ${clientData.entryTokenReceived}`);
+      } else {
+        console.log(`🆕 New player: ${clientData.username}`);
+      }
       
       serverState.clients.set(clientId, clientData);
       
-      // Notify our UI
-      handleClientConnect(clientData);
+      // Notify our UI - indicate if this is a rejoin
+      handleClientConnect(clientData, !!existingClient);
       
       // Send acceptance back to master server
       const acceptMessage = {
@@ -1282,7 +1308,7 @@
     function handleProxyConnection(message) {
       const { clientId, serverPeerId } = message;
       
-      console.log(`Client ${clientId} connected via proxy to server ${serverPeerId}`);
+      console.log(`Client ${clientId} connected via proxy to server ${serverPeerId || 'undefined'}`);
       
       // Add client to our registry
       const clientData = {
@@ -1341,9 +1367,48 @@
         switch (data.type) {
           case 'identity:update':
             if (data.identity) {
-              client.pubkey = data.identity.pubkey || client.pubkey;
-              client.username = data.identity.username || client.username;
-              console.log(`Updated client identity: ${client.username} (${client.pubkey?.substring(0, 10)}...)`);
+              console.log(`🆔 Received identity update from client ${clientId}`);
+              
+              // Check if we already have a player with this pubkey (rejoining scenario)
+              let existingClient = null;
+              if (data.identity.pubkey) {
+                for (const [existingClientId, existingClientData] of serverState.clients.entries()) {
+                  if (existingClientId !== clientId && existingClientData.pubkey === data.identity.pubkey) {
+                    console.log(`🔄 Found existing player with pubkey ${data.identity.pubkey.substring(0, 10)}... - this is a rejoin`);
+                    existingClient = existingClientData;
+                    
+                    // Remove the old connection ID entry
+                    serverState.clients.delete(existingClientId);
+                    console.log(`🗑️ Removed old connection ${existingClientId} for rejoining player`);
+                    break;
+                  }
+                }
+              }
+              
+              // Update or merge client data
+              if (existingClient) {
+                // Preserve data from existing client (rejoining player)
+                client.pubkey = data.identity.pubkey;
+                client.username = data.identity.username || existingClient.username;
+                client.joinTime = existingClient.joinTime; // Preserve original join time
+                client.entryTokenReceived = existingClient.entryTokenReceived; // Preserve entry token status
+                
+                console.log(`✅ Rejoining player: ${client.username} - preserved entry token status: ${client.entryTokenReceived}`);
+                
+                // Send rejoin notification
+                broadcastToAllClients({
+                  type: 'chat',
+                  from: 'SERVER',
+                  message: `${client.username} has rejoined the game`,
+                  timestamp: Date.now()
+                });
+              } else {
+                // New player - just update identity
+                client.pubkey = data.identity.pubkey || client.pubkey;
+                client.username = data.identity.username || client.username;
+                console.log(`🆕 New player identity: ${client.username} (${client.pubkey?.substring(0, 10)}...)`);
+              }
+              
               updateClientList();
             }
             break;
@@ -1366,6 +1431,14 @@
             
           case 'request:game:state:token':
             handleGameStateTokenRequest(clientId);
+            break;
+            
+          case 'ping':
+            // Send pong response back to client
+            sendMessageToClient(clientId, {
+              type: 'pong',
+              timestamp: data.timestamp
+            });
             break;
             
           default:
@@ -1558,7 +1631,49 @@
       });
     }
     
-    // Handle client disconnection
+    // Handle client disconnection notified by master server (WebSocket closure)
+    function handleClientDisconnectedByMaster(message) {
+      const clientId = message.clientId;
+      const reason = message.reason || 'unknown';
+      
+      if (!clientId) return;
+      
+      console.log(`🔌 Master server notified: Client ${clientId} disconnected (${reason})`);
+      
+      // Remove from client registry
+      const client = serverState.clients.get(clientId);
+      if (client) {
+        console.log(`👋 Player ${client.username || clientId} has left the server (${reason})`);
+        
+        // Clear selection if this client was selected
+        if (selectedClientId === clientId || 
+            (client.pubkey && selectedClientId === client.pubkey)) {
+          selectedClientId = null;
+        }
+        
+        serverState.clients.delete(clientId);
+        
+        // Update client list display immediately
+        updateClientList();
+        
+        // Also trigger a full game state display update to reflect the change
+        updateGameStateDisplay();
+        
+        // Broadcast departure message to other players
+        broadcastToAllClients({
+          type: 'chat',
+          from: 'SERVER',
+          message: `${client.username || clientId} has left the game`,
+          timestamp: Date.now()
+        });
+        
+        console.log(`✅ Client ${clientId} removed from server state - UI updated`);
+      } else {
+        console.log(`⚠️ Client ${clientId} not found in server state`);
+      }
+    }
+    
+    // Handle client disconnection (legacy - keep for compatibility)
     function handleClientDisconnected(message) {
       const clientId = message.clientId;
       if (!clientId) return;
