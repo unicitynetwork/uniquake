@@ -69,6 +69,42 @@
       cursor: not-allowed;
     }
     
+    .clear-button {
+      background-color: #f44336;
+      border: none;
+      border-radius: 3px;
+      padding: 4px 8px;
+      color: white;
+      font-family: 'Courier New', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      margin-right: 8px;
+    }
+    
+    .clear-button:hover {
+      background-color: #d32f2f;
+    }
+    
+    .clear-button:disabled {
+      background-color: #666;
+      cursor: not-allowed;
+    }
+    
+    .player-address {
+      color: #ffeb3b;
+      font-family: monospace;
+      cursor: pointer;
+      text-decoration: underline;
+      transition: color 0.2s;
+      position: relative;
+      font-size: 0.7rem;
+    }
+    
+    .player-address:hover {
+      color: #fff59d;
+    }
+    
     .player-pubkey {
       color: #aaa;
       font-family: monospace;
@@ -574,7 +610,11 @@
   <div class="container">
     <div class="header">
       <div class="player-info" id="player-info">
+        <button id="clear-identity-button" class="clear-button">Clear</button>
         <input type="text" id="player-name-input" class="player-name-input" placeholder="Enter your player name..." maxlength="16">
+        <span class="player-address" id="player-address">Generating address...
+          <span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>
+        </span>
         <span class="player-pubkey" id="player-pubkey">...
           <span class="copy-hint" id="copy-hint">Copied to clipboard</span>
         </span>
@@ -628,7 +668,7 @@
       
       <div class="right-panels">
         <div class="game-container">
-          <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map" allowfullscreen="true"></iframe>
+          <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map" allowfullscreen></iframe>
         </div>
       </div>
     </div>
@@ -884,8 +924,12 @@
         }
       });
       
-      // Pubkey copy functionality
+      // Clear identity functionality
+      addSafeEventListener('clear-identity-button', 'click', clearPlayerIdentity);
+      
+      // Copy functionality for pubkey and address
       addSafeEventListener('player-pubkey', 'click', copyPubkeyToClipboard);
+      addSafeEventListener('player-address', 'click', copyAddressToClipboard);
       
       
       
@@ -1322,6 +1366,126 @@
       }
     }
     
+    // Copy address to clipboard
+    function copyAddressToClipboard() {
+      const playerAddress = document.getElementById('player-address');
+      const copyHint = document.getElementById('address-copy-hint');
+      const fullAddress = playerAddress.getAttribute('data-full-address');
+      
+      if (!fullAddress) {
+        return;
+      }
+      
+      // Function to show copy hint
+      function showCopyHint() {
+        copyHint.classList.add('show');
+        setTimeout(() => {
+          copyHint.classList.remove('show');
+        }, 2000);
+      }
+      
+      // Try modern clipboard API first (requires HTTPS)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(fullAddress).then(() => {
+          console.log('Address copied to clipboard (modern API):', fullAddress);
+          showCopyHint();
+        }).catch((err) => {
+          console.error('Modern clipboard API failed:', err);
+          // Fall back to legacy method
+          copyWithFallback();
+        });
+      } else {
+        // Use fallback method directly
+        copyWithFallback();
+      }
+      
+      function copyWithFallback() {
+        try {
+          const textArea = document.createElement('textarea');
+          textArea.value = fullAddress;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          textArea.style.top = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+          
+          if (successful) {
+            console.log('Address copied to clipboard (fallback):', fullAddress);
+            showCopyHint();
+          } else {
+            console.error('Fallback copy method failed');
+          }
+        } catch (fallbackErr) {
+          console.error('Fallback copy method error:', fallbackErr);
+        }
+      }
+    }
+    
+    // Clear player identity (name and pubkey)
+    function clearPlayerIdentity() {
+      if (client && client.clientState.connected) {
+        alert('Cannot clear identity while connected to a game. Please disconnect first.');
+        return;
+      }
+      
+      const confirmClear = confirm('Are you sure you want to clear your player identity? This will reset your name and generate a new cryptographic identity.');
+      if (!confirmClear) {
+        return;
+      }
+      
+      // Clear localStorage
+      localStorage.removeItem('uniquake_player_name');
+      
+      // Reset current player name
+      currentPlayerName = null;
+      
+      // Clear the input field
+      const playerNameInput = document.getElementById('player-name-input');
+      if (playerNameInput) {
+        playerNameInput.value = '';
+        playerNameInput.placeholder = 'Enter your player name...';
+      }
+      
+      // Reinitialize token service with new identity
+      if (client && client.clientState.tokenService) {
+        console.log('Clearing player identity and regenerating token service...');
+        
+        // Clear existing token service
+        client.clientState.tokenService = null;
+        
+        // Initialize new token service
+        client.initializeTokenService().then(() => {
+          console.log('New identity generated successfully');
+          
+          // Update UI with new identity
+          updateTokenInfo();
+          
+          // Generate new autogenerated name
+          currentPlayerName = getPlayerName();
+          if (playerNameInput) {
+            playerNameInput.placeholder = currentPlayerName;
+          }
+        }).catch((error) => {
+          console.error('Failed to reinitialize token service:', error);
+          alert('Failed to generate new identity. Please refresh the page.');
+        });
+      }
+    }
+    
+    // Generate autogenerated address based on pubkey
+    function generatePlayerAddress(pubkey) {
+      if (!pubkey) return 'No address';
+      
+      // Create a simple address format: first 8 chars + last 8 chars of pubkey
+      const addressPrefix = pubkey.substring(0, 8);
+      const addressSuffix = pubkey.substring(pubkey.length - 8);
+      return `${addressPrefix}...${addressSuffix}`;
+    }
+    
     // Update server list
     function updateServerList(servers) {
       const container = document.getElementById('servers-container');
@@ -1406,6 +1570,7 @@
       const connectionStatus = document.getElementById('connection-status');
       const connectionText = document.getElementById('connection-text');
       const playerNameInput = document.getElementById('player-name-input');
+      const clearButton = document.getElementById('clear-identity-button');
       
       if (status.connected) {
         connectButton.disabled = true;
@@ -1413,6 +1578,7 @@
         chatInput.disabled = false;
         sendButton.disabled = false;
         playerNameInput.disabled = true; // Disable name editing while connected
+        clearButton.disabled = true; // Disable clear while connected
         connectionStatus.className = 'status-indicator status-connected';
         connectionText.textContent = 'Connected';
         
@@ -1430,6 +1596,7 @@
         chatInput.disabled = true;
         sendButton.disabled = true;
         playerNameInput.disabled = false; // Re-enable name editing when disconnected
+        clearButton.disabled = false; // Re-enable clear when disconnected
         connectionStatus.className = 'status-indicator status-disconnected';
         connectionText.textContent = 'Disconnected';
         document.getElementById('ping-display').textContent = '';
@@ -1694,21 +1861,37 @@
     
     // Update player information in header
     function updateTokenInfo(tokens) {
-      const playerName = document.getElementById('player-name');
+      const playerNameInput = document.getElementById('player-name-input');
+      const playerAddress = document.getElementById('player-address');
       const playerPubkey = document.getElementById('player-pubkey');
       const playerBalance = document.getElementById('player-balance');
       
       if (!client || !client.clientState.tokenService) {
-        playerName.textContent = 'Guest';
-        playerPubkey.innerHTML = 'No identity<span class="copy-hint" id="copy-hint">Copied to clipboard</span>';
-        playerBalance.textContent = 'Balance: 0';
+        if (playerNameInput) playerNameInput.placeholder = 'Enter your player name...';
+        if (playerAddress) playerAddress.innerHTML = 'Generating address...<span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>';
+        if (playerPubkey) playerPubkey.innerHTML = 'No identity<span class="copy-hint" id="copy-hint">Copied to clipboard</span>';
+        if (playerBalance) playerBalance.textContent = 'Balance: 0';
         return;
       }
       
       const inventory = client.getTokenInventory();
       const identity = client.clientState.tokenService.getIdentity();
       
-      playerName.textContent = identity.username;
+      // Update placeholder and value if input is empty
+      if (playerNameInput) {
+        if (!playerNameInput.value) {
+          playerNameInput.value = identity.username;
+        }
+        playerNameInput.placeholder = identity.username;
+      }
+      
+      // Generate and display player address
+      const fullAddress = identity.pubkey; // Use full pubkey as address
+      const displayAddress = generatePlayerAddress(identity.pubkey);
+      if (playerAddress) {
+        playerAddress.innerHTML = `${displayAddress}<span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>`;
+        playerAddress.setAttribute('data-full-address', fullAddress);
+      }
       
       // Truncate pubkey to 20 prefix + ... + 20 suffix (40 chars total)
       const fullPubkey = identity.pubkey;
@@ -1716,10 +1899,14 @@
         ? fullPubkey.substring(0, 20) + '...' + fullPubkey.substring(fullPubkey.length - 20)
         : fullPubkey;
       
-      playerPubkey.innerHTML = `${truncatedPubkey}<span class="copy-hint" id="copy-hint">Copied to clipboard</span>`;
-      playerPubkey.setAttribute('data-full-pubkey', fullPubkey);
+      if (playerPubkey) {
+        playerPubkey.innerHTML = `${truncatedPubkey}<span class="copy-hint" id="copy-hint">Copied to clipboard</span>`;
+        playerPubkey.setAttribute('data-full-pubkey', fullPubkey);
+      }
       
-      playerBalance.textContent = `Balance: ${inventory.value || '0'}`;
+      if (playerBalance) {
+        playerBalance.textContent = `Balance: ${inventory.value || '0'}`;
+      }
     }
     
     // Update verification information (deprecated - now handled by game overlay)
