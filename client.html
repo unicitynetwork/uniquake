@@ -707,6 +707,72 @@
       return null;
     }
     
+    // Save player identity to localStorage (pubkey, secret, tokens)
+    function savePlayerIdentity() {
+      if (!client || !client.clientState.tokenService) {
+        console.warn('Cannot save identity: token service not initialized');
+        return false;
+      }
+      
+      try {
+        const identity = client.clientState.tokenService.getIdentity();
+        const tokenStatus = client.clientState.tokenService.getTokenStatus();
+        
+        // Save identity data
+        const identityData = {
+          username: identity.username,
+          pubkey: identity.pubkey,
+          secret: client.clientState.tokenService.secret, // Save secret for full recovery
+          tokens: tokenStatus.tokens,
+          savedAt: Date.now()
+        };
+        
+        localStorage.setItem('uniquake_player_identity', JSON.stringify(identityData));
+        console.log('Player identity saved to localStorage');
+        return true;
+      } catch (error) {
+        console.error('Failed to save player identity:', error);
+        return false;
+      }
+    }
+    
+    // Load player identity from localStorage
+    function loadPlayerIdentity() {
+      try {
+        const savedData = localStorage.getItem('uniquake_player_identity');
+        if (!savedData) {
+          console.log('No saved player identity found');
+          return null;
+        }
+        
+        const identityData = JSON.parse(savedData);
+        console.log('Loaded player identity from localStorage:', {
+          username: identityData.username,
+          pubkey: identityData.pubkey?.substring(0, 10) + '...',
+          tokenCount: identityData.tokens?.total || 0,
+          savedAt: new Date(identityData.savedAt).toLocaleString()
+        });
+        
+        return identityData;
+      } catch (error) {
+        console.error('Failed to load player identity:', error);
+        return null;
+      }
+    }
+    
+    // Clear all player data from localStorage
+    function clearPlayerData() {
+      try {
+        localStorage.removeItem('uniquake_player_name');
+        localStorage.removeItem('uniquake_player_identity');
+        console.log('All player data cleared from localStorage');
+        return true;
+      } catch (error) {
+        console.error('Failed to clear player data:', error);
+        return false;
+      }
+    }
+    
     // Initialize client
     async function initializeClient() {
       // Load player name from storage or generate default
@@ -733,7 +799,7 @@
         name: playerName,
         verbose: true,
         debug: true,
-        mintTokens: 5,
+        mintTokens: 5, // Will be overridden if we have saved tokens
         onStatusUpdate: updateClientStatus,
         onChatMessage: displayChatMessage,
         onConnectionChange: handleConnectionChange,
@@ -758,6 +824,15 @@
       
       // Initialize all components
       await game.init();
+      
+      // Try to restore saved identity before initializing client
+      const savedIdentity = loadPlayerIdentity();
+      if (savedIdentity) {
+        console.log('Found saved identity, restoring player data...');
+        // Modify client's token service config to use saved identity
+        client.config.restoreIdentity = savedIdentity;
+      }
+      
       await client.init();
       await integration.init(game);
       
@@ -788,6 +863,18 @@
       
       // Update initial token info
       updateTokenInfo();
+      
+      // Save initial identity to localStorage
+      setTimeout(() => {
+        savePlayerIdentity();
+      }, 1000); // Allow token service to fully initialize
+      
+      // Set up periodic identity saving (every 30 seconds)
+      setInterval(() => {
+        if (client && client.clientState.tokenService) {
+          savePlayerIdentity();
+        }
+      }, 30000);
       
       // Set up automatic game state verification every 2 seconds when connected
       // This ensures the frame counter is updated frequently
@@ -1357,13 +1444,13 @@
         return;
       }
       
-      const confirmClear = confirm('Are you sure you want to clear your player identity? This will reset your name and generate a new cryptographic identity.');
+      const confirmClear = confirm('Are you sure you want to clear your player identity? This will reset your name, generate a new cryptographic identity, and remove all saved tokens.');
       if (!confirmClear) {
         return;
       }
       
-      // Clear localStorage
-      localStorage.removeItem('uniquake_player_name');
+      // Clear all player data from localStorage
+      clearPlayerData();
       
       // Reset current player name
       currentPlayerName = null;
@@ -1382,6 +1469,9 @@
         // Clear existing token service
         client.clientState.tokenService = null;
         
+        // Remove the restore config to ensure fresh identity
+        delete client.config.restoreIdentity;
+        
         // Initialize new token service
         client.initializeTokenService().then(() => {
           console.log('New identity generated successfully');
@@ -1394,6 +1484,9 @@
           if (playerNameInput) {
             playerNameInput.placeholder = currentPlayerName;
           }
+          
+          // Save the new identity
+          savePlayerIdentity();
         }).catch((error) => {
           console.error('Failed to reinitialize token service:', error);
           alert('Failed to generate new identity. Please refresh the page.');
@@ -1835,6 +1928,9 @@
       // Update token info
       updateTokenInfo();
       
+      // Save identity when tokens are updated
+      savePlayerIdentity();
+      
       // If it's a verification event, update the game state display only
       if (event.type === 'game_state_verification') {
         // Update game state display to show current hash status
@@ -1876,6 +1972,11 @@
         
         // Update the header display immediately
         updateTokenInfo();
+        
+        // Save updated identity to localStorage
+        setTimeout(() => {
+          savePlayerIdentity();
+        }, 100);
         
         return true;
       }
