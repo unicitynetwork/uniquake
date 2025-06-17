@@ -305,7 +305,11 @@
       peerId: null,
       clients: new Map(),
       gameState: null,
-      tokenService: null
+      tokenService: null,
+      // Entry fee tracking - track by pubkey to prevent double payment
+      paidPlayers: new Set(), // Set of pubkeys that have paid entry fee for this game
+      entryFee: 1, // Entry fee in tokens
+      collectedFees: [] // Array of collected entry fee tokens
     };
     let selectedClientId = null;
     let dedicatedServerInfo = null; // Dedicated server information
@@ -685,7 +689,71 @@
     }
     
     // End game with winner
-    function endGameWithWinner(winnerId) {
+    async function endGameWithWinner(winnerId) {
+      const winner = serverState.clients.get(winnerId);
+      if (!winner) {
+        console.error(`Winner ${winnerId} not found in client list`);
+        return;
+      }
+      
+      if (!winner.pubkey) {
+        console.error(`Winner ${winnerId} does not have a pubkey - cannot distribute tokens`);
+        return;
+      }
+      
+      // Distribute collected entry fees to winner
+      if (serverState.collectedFees.length > 0 && serverState.tokenService) {
+        try {
+          console.log(`Distributing ${serverState.collectedFees.length} collected entry fees to winner ${winner.username || winnerId}`);
+          
+          // Send all collected fees to the winner
+          const tokenFlows = await serverState.tokenService.sendTokensToRecipient(
+            serverState.collectedFees,
+            winner.pubkey
+          );
+          
+          // Send the winnings to the winner
+          sendMessageToClient(winnerId, {
+            type: 'token:reward',
+            tokenFlows: tokenFlows,
+            count: tokenFlows.length,
+            message: `Congratulations! You won ${tokenFlows.length} tokens from entry fees!`
+          });
+          
+          // Broadcast winner announcement
+          broadcastToAllClients({
+            type: 'chat',
+            from: 'SERVER',
+            message: `🏆 ${winner.username || winnerId} wins the game and receives ${tokenFlows.length} tokens!`,
+            timestamp: Date.now()
+          });
+          
+          // Clear collected fees
+          serverState.collectedFees = [];
+          
+          console.log(`Successfully distributed ${tokenFlows.length} tokens to winner ${winner.pubkey.substring(0, 10)}...`);
+          
+        } catch (error) {
+          console.error(`Failed to distribute tokens to winner ${winnerId}:`, error);
+          
+          // Notify winner about the error
+          sendMessageToClient(winnerId, {
+            type: 'error',
+            message: `Error distributing winnings: ${error.message}`
+          });
+        }
+      } else {
+        console.log('No entry fees collected or token service unavailable - no tokens to distribute');
+        
+        // Still announce the winner
+        broadcastToAllClients({
+          type: 'chat',
+          from: 'SERVER',
+          message: `🏆 ${winner.username || winnerId} wins the game!`,
+          timestamp: Date.now()
+        });
+      }
+      
       // Send end game command to dedicated server
       if (dedicatedServerInfo && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
         const endGameMsg = {
@@ -695,6 +763,31 @@
         };
         serverConnection.send(JSON.stringify(endGameMsg));
       }
+    }
+    
+    // Reset game for new round (clear paid players but keep collected fees until next winner)
+    function resetGameRound() {
+      console.log('Resetting game round - clearing paid players list');
+      
+      // Clear the list of players who have paid entry fees
+      // This allows the same players to pay again for a new game round
+      serverState.paidPlayers.clear();
+      
+      // Reset all client entry token status
+      serverState.clients.forEach(client => {
+        client.entryTokenReceived = false;
+      });
+      
+      // Broadcast reset announcement
+      broadcastToAllClients({
+        type: 'chat',
+        from: 'SERVER',
+        message: `🔄 New game round started! Entry fees reset - all players must pay again.`,
+        timestamp: Date.now()
+      });
+      
+      console.log('Game round reset complete - players must pay entry fees again');
+      updateGameStateDisplay();
     }
     
     // Server status display removed
@@ -1026,6 +1119,9 @@
         <strong>Game ID:</strong> ${dedicatedServerInfo?.gameId || serverState.gameId || 'Not started'}<br>
         <strong>Balance:</strong> ${balance} tokens<br>
         <strong>Token Status:</strong> ${tokenInfo}<br>
+        <strong>Entry Fee:</strong> ${serverState.entryFee} token${serverState.entryFee !== 1 ? 's' : ''}<br>
+        <strong>Collected Fees:</strong> ${serverState.collectedFees.length} tokens<br>
+        <strong>Players Paid:</strong> ${serverState.paidPlayers.size} unique players<br>
         <strong>Frame:</strong> ${frame}<br>
         <strong>Timestamp:</strong> ${new Date(timestamp).toLocaleTimeString()}<br>
         <strong>Connected Players:</strong> ${playerCount}<br>
@@ -1040,8 +1136,13 @@
           const connectionStatus = client.connected ? '🟢 Connected' : '🔴 Disconnected';
           const joinTime = new Date(client.joinTime).toLocaleTimeString();
           
+          // Check entry fee status by pubkey
+          const hasPaidEntryFee = client.pubkey && serverState.paidPlayers.has(client.pubkey);
+          const entryFeeStatus = hasPaidEntryFee ? '💰 Entry Fee Paid' : '❌ Entry Fee Not Paid';
+          
           gameStateElem.innerHTML += `
             - ${playerName}: ${connectionStatus} (joined ${joinTime})<br>
+            &nbsp;&nbsp;${entryFeeStatus}<br>
             &nbsp;&nbsp;Player Pubkey: <span style="font-family: monospace; font-size: 12px;">${client.pubkey || 'Not Set'}</span><br>
             &nbsp;&nbsp;Network ID: <span style="font-family: monospace; font-size: 12px;">${client.id}</span><br>
           `;
@@ -1197,14 +1298,29 @@
       updateClientList();
       
       // Send welcome message to the client
-      sendMessageToClient(clientId, {
+      const welcomeMessage = {
         type: 'welcome',
-        message: `Welcome to the server!`,
+        message: `Welcome to the server! Entry fee: ${serverState.entryFee} token${serverState.entryFee !== 1 ? 's' : ''}`,
         serverInfo: {
           tokenEnabled: !!serverState.tokenService,
-          entryFee: 1
-        }
-      });
+          entryFee: serverState.entryFee,
+          gameId: serverState.gameState?.gameId || dedicatedServerInfo?.gameId
+        },
+        // Include server identity for token operations if available
+        serverIdentity: serverState.tokenService ? {
+          pubkey: serverState.tokenService.getIdentity().pubkey,
+          username: serverState.tokenService.getIdentity().username
+        } : null
+      };
+      
+      console.log(`Sending welcome message to client ${clientId}:`, welcomeMessage);
+      if (welcomeMessage.serverIdentity) {
+        console.log(`✅ Server identity included in welcome message - client should send entry token automatically`);
+        console.log(`Server pubkey: ${welcomeMessage.serverIdentity.pubkey.substring(0, 16)}...`);
+      } else {
+        console.log(`❌ No server identity in welcome message - entry tokens will not work!`);
+      }
+      sendMessageToClient(clientId, welcomeMessage);
     }
 
     // Handle proxy data from clients
@@ -1212,6 +1328,11 @@
       const { clientId, data } = message;
       
       console.log(`Received data from client ${clientId}:`, data);
+      
+      // Log the specific message type for debugging
+      if (data && data.type) {
+        console.log(`Message type: ${data.type} from client ${clientId}`);
+      }
       
       // Update client data based on incoming messages
       const client = serverState.clients.get(clientId);
@@ -1228,6 +1349,7 @@
             break;
             
           case 'token:entry':
+            console.log(`🎫 ENTRY TOKEN PAYMENT received from client ${clientId}!`);
             handleEntryToken(clientId, data);
             break;
             
@@ -1245,12 +1367,16 @@
           case 'request:game:state:token':
             handleGameStateTokenRequest(clientId);
             break;
+            
+          default:
+            console.log(`⚠️ Unhandled message type '${data.type}' from client ${clientId}:`, data);
+            break;
         }
       }
     }
     
     // Handle entry token from client
-    function handleEntryToken(clientId, tokenData) {
+    async function handleEntryToken(clientId, tokenData) {
       const client = serverState.clients.get(clientId);
       if (!client) return;
       
@@ -1263,26 +1389,123 @@
         return;
       }
       
-      console.log(`Processing entry token from client ${clientId}`);
+      // Check if client has a pubkey (required for entry fee tracking)
+      if (!client.pubkey) {
+        sendMessageToClient(clientId, {
+          type: 'token:entry:ack',
+          success: false,
+          reason: 'Player identity (pubkey) required for entry fee payment'
+        });
+        return;
+      }
       
-      // Mark as received (simplified for now)
-      client.entryTokenReceived = true;
-      updateClientList();
+      console.log(`Processing entry token from client ${clientId} (pubkey: ${client.pubkey.substring(0, 10)}...)`);
       
-      // Send acknowledgment
-      sendMessageToClient(clientId, {
-        type: 'token:entry:ack',
-        success: true,
-        message: 'Entry token accepted'
-      });
+      // Check if this player (by pubkey) has already paid the entry fee for this game
+      if (serverState.paidPlayers.has(client.pubkey)) {
+        console.log(`Player ${client.pubkey.substring(0, 10)}... has already paid entry fee - allowing rejoin`);
+        
+        // Mark as received for this connection (UI purposes)
+        client.entryTokenReceived = true;
+        updateClientList();
+        
+        // Send acknowledgment for rejoin
+        sendMessageToClient(clientId, {
+          type: 'token:entry:ack',
+          success: true,
+          message: 'Welcome back! Entry fee already paid for this game',
+          isRejoin: true
+        });
+        
+        // Broadcast rejoin message
+        broadcastToAllClients({
+          type: 'chat',
+          from: 'SERVER',
+          message: `${client.username || clientId} has rejoined the game`,
+          timestamp: Date.now()
+        });
+        
+        return;
+      }
       
-      // Broadcast to all clients
-      broadcastToAllClients({
-        type: 'chat',
-        from: 'SERVER',
-        message: `${client.username || clientId} has paid the entry fee!`,
-        timestamp: Date.now()
-      });
+      // New player - validate and collect entry fee
+      try {
+        const tokenFlow = tokenData.tokenFlow;
+        const result = await validateEntryToken(clientId, tokenFlow);
+        
+        if (result.success) {
+          // Mark this pubkey as having paid for this game
+          serverState.paidPlayers.add(client.pubkey);
+          
+          // Store the collected token
+          serverState.collectedFees.push(result.token);
+          
+          // Mark as received for this connection
+          client.entryTokenReceived = true;
+          updateClientList();
+          
+          console.log(`Entry fee collected from ${client.pubkey.substring(0, 10)}... - Total collected fees: ${serverState.collectedFees.length}`);
+          
+          // Send acknowledgment
+          sendMessageToClient(clientId, {
+            type: 'token:entry:ack',
+            success: true,
+            message: 'Entry fee paid successfully',
+            isNewPayment: true
+          });
+          
+          // Broadcast payment confirmation
+          broadcastToAllClients({
+            type: 'chat',
+            from: 'SERVER',
+            message: `${client.username || clientId} has paid the entry fee and joined the game!`,
+            timestamp: Date.now()
+          });
+          
+        } else {
+          // Payment failed
+          sendMessageToClient(clientId, {
+            type: 'token:entry:ack',
+            success: false,
+            reason: result.reason || 'Invalid entry fee token'
+          });
+          
+          console.log(`Entry fee payment failed for ${client.pubkey.substring(0, 10)}...: ${result.reason}`);
+        }
+      } catch (error) {
+        console.error(`Error processing entry fee from ${client.pubkey.substring(0, 10)}...:`, error);
+        
+        sendMessageToClient(clientId, {
+          type: 'token:entry:ack',
+          success: false,
+          reason: 'Error processing entry fee: ' + error.message
+        });
+      }
+    }
+    
+    // Validate entry token from client
+    async function validateEntryToken(clientId, tokenFlow) {
+      if (!serverState.tokenService) {
+        return { success: false, reason: 'Token service not enabled on server' };
+      }
+      
+      try {
+        console.log(`Validating entry token from client ${clientId}...`);
+        
+        // Receive and validate the token
+        const result = await serverState.tokenService.receiveToken(tokenFlow);
+        
+        if (result.success) {
+          console.log(`Valid entry token received from client ${clientId}`);
+          return { success: true, token: result.token };
+        } else {
+          console.log(`Invalid entry token from client ${clientId}: ${result.error}`);
+          return { success: false, reason: result.error };
+        }
+      } catch (error) {
+        console.error(`Error processing entry token from client ${clientId}:`, error.message);
+        return { success: false, reason: error.message };
+      }
     }
     
     // Handle game state token request
