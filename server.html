@@ -281,9 +281,6 @@
 
   <!-- Load scripts -->
   <script src="lib/client/uniquake-token-service.js"></script>
-  <script src="lib/client/browser-mock-game.js"></script>
-  <script src="lib/client/browser-mock-server.js"></script>
-  <script src="lib/client/game-integration.js"></script>
   
   <script>
     // Load WebRTC adapter directly, bypassing the auto-connect behavior
@@ -297,14 +294,21 @@
     var script = document.createElement('script');
     script.src = '/webrtc-adapter.js';
     script.onload = function() {
-      console.log('WebRTC adapter loaded, initializing server');
       initializeServer();
     };
     document.head.appendChild(script);
     
-    // Main server, game, and integration instances
-    let server, game, integration;
+    // Main server instance and state
+    let serverConnection = null;
+    let serverState = {
+      registered: false,
+      peerId: null,
+      clients: new Map(),
+      gameState: null,
+      tokenService: null
+    };
     let selectedClientId = null;
+    let dedicatedServerInfo = null; // Dedicated server information
     
     /**
      * Generate a random server name
@@ -322,13 +326,12 @@
     
     // Initialize server
     async function initializeServer() {
-      // Get initial configuration from UI
+      // Get initial configuration
       const config = getServerConfig();
       
-      // Generate random server name - this will be used for registration during init()
+      // Generate random server name
       const serverName = generateServerName();
       config.serverName = serverName;
-      console.log('Generated server name for initial registration:', serverName);
       
       // Update the serving message with the server name
       const serverNameDisplay = document.getElementById('server-name-display');
@@ -336,100 +339,85 @@
         serverNameDisplay.textContent = serverName;
       }
       
-      // Create mock game
-      game = new BrowserMockGame({
-        isServer: true,
-        updateInterval: 10000, // 10 seconds between game state updates
-        onStateChange: updateGameState
-      });
-      
-      // Create mock server
-      server = new BrowserMockServer({
-        masterServer: window.UNIQUAKE_CONFIG.masterServer || 'ws://localhost:27950',
-        serverName: config.serverName,
-        map: config.map,
-        maxPlayers: config.maxPlayers,
-        tokenEnabled: config.tokenEnabled,
-        debug: true,
-        onClientConnect: handleClientConnect,
-        onClientDisconnect: handleClientDisconnect,
-        onChatMessage: handleChatMessage,
-        // Add handler for remote server messages
-        onMessage: handleMasterServerMessage
-      });
-      
-      // Create game integration
-      integration = new GameIntegration({
-        server: server,
-        debug: true,
-        onGameStateUpdate: updateGameState,
-        onTokenEvent: handleTokenEvent,
-        onPlayerJoin: handlePlayerJoin,
-        onPlayerLeave: handlePlayerLeave,
-        onGameEnd: handleGameEnd
-      });
-      
-      // Initialize all components
-      await game.init();
-      await server.init();
-      await integration.init(game);
-      
-      // Store reference to game in server for synchronization
-      server.gameInstance = game;
-      
-      // Log available methods to help with debugging
-      console.log('Server connection methods:', {
-        sendToMaster: typeof server.sendToMaster === 'function',
-        registerServer: typeof server.registerServer === 'function',
-        unregisterServer: typeof server.unregisterServer === 'function',
-        signaling: !!server.serverState.signaling,
-        signalingState: server.serverState.signaling ? server.serverState.signaling.readyState : 'not initialized'
-      });
-      
-      // Check if the server was registered during init()
-      if (server.serverState.registered) {
-        console.log('Server was successfully registered during init(), proceeding to start');
-      } else {
-        console.warn('Server was not registered during init(), registration will be attempted in startServer()');
+      // Connect to master server for dedicated server management
+      const connected = await connectToMasterServer(config);
+      if (connected) {
+        // Start a dedicated server
+        const gameId = await startRemoteServer();
+        if (gameId) {
+          console.log(`Dedicated server started with game ID: ${gameId}`);
+        }
       }
-      
-      // Auto-start the server (no manual controls)
-      await startServer();
-      
-      console.log('Server system initialized and auto-started');
-      
-      // Note: We no longer need a separate normalizeGameState function
-      // as we now use the token service's hashGameState method directly.
-      // The token service internally handles state normalization and hashing.
       
       // Set up UI event handlers
       setupUIHandlers();
       
-      // Initial server status pane removed
-      
-      // NOTE: initQuakeGame is now called inside startServer() 
-      // so we don't need to call it here again
-      
       // Set up real-time UI updates for server stats
       setInterval(() => {
-        if (game && server) {
-          // Update game state panel with real-time stats
-          updateGameState(game.getGameState());
-          
-          // Update token info panel
-          updateTokenInfo();
-          
-          console.log(`Real-time update - Game frame: ${game.gameState.frame}, Server frame: ${server.serverState.gameState.frame}`);
-        }
+        updateGameStateDisplay();
       }, 1000); // Update every 1 second for real-time updates
       
       // Set up periodic server status updates
       setInterval(() => {
-        if (server && server.sendToMaster) {
-          // Request server list to get our own status
+        if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
           requestServerStatus();
         }
       }, 5000); // Update every 5 seconds
+    }
+    
+    // Connect to master server for dedicated server management
+    async function connectToMasterServer(config) {
+      return new Promise((resolve, reject) => {
+        const masterUrl = window.UNIQUAKE_CONFIG.masterServer || 'ws://localhost:27950';
+        console.log(`Connecting to master server at ${masterUrl}...`);
+        
+        try {
+          serverConnection = new WebSocket(masterUrl);
+          
+          serverConnection.onopen = () => {
+            console.log('Connected to master server');
+            
+            // Register as a server
+            const registerMsg = {
+              type: 'register_server',
+              serverInfo: {
+                name: config.serverName,
+                map: config.map,
+                game: 'baseq3',
+                players: 0,
+                maxPlayers: config.maxPlayers,
+                tokenEnabled: config.tokenEnabled,
+                address: 'ws-proxy' // Indicate this uses WebSocket proxy
+              }
+            };
+            
+            serverConnection.send(JSON.stringify(registerMsg));
+            resolve(true);
+          };
+          
+          serverConnection.onmessage = (event) => {
+            try {
+              const message = JSON.parse(event.data);
+              handleMasterServerMessage(message);
+            } catch (err) {
+              console.error('Failed to parse message:', err.message);
+            }
+          };
+          
+          serverConnection.onclose = () => {
+            console.log('Disconnected from master server');
+            serverState.registered = false;
+          };
+          
+          serverConnection.onerror = (err) => {
+            console.error('Master server connection error:', err);
+            reject(err);
+          };
+        } catch (err) {
+          console.error('Failed to connect to master server:', err);
+          reject(err);
+        }
+      });
     }
     
     // Initialize Quake game in iframe
@@ -458,19 +446,15 @@
         }
       });
       
-      console.log('Starting server with remote delegation instead of in-browser iframe');
+      
     }
     
     // Start a remote dedicated server on the master server
     async function startRemoteServer() {
-      const map = 'q3dm1'; // Default map
-      const maxPlayers = 16; // Default max players
-      const serverName = server.serverInfo.name;
-      
-      // Create a unique game ID
+      const config = getServerConfig();
       const gameId = 'game-' + Date.now();
       
-      console.log('Requesting master server to start a remote dedicated server...');
+      
       
       try {
         // Request the master server to start a dedicated server
@@ -478,35 +462,30 @@
           unicity: true,
           type: 'start_game_server',
           serverInfo: {
-            name: serverName,
+            name: config.serverName,
             gameId: gameId,
-            map: map,
-            maxPlayers: maxPlayers,
+            map: config.map,
+            maxPlayers: config.maxPlayers,
             private: false
           }
         };
         
         // Store game ID in server state for later use
-        server.serverState.gameId = gameId;
+        serverState.gameId = gameId;
         
-        // Send the request via the server's connection to master
-        if (server && server.serverState.signaling && 
-            server.serverState.signaling.readyState === WebSocket.OPEN) {
-          // Use the server's sendToMaster method
-          server.sendToMaster(startServerMsg);
+        // Send the request via WebSocket
+        if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+          serverConnection.send(JSON.stringify(startServerMsg));
           
-          // Log status instead of displaying in UI
-          console.log(`Starting remote dedicated server - Game ID: ${gameId}, Map: ${map}`);
           
-          console.log('Sent request to start remote dedicated server with game ID:', gameId);
           
-          // Return the game ID
+          
           return gameId;
         } else {
           throw new Error('Not connected to master server');
         }
       } catch (error) {
-        console.error('Failed to start remote server:', error);
+        
         alert('Failed to start remote dedicated server: ' + error.message);
         return null;
       }
@@ -514,7 +493,7 @@
     
     // Game placeholder removed (no iframe)
     function initGamePlaceholder() {
-      console.log('Game placeholder removed - no iframe panel');
+      
     }
     
     // Get server configuration (using defaults since UI inputs are removed)
@@ -535,7 +514,7 @@
         if (element) {
           element.addEventListener(eventType, handler);
         } else {
-          console.warn(`Element with ID '${elementId}' not found`);
+          
         }
       }
       
@@ -562,129 +541,53 @@
       
       // Server action buttons removed
       
-      // Client action buttons
-      addSafeEventListener('kick-button', 'click', kickSelectedClient);
-      addSafeEventListener('message-button', 'click', sendClientMessage);
-      
-      // Token action buttons
-      addSafeEventListener('tokens-button', 'click', showTokens);
-      addSafeEventListener('award-tokens-button', 'click', awardTokens);
+      // Action buttons removed - no UI controls needed
       
       // Game iframe removed
     }
     
-    // Start the server
+    // Legacy start server function - now handled by real server
     async function startServer() {
-      // Update configuration from UI
-      const config = getServerConfig();
-      
-      // Use the existing server name instead of generating a new one
-      const serverName = server.serverInfo.name;
-      config.serverName = serverName;
-      
-      // Update server config
-      server.serverInfo.name = config.serverName;
-      server.serverInfo.map = config.map;
-      server.serverInfo.maxPlayers = config.maxPlayers;
-      
-      // Check if the server is already registered
-      let success = server.serverState.registered;
-      
-      if (success) {
-        console.log('Server already registered during init(), skipping explicit registration');
-      } else {
-        // Server wasn't registered during init(), we need to register it now
-        console.log('Server not registered yet, registering now...');
-        success = await server.registerServer();
-      }
-      
-      if (success) {
-        // Start the game
-        game.start();
-        
-        // Start the Quake dedicated server ONLY after our framework server is registered
-        console.log('Framework server registered successfully, starting Quake dedicated server');
-        
-        // Check if we're already running a server (to avoid duplicates)
-        if (!server.serverState.gameId) {
-          initQuakeGame();
-        } else {
-          console.log('A game server is already running with ID:', server.serverState.gameId);
-        }
-        
-        // UI buttons removed
-        
-        // Configuration inputs removed
-      } else {
-        alert('Failed to register server with master server');
-      }
+      // Real server handles registration and startup automatically
+      return true;
     }
     
-    // Stop the server
+    // Legacy register function - now handled by real server
+    async function registerWithMaster() {
+      // Real server handles registration automatically
+      return true;
+    }
+    
+    // Stop the dedicated server
     async function stopServer() {
-      // ORIGINAL IMPLEMENTATION: Stop in-browser dedicated server
-      // This code stops the in-browser dedicated server and unregisters from master
-      // Commented lines are preserved for future use when we return to in-browser implementation
-      
-      // Unregister from master server
-      await server.unregisterServer();
-      
-      // Stop the game
-      game.stop();
-      
-      // INTERIM SOLUTION: Stop remote dedicated server
-      // First, stop the remote server on the master server host
-      await stopRemoteServer();
-      
-      // UI buttons removed
-    }
-    
-    // Stop the remote dedicated server
-    async function stopRemoteServer() {
-      // Get the game ID from server state
-      const gameId = server.serverState.gameId;
-      
-      if (!gameId) {
-        console.warn('No game ID found in server state, cannot stop remote server');
-        return;
+      // Stop game state token broadcasts
+      if (serverState.gameStateInterval) {
+        clearInterval(serverState.gameStateInterval);
+        serverState.gameStateInterval = null;
+        console.log('Stopped game state token broadcasts');
       }
       
-      console.log('Requesting master server to stop remote dedicated server:', gameId);
-      
-      try {
-        // Request the master server to stop the dedicated server
-        const stopServerMsg = {
+      if (dedicatedServerInfo && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+        const stopMsg = {
           unicity: true,
           type: 'stop_game_server',
-          gameId: gameId
+          gameId: dedicatedServerInfo.gameId
         };
-        
-        // Send the request via the server's connection to master
-        if (server && server.serverState.signaling && 
-            server.serverState.signaling.readyState === WebSocket.OPEN) {
-          // Use the server's sendToMaster method
-          server.sendToMaster(stopServerMsg);
-          
-          // Log status instead of displaying in UI
-          console.log(`Stopping remote dedicated server - Game ID: ${gameId}`);
-          
-          console.log('Sent request to stop remote dedicated server with game ID:', gameId);
-          
-          // Clear game ID from server state
-          server.serverState.gameId = null;
-          
-          // Wait a moment for the server to stop
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          return true;
-        } else {
-          throw new Error('Not connected to master server');
-        }
-      } catch (error) {
-        console.error('Failed to stop remote server:', error);
-        alert('Failed to stop remote dedicated server: ' + error.message);
-        return false;
+        serverConnection.send(JSON.stringify(stopMsg));
       }
+      return true;
+    }
+    
+    // Legacy unregister function - now handled by real server
+    async function unregisterFromMaster() {
+      // Real server handles unregistration automatically
+      return true;
+    }
+    
+    // Legacy remote server function - now handled by real server
+    async function stopRemoteServer() {
+      // Real server handles dedicated server management
+      return true;
     }
     
     // Server action functions removed
@@ -696,8 +599,14 @@
         return;
       }
       
+      const client = serverState.clients.get(selectedClientId);
+      if (!client) {
+        alert('Client not found');
+        return;
+      }
+      
       const reason = prompt('Enter kick reason:');
-      server.kickClient(selectedClientId, reason || 'Kicked by server');
+      kickClient(selectedClientId, reason || 'Kicked by server');
     }
     
     // Send a message to the selected client
@@ -707,9 +616,15 @@
         return;
       }
       
+      const client = serverState.clients.get(selectedClientId);
+      if (!client) {
+        alert('Client not found');
+        return;
+      }
+      
       const message = prompt('Enter message:');
       if (message) {
-        server.sendToClient(selectedClientId, {
+        sendMessageToClient(selectedClientId, {
           type: 'chat',
           from: 'SERVER',
           message: message
@@ -729,56 +644,310 @@
         return;
       }
       
-      // End game with this client as winner
-      integration.endGame(selectedClientId);
+      const client = serverState.clients.get(selectedClientId);
+      if (!client) {
+        alert('Client not found');
+        return;
+      }
+      
+      // Award tokens to this client
+      endGameWithWinner(selectedClientId);
+    }
+    
+    // Send message to client via WebSocket proxy
+    function sendMessageToClient(clientId, message) {
+      if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+        const proxyMessage = {
+          type: 'proxy_data',
+          clientId: clientId,
+          data: message
+        };
+        serverConnection.send(JSON.stringify(proxyMessage));
+        return true;
+      }
+      return false;
+    }
+    
+    // Kick a client
+    function kickClient(clientId, reason) {
+      if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+        const kickMessage = {
+          type: 'kick_client',
+          clientId: clientId,
+          reason: reason || 'Kicked by server'
+        };
+        serverConnection.send(JSON.stringify(kickMessage));
+      }
+      
+      // Remove from our client list
+      serverState.clients.delete(clientId);
+      updateClientList();
+    }
+    
+    // End game with winner
+    function endGameWithWinner(winnerId) {
+      // Send end game command to dedicated server
+      if (dedicatedServerInfo && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+        const endGameMsg = {
+          type: 'end_game',
+          gameId: dedicatedServerInfo.gameId,
+          winnerId: winnerId
+        };
+        serverConnection.send(JSON.stringify(endGameMsg));
+      }
     }
     
     // Server status display removed
     
-    // Handle client connection
-    function handleClientConnect(client) {
-      console.log('Client connected:', client);
+    // Handle server registration confirmation
+    function handleServerRegistration(message) {
+      console.log('Server registered with peer ID:', message.peerId);
+      serverState.peerId = message.peerId;
+      serverState.registered = true;
+      updateServerStatus('starting');
+      
+      // Initialize token service for the server
+      initializeTokenService();
+    }
+    
+    // Initialize token service for server
+    async function initializeTokenService() {
+      if (!window.UniQuakeTokenService) {
+        console.log('UniQuakeTokenService not available');
+        return;
+      }
+      
+      try {
+        console.log('Initializing server token service...');
+        
+        // Get server config to use server name
+        const config = getServerConfig();
+        const serverName = config.serverName || 'Server';
+        
+        // Create token service with server name as username
+        serverState.tokenService = new window.UniQuakeTokenService({
+          username: serverName,
+          debug: false
+        });
+        
+        // Initialize the service
+        await serverState.tokenService.init();
+        
+        // Get identity info
+        const identity = serverState.tokenService.getIdentity();
+        console.log(`Server token service initialized with identity: ${identity.username} (${identity.pubkey.substring(0, 10)}...)`);
+        
+        // Start the game state token system
+        startGameStateTokens();
+        
+      } catch (error) {
+        console.error('Failed to initialize server token service:', error);
+      }
+    }
+    
+    // Start periodic game state token broadcasts
+    function startGameStateTokens() {
+      if (!serverState.tokenService) {
+        console.log('Cannot start game state tokens: token service not available');
+        return;
+      }
+      
+      console.log('Starting game state token broadcasts...');
+      
+      // Initialize game state
+      serverState.gameState = {
+        gameId: dedicatedServerInfo?.gameId || `game-${Date.now()}`,
+        frame: 0,
+        timestamp: Date.now(),
+        players: {},
+        items: {}
+      };
+      
+      // Create initial token
+      setTimeout(() => {
+        createGameStateToken(true);
+      }, 1000);
+      
+      // Set up periodic token broadcasts (every 10 seconds)
+      serverState.gameStateInterval = setInterval(() => {
+        createGameStateToken(true);
+      }, 10000);
+    }
+    
+    // Create and broadcast game state token
+    async function createGameStateToken(broadcast = true) {
+      if (!serverState.tokenService) {
+        return null;
+      }
+      
+      try {
+        // Update game state with current server info
+        serverState.gameState.frame++;
+        serverState.gameState.timestamp = Date.now();
+        
+        // Update players from connected clients
+        serverState.gameState.players = {};
+        serverState.clients.forEach((client, clientId) => {
+          const playerKey = client.pubkey || clientId;
+          serverState.gameState.players[playerKey] = {
+            id: playerKey,
+            name: client.username || `Player-${clientId}`,
+            connected: client.connected,
+            pubkey: client.pubkey,
+            clientId: clientId,
+            joinTime: client.joinTime,
+            lastActive: Date.now()
+          };
+        });
+        
+        console.log(`Creating game state token for frame ${serverState.gameState.frame} with ${Object.keys(serverState.gameState.players).length} players`);
+        
+        // Create or update the token
+        // Reset token every 10 frames to prevent growth (when frame is divisible by 10)
+        let token = null;
+        const shouldResetToken = serverState.gameState.frame % 10 === 0;
+        
+        if (!serverState.tokenService.lastStateToken || shouldResetToken) {
+          if (shouldResetToken) {
+            console.log(`Resetting game state token at frame ${serverState.gameState.frame} (divisible by 10)`);
+          }
+          // Create fresh token (initial or reset)
+          token = await serverState.tokenService.createGameStateToken(serverState.gameState);
+          console.log(`Created ${shouldResetToken ? 'reset' : 'initial'} game state token for frame ${serverState.gameState.frame}`);
+        } else {
+          // Update existing token
+          try {
+            token = await serverState.tokenService.updateGameStateToken(
+              serverState.tokenService.lastStateToken,
+              serverState.gameState
+            );
+            console.log(`Updated game state token for frame ${serverState.gameState.frame}`);
+          } catch (updateError) {
+            // If update fails, create new token
+            console.warn(`Token update failed, creating new token: ${updateError.message}`);
+            token = await serverState.tokenService.createGameStateToken(serverState.gameState);
+          }
+        }
+        
+        // Broadcast to all connected clients if requested
+        if (broadcast && token) {
+          const tokenFlow = serverState.tokenService.TXF.exportFlow(token);
+          
+          const serverStateInfo = {
+            playerCount: serverState.clients.size,
+            itemCount: Object.keys(serverState.gameState.items).length,
+            timestamp: Date.now()
+          };
+          
+          const message = {
+            type: 'game:state:token',
+            tokenFlow: tokenFlow,
+            frame: serverState.gameState.frame,
+            serverInfo: serverStateInfo
+          };
+          
+          console.log(`Broadcasting game state token for frame ${serverState.gameState.frame} to ${serverState.clients.size} clients`);
+          broadcastToAllClients(message);
+          
+          // Also send server state update
+          broadcastToAllClients({
+            type: 'server:state:update',
+            serverInfo: serverStateInfo
+          });
+        }
+        
+        return token;
+      } catch (error) {
+        console.error('Failed to create game state token:', error);
+        return null;
+      }
+    }
+    
+    // Handle dedicated server started
+    function handleGameServerStarted(message) {
+      console.log('Dedicated server started:', message);
+      dedicatedServerInfo = {
+        gameId: message.gameId,
+        serverId: message.serverId,
+        serverInfo: message.serverInfo
+      };
+      updateServerStatus('running');
+    }
+    
+    // Handle dedicated server stopped  
+    function handleGameServerStopped(message) {
+      console.log('Dedicated server stopped:', message);
+      dedicatedServerInfo = null;
+      updateServerStatus('not_running');
+    }
+    
+    // Handle client connection (from real game server via master server)
+    function handleClientConnect(clientData) {
+      
+      
+      // Add to our client registry
+      serverState.clients.set(clientData.id, {
+        id: clientData.id,
+        username: clientData.username || clientData.id,
+        pubkey: clientData.pubkey || null,
+        connected: true,
+        joinTime: Date.now()
+      });
       
       // Enable client action buttons if at least one client is connected
-      document.getElementById('kick-button').disabled = false;
-      document.getElementById('message-button').disabled = false;
-      document.getElementById('award-tokens-button').disabled = false;
+      const kickButton = document.getElementById('kick-button');
+      const messageButton = document.getElementById('message-button');  
+      const awardButton = document.getElementById('award-tokens-button');
+      
+      if (kickButton) kickButton.disabled = false;
+      if (messageButton) messageButton.disabled = false;
+      if (awardButton) awardButton.disabled = false;
       
       // Update client list
-      updateClientList(server.getClients());
+      updateClientList();
     }
     
     // Handle client disconnection
-    function handleClientDisconnect(client) {
-      console.log('Client disconnected:', client);
+    function handleClientDisconnect(clientData) {
+      
       
       // Clear selection if this client was selected
-      if (selectedClientId === client.id) {
+      if (selectedClientId === clientData.id || 
+          (clientData.pubkey && selectedClientId === clientData.pubkey)) {
         selectedClientId = null;
       }
       
+      // Remove from our client registry
+      serverState.clients.delete(clientData.id);
+      
       // Update client list
-      const clients = server.getClients();
-      updateClientList(clients);
+      updateClientList();
       
       // Disable client action buttons if no clients are connected
-      if (clients.length === 0) {
-        document.getElementById('kick-button').disabled = true;
-        document.getElementById('message-button').disabled = true;
-        document.getElementById('award-tokens-button').disabled = true;
+      if (serverState.clients.size === 0) {
+        const kickButton = document.getElementById('kick-button');
+        const messageButton = document.getElementById('message-button');  
+        const awardButton = document.getElementById('award-tokens-button');
+        
+        if (kickButton) kickButton.disabled = true;
+        if (messageButton) messageButton.disabled = true;
+        if (awardButton) awardButton.disabled = true;
       }
     }
     
     // Handle chat message
     function handleChatMessage(event) {
-      console.log('Chat message:', event);
+      
     }
     
     // Update client list display
-    function updateClientList(clients) {
+    function updateClientList() {
       const clientList = document.getElementById('client-list');
+      if (!clientList) return;
       
-      if (!clients || clients.length === 0) {
+      const clients = Array.from(serverState.clients.values());
+      
+      if (clients.length === 0) {
         clientList.innerHTML = 'No clients connected';
         return;
       }
@@ -789,182 +958,110 @@
         const clientElem = document.createElement('div');
         clientElem.className = 'client-item';
         
-        if (selectedClientId === client.id) {
+        // Use pubkey as primary identifier, fallback to client.id
+        const primaryId = client.pubkey || client.id;
+        
+        if (selectedClientId === primaryId) {
           clientElem.className += ' selected';
           clientElem.style.borderLeft = '3px solid #4fc3f7';
         }
         
         clientElem.innerHTML = `
-          <div class="client-name">${client.username || client.id}</div>
+          <div class="client-name">${client.username || (client.pubkey ? client.pubkey.substring(0, 16) + '...' : client.id)}</div>
+          <div class="client-info">Player ID (Pubkey): <span style="font-family: monospace; word-break: break-all;">${client.pubkey || 'N/A'}</span></div>
           <div class="client-info">Network ID: <span style="font-family: monospace; word-break: break-all;">${client.id}</span></div>
-          <div class="client-info">Token Public Key Address: <span style="font-family: monospace; word-break: break-all;">${client.pubkey || 'N/A'}</span></div>
           <div class="client-info">Entry Token: ${client.entryTokenReceived ? 'Received' : 'Not Received'}</div>
         `;
         
         clientElem.addEventListener('click', () => {
-          // Update selection
-          selectedClientId = client.id;
+          // Update selection using pubkey as primary identifier
+          selectedClientId = primaryId;
           
           // Update client list
-          updateClientList(server.getClients());
+          updateClientList();
         });
         
         clientList.appendChild(clientElem);
       });
     }
     
-    // Update game state display
-    function updateGameState(gameState) {
-      if (!gameState) return;
-      
-      // Update game state display
+    // Update game state display (now called updateGameStateDisplay to avoid conflicts)
+    function updateGameStateDisplay() {
       const gameStateElem = document.getElementById('game-state');
+      if (!gameStateElem) return;
       
-      // Get server information
-      const serverName = server ? server.serverInfo.name : 'Unknown';
-      const serverId = server ? (server.serverState.peerId || 'Not registered') : 'N/A';
-      
-      // Calculate real-time balance: count × value of collected tokens
-      let balance = 0;
-      if (server && server.serverState.collectedTokens) {
-        // Each entry token typically has value of 1, but let's calculate the actual total
-        server.serverState.collectedTokens.forEach(token => {
-          try {
-            // Try to get token value, default to 1 if not available
-            const tokenValue = token.tokenValue ? parseInt(token.tokenValue) : 1;
-            balance += tokenValue;
-          } catch (error) {
-            // If token parsing fails, assume value of 1
-            balance += 1;
-          }
-        });
+      // Get server information from dedicated server if available
+      let serverName = 'Unknown';
+      if (dedicatedServerInfo && dedicatedServerInfo.serverInfo && dedicatedServerInfo.serverInfo.name) {
+        serverName = dedicatedServerInfo.serverInfo.name;
+      } else {
+        const config = getServerConfig();
+        serverName = config.serverName || 'Unknown';
       }
+      const serverId = serverState.peerId || 'Not registered';
       
-      // Calculate state hash for the game state panel
-      let stateHash = 'N/A';
-      if (server && server.serverState.tokenService && server.serverState.tokenService.hashGameState) {
+      // Calculate real-time balance from token service
+      let balance = 0;
+      let tokenInfo = 'Token service not available';
+      
+      if (serverState.tokenService) {
         try {
-          // Enable debug mode temporarily to see serialization and hash details
-          const debugEnabled = server.serverState.tokenService.debugMode;
-          server.serverState.tokenService.debugMode = true;
-          
-          // Use the token service's normalization and hash calculation
-          // This ensures we use exactly the same process on server and client
-          stateHash = server.serverState.tokenService.hashGameState(gameState);
-          console.log(`Server - Hash calculated for frame ${gameState.frame}:`, stateHash);
-          
-          // Restore previous debug setting
-          server.serverState.tokenService.debugMode = debugEnabled;
+          const tokenStatus = serverState.tokenService.getTokenStatus();
+          balance = tokenStatus.value || 0;
+          tokenInfo = `Token service active (${tokenStatus.tokens?.total || 0} tokens)`;
         } catch (error) {
-          console.error('Failed to calculate game state hash:', error.message);
+          tokenInfo = `Token service error: ${error.message}`;
         }
       }
+      
+      // Get current game state from the dedicated server
+      let gameState = serverState.gameState;
+      const frame = gameState?.frame || 0;
+      const timestamp = gameState?.timestamp || Date.now();
+      const playerCount = serverState.clients.size;
       
       gameStateElem.innerHTML = `
         <strong>Server Name:</strong> ${serverName}<br>
         <strong>Server ID:</strong> <span style="font-family: monospace; word-break: break-all;">${serverId}</span><br>
-        <strong>Balance:</strong> ${balance} tokens (${server ? server.serverState.collectedTokens.length : 0} collected)<br>
-        <strong>Frame:</strong> ${gameState.frame}<br>
-        <strong>Timestamp:</strong> ${new Date(gameState.timestamp).toLocaleTimeString()}<br>
-        <strong>Players:</strong> ${Object.keys(gameState.players).length}<br>
-        <strong>State Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${stateHash}</span><br>
+        <strong>Game ID:</strong> ${dedicatedServerInfo?.gameId || serverState.gameId || 'Not started'}<br>
+        <strong>Balance:</strong> ${balance} tokens<br>
+        <strong>Token Status:</strong> ${tokenInfo}<br>
+        <strong>Frame:</strong> ${frame}<br>
+        <strong>Timestamp:</strong> ${new Date(timestamp).toLocaleTimeString()}<br>
+        <strong>Connected Players:</strong> ${playerCount}<br>
       `;
       
-      // Also update token info to ensure frame numbers are in sync
-      updateTokenInfo();
-      
-      // Display player information
-      if (Object.keys(gameState.players).length > 0) {
-        gameStateElem.innerHTML += '<br><strong>Player Information:</strong><br>';
+      // Display connected clients information
+      if (serverState.clients.size > 0) {
+        gameStateElem.innerHTML += '<br><strong>Connected Players:</strong><br>';
         
-        Object.keys(gameState.players).forEach(playerId => {
-          const player = gameState.players[playerId];
-          const score = gameState.score?.[playerId] || 0;
+        Array.from(serverState.clients.values()).forEach(client => {
+          const playerName = client.username || client.id;
+          const connectionStatus = client.connected ? '🟢 Connected' : '🔴 Disconnected';
+          const joinTime = new Date(client.joinTime).toLocaleTimeString();
           
           gameStateElem.innerHTML += `
-            - ${player.name}: Health: ${Math.round(player.health)} | Score: ${score}<br>
+            - ${playerName}: ${connectionStatus} (joined ${joinTime})<br>
+            &nbsp;&nbsp;Player Pubkey: <span style="font-family: monospace; font-size: 12px;">${client.pubkey || 'Not Set'}</span><br>
+            &nbsp;&nbsp;Network ID: <span style="font-family: monospace; font-size: 12px;">${client.id}</span><br>
           `;
         });
       }
       
-      // Display game end information if game has ended
-      if (gameState.ended) {
-        gameStateElem.innerHTML += `
-          <br><strong>Game Ended</strong><br>
-          <strong>Winner:</strong> ${gameState.winner ? gameState.players[gameState.winner]?.name || gameState.winner : 'None'}<br>
-        `;
-        
-        if (gameState.finalScores) {
-          gameStateElem.innerHTML += '<strong>Final Scores:</strong><br>';
-          
-          Object.keys(gameState.finalScores).forEach(playerId => {
-            const playerName = gameState.players[playerId]?.name || playerId;
-            const score = gameState.finalScores[playerId];
-            
-            gameStateElem.innerHTML += `
-              - ${playerName}: ${score}<br>
-            `;
-          });
-        }
-      }
+      // Update token info as well
+      updateTokenInfo();
     }
     
     // Update token information
-    function updateTokenInfo(tokens) {
-      const tokenInfo = document.getElementById('token-info');
+    function updateTokenInfo() {
+      // Token info is now displayed in the main game state panel
+      // This function is kept for compatibility but doesn't need to do anything
       
-      // Element was removed in server page simplification - just return
-      if (!tokenInfo) {
-        return;
-      }
-      
-      if (!server || !server.serverState.tokenService) {
-        tokenInfo.innerHTML = 'Token service not available';
-        return;
-      }
-      
-      // Use the provided token data instead of calling getStatus again
-      const identity = server.serverState.tokenService.getIdentity();
-      
-      // Get token status
-      const tokenStatus = server.serverState.tokenService.getTokenStatus();
-      
-      // Get the server's peer ID for display
-      const peerId = server.serverState.peerId || 'Not registered';
-      
-      // Ensure the displayed username matches the server name in the Server Status panel
-      // Update the token service username if needed to maintain consistency
-      if (identity.username !== server.serverInfo.name) {
-        console.log(`Detected username mismatch: Token service username (${identity.username}) != Server name (${server.serverInfo.name})`);
-        // Note: We can't update the token service username directly as it's set during initialization
-      }
-      
-      // Display server info in the Token System panel, matching the Server Status panel
-      tokenInfo.innerHTML = `
-        <strong>Server Name:</strong> ${server.serverInfo.name}<br>
-        <strong>Token Username:</strong> ${identity.username}<br>
-        <strong>Network ID (Peer ID):</strong> <span style="font-family: monospace; word-break: break-all;">${peerId}</span><br>
-        <strong>Token Public Key Address:</strong> <span style="font-family: monospace; word-break: break-all;">${identity.pubkey}</span><br>
-        <strong>Collected Entry Tokens:</strong> ${server.serverState.collectedTokens.length}<br>
-        <strong>Game State Token:</strong> ${server.serverState.tokenService.lastStateToken ? 'Available' : 'Not Created'}<br>
-      `;
-      
-      // Display client token status
-      const clients = server.getClients();
-      if (clients.length > 0) {
-        tokenInfo.innerHTML += '<br><strong>Client Token Status:</strong><br>';
-        
-        clients.forEach(client => {
-          tokenInfo.innerHTML += `
-            - ${client.username || client.id}: ${client.entryTokenReceived ? 'Entry token received' : 'No entry token'}<br>
-          `;
-        });
-      }
     }
     
     // Handle token events
     function handleTokenEvent(event) {
-      console.log('Token event:', event);
+      
       
       // Update token info
       updateTokenInfo();
@@ -972,17 +1069,17 @@
     
     // Handle player join event
     function handlePlayerJoin(player) {
-      console.log('Player joined:', player);
+      
     }
     
     // Handle player leave event
     function handlePlayerLeave(player) {
-      console.log('Player left:', player);
+      
     }
     
     // Handle game end event
     function handleGameEnd(result) {
-      console.log('Game ended:', result);
+      
       
       // Update token info
       updateTokenInfo();
@@ -990,15 +1087,36 @@
       // Game restart logic removed (no iframe)
     }
     
-    // Handle messages from the master server, particularly about remote dedicated servers
+    // Handle messages from the master server
     function handleMasterServerMessage(message) {
-      console.log('Received message from master server:', message);
       
-      // Skip if not a Unicity message
-      if (!message.unicity) return;
       
       // Process by message type
       switch (message.type) {
+        case 'connected':
+          
+          break;
+          
+        case 'server_registered':
+          handleServerRegistration(message);
+          break;
+          
+        case 'connection_request':
+          handleConnectionRequest(message);
+          break;
+          
+        case 'proxy_data':
+          handleProxyData(message);
+          break;
+          
+        case 'proxy_connection':
+          handleProxyConnection(message);
+          break;
+          
+        case 'server_disconnected':
+          handleClientDisconnected(message);
+          break;
+          
         case 'game_server_started':
           handleGameServerStarted(message);
           break;
@@ -1015,45 +1133,261 @@
           handleGameServerLogs(message);
           break;
           
+        case 'server_list':
+          handleServerListForStatus(message.servers || []);
+          break;
+          
         case 'error':
           handleMasterServerError(message);
           break;
+          
+        default:
+          
+          break;
+      }
+    }
+    
+    // Handle connection request from client
+    function handleConnectionRequest(message) {
+      const { connectionId, clientId, identity } = message;
+      
+      
+      // Add client to our registry
+      const clientData = {
+        id: clientId,
+        username: identity?.username || clientId,
+        pubkey: identity?.pubkey || null,
+        connected: true,
+        joinTime: Date.now(),
+        entryTokenReceived: false
+      };
+      
+      serverState.clients.set(clientId, clientData);
+      
+      // Notify our UI
+      handleClientConnect(clientData);
+      
+      // Send acceptance back to master server
+      const acceptMessage = {
+        type: 'proxy_connection',
+        clientId: clientId,
+        connectionId: connectionId
+      };
+      
+      serverConnection.send(JSON.stringify(acceptMessage));
+    }
+    
+    // Handle proxy connection from client via master server
+    function handleProxyConnection(message) {
+      const { clientId, serverPeerId } = message;
+      
+      console.log(`Client ${clientId} connected via proxy to server ${serverPeerId}`);
+      
+      // Add client to our registry
+      const clientData = {
+        id: clientId,
+        username: clientId, // Will be updated when identity is received
+        pubkey: null,
+        connected: true,
+        joinTime: Date.now(),
+        entryTokenReceived: false
+      };
+      
+      serverState.clients.set(clientId, clientData);
+      updateClientList();
+      
+      // Send welcome message to the client
+      sendMessageToClient(clientId, {
+        type: 'welcome',
+        message: `Welcome to the server!`,
+        serverInfo: {
+          tokenEnabled: !!serverState.tokenService,
+          entryFee: 1
+        }
+      });
+    }
+
+    // Handle proxy data from clients
+    function handleProxyData(message) {
+      const { clientId, data } = message;
+      
+      console.log(`Received data from client ${clientId}:`, data);
+      
+      // Update client data based on incoming messages
+      const client = serverState.clients.get(clientId);
+      if (client && data) {
+        // Handle different message types from clients
+        switch (data.type) {
+          case 'identity:update':
+            if (data.identity) {
+              client.pubkey = data.identity.pubkey || client.pubkey;
+              client.username = data.identity.username || client.username;
+              console.log(`Updated client identity: ${client.username} (${client.pubkey?.substring(0, 10)}...)`);
+              updateClientList();
+            }
+            break;
+            
+          case 'token:entry':
+            handleEntryToken(clientId, data);
+            break;
+            
+          case 'chat':
+            console.log(`Chat from ${client.username}: ${data.message}`);
+            // Broadcast chat to all clients
+            broadcastToAllClients({
+              type: 'chat',
+              from: client.username || clientId,
+              message: data.message,
+              timestamp: Date.now()
+            });
+            break;
+            
+          case 'request:game:state:token':
+            handleGameStateTokenRequest(clientId);
+            break;
+        }
+      }
+    }
+    
+    // Handle entry token from client
+    function handleEntryToken(clientId, tokenData) {
+      const client = serverState.clients.get(clientId);
+      if (!client) return;
+      
+      if (!serverState.tokenService) {
+        sendMessageToClient(clientId, {
+          type: 'token:entry:ack',
+          success: false,
+          reason: 'Token service not available'
+        });
+        return;
+      }
+      
+      console.log(`Processing entry token from client ${clientId}`);
+      
+      // Mark as received (simplified for now)
+      client.entryTokenReceived = true;
+      updateClientList();
+      
+      // Send acknowledgment
+      sendMessageToClient(clientId, {
+        type: 'token:entry:ack',
+        success: true,
+        message: 'Entry token accepted'
+      });
+      
+      // Broadcast to all clients
+      broadcastToAllClients({
+        type: 'chat',
+        from: 'SERVER',
+        message: `${client.username || clientId} has paid the entry fee!`,
+        timestamp: Date.now()
+      });
+    }
+    
+    // Handle game state token request
+    async function handleGameStateTokenRequest(clientId) {
+      if (!serverState.tokenService) {
+        console.log(`Client ${clientId} requested game state token but token service not available`);
+        return;
+      }
+      
+      console.log(`Client ${clientId} requested game state token`);
+      
+      try {
+        // Create a fresh token if we don't have one, or use existing
+        if (!serverState.tokenService.lastStateToken) {
+          await createGameStateToken(false);
+        }
+        
+        if (serverState.tokenService.lastStateToken) {
+          const tokenFlow = serverState.tokenService.TXF.exportFlow(serverState.tokenService.lastStateToken);
+          
+          const serverStateInfo = {
+            playerCount: serverState.clients.size,
+            itemCount: Object.keys(serverState.gameState?.items || {}).length,
+            timestamp: Date.now()
+          };
+          
+          // Send game state token to the requesting client
+          sendMessageToClient(clientId, {
+            type: 'game:state:token',
+            tokenFlow: tokenFlow,
+            frame: serverState.gameState?.frame || 0,
+            serverInfo: serverStateInfo
+          });
+          
+          console.log(`Sent game state token to client ${clientId}`);
+        } else {
+          console.log(`No token available to send to client ${clientId}`);
+        }
+      } catch (error) {
+        console.error(`Error sending game state token to client ${clientId}:`, error);
+      }
+    }
+    
+    // Broadcast message to all connected clients
+    function broadcastToAllClients(message) {
+      serverState.clients.forEach((client, clientId) => {
+        if (client.connected) {
+          sendMessageToClient(clientId, message);
+        }
+      });
+    }
+    
+    // Handle client disconnection
+    function handleClientDisconnected(message) {
+      const clientId = message.clientId;
+      if (!clientId) return;
+      
+      console.log(`Client ${clientId} disconnected`);
+      
+      // Remove from client registry
+      const client = serverState.clients.get(clientId);
+      if (client) {
+        // Clear selection if this client was selected
+        if (selectedClientId === clientId || 
+            (client.pubkey && selectedClientId === client.pubkey)) {
+          selectedClientId = null;
+        }
+        
+        serverState.clients.delete(clientId);
+        updateClientList();
+        
+        console.log(`Client ${client.username || clientId} has left the server`);
       }
     }
     
     // Handle successful game server start
     function handleGameServerStarted(message) {
-      console.log('Remote dedicated server started successfully:', message);
+      
       
       // Log status instead of displaying in UI
-      console.log(`Remote dedicated server running - Game ID: ${message.gameId}, Name: ${message.serverInfo.name}, Address: ${message.serverInfo.address}, Map: ${message.serverInfo.map}`);
+      
       
       // Update server state
-      server.serverState.gameId = message.gameId;
-      server.serverState.remoteServerInfo = message.serverInfo;
-      
-      // Update iframe placeholder with server details
-      initGamePlaceholder();
+      serverState.gameId = message.gameId;
+      serverState.remoteServerInfo = message.serverInfo;
     }
     
     // Handle successful game server stop
     function handleGameServerStopped(message) {
-      console.log('Remote dedicated server stopped successfully:', message);
+      
       
       // Log status instead of displaying in UI
-      console.log('Remote dedicated server stopped');
+      
       
       // Clear server state
-      server.serverState.gameId = null;
-      server.serverState.remoteServerInfo = null;
+      serverState.gameId = null;
+      serverState.remoteServerInfo = null;
     }
     
     // Handle game server status update
     function handleGameServerStatus(message) {
-      console.log('Received game server status:', message);
+      
       
       // Log status instead of displaying in UI
-      console.log(`Game server status - State: ${message.status.state}, Game ID: ${message.gameId}, Players: ${message.status.players}/${message.status.maxPlayers}`);
+      
     }
     
     // Update server status display
@@ -1081,57 +1415,57 @@
           break;
       }
       
-      console.log(`Server status updated to: ${dedicatedServerState}`);
+      
     }
     
     // Request server list to get our own server status
     function requestServerStatus() {
-      if (!server || !server.sendToMaster) return;
-      
-      try {
-        server.sendToMaster({
-          type: 'get_servers'
-        });
-      } catch (error) {
-        console.error('Failed to request server status:', error);
+      if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+        try {
+          serverConnection.send(JSON.stringify({
+            type: 'get_servers'
+          }));
+        } catch (error) {
+          // Failed to request server status
+        }
       }
     }
     
     // Handle server list response to update our status
     function handleServerListForStatus(servers) {
-      if (!server || !server.serverState || !server.serverState.peerId) return;
+      if (!serverState.peerId) return;
       
       // Find our server in the list
-      const myServer = servers.find(s => s.peerId === server.serverState.peerId);
+      const myServer = servers.find(s => s.peerId === serverState.peerId);
       
       if (myServer) {
         const dedicatedState = myServer.dedicatedServerState || 'not_running';
         updateServerStatus(dedicatedState);
         
         // Store the state for debugging
-        server.serverState.dedicatedServerState = dedicatedState;
+        serverState.dedicatedServerState = dedicatedState;
         
-        console.log(`Found our server in list - State: ${dedicatedState}, Address: ${myServer.address}`);
+        
       } else {
         // Server not found in list - probably not registered or removed
         updateServerStatus('not_running');
-        console.log('Our server not found in server list');
+        
       }
     }
     
     // Handle game server logs
     function handleGameServerLogs(message) {
-      console.log('Received game server logs:', message);
+      
       
       // Could display logs in a modal or dedicated panel
     }
     
     // Handle master server errors
     function handleMasterServerError(message) {
-      console.error('Master server error:', message);
+      
       
       // Log error instead of displaying in UI
-      console.error(`Master server error: ${message.error}, Request: ${message.requestType || 'Unknown'}`);
+      
       
       // Alert the user
       alert(`Master server error: ${message.error}`);
