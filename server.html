@@ -1323,14 +1323,18 @@
       serverState.clients.set(clientId, clientData);
       updateClientList();
       
-      // Send welcome message to the client
+      // Send initial welcome message without payment information
+      // Payment requirement will be determined after identity is received
       const welcomeMessage = {
         type: 'welcome',
-        message: `Welcome to the server! Entry fee: ${serverState.entryFee} token${serverState.entryFee !== 1 ? 's' : ''}`,
+        message: `Welcome to the server! Please wait while we verify your identity...`,
         serverInfo: {
           tokenEnabled: !!serverState.tokenService,
           entryFee: serverState.entryFee,
-          gameId: serverState.gameState?.gameId || dedicatedServerInfo?.gameId
+          gameId: serverState.gameState?.gameId || dedicatedServerInfo?.gameId,
+          // Don't include payment flags yet - will be sent after identity verification
+          paymentRequired: null,  // Will be determined after pubkey is received
+          isRejoining: null       // Will be determined after pubkey is received
         },
         // Include server identity for token operations if available
         serverIdentity: serverState.tokenService ? {
@@ -1339,9 +1343,9 @@
         } : null
       };
       
-      console.log(`Sending welcome message to client ${clientId}:`, welcomeMessage);
+      console.log(`Sending initial welcome message to client ${clientId} - payment requirement will be determined after identity`);
       if (welcomeMessage.serverIdentity) {
-        console.log(`✅ Server identity included in welcome message - client should send entry token automatically`);
+        console.log(`✅ Server identity included in welcome message for future token operations`);
         console.log(`Server pubkey: ${welcomeMessage.serverIdentity.pubkey.substring(0, 16)}...`);
       } else {
         console.log(`❌ No server identity in welcome message - entry tokens will not work!`);
@@ -1408,6 +1412,33 @@
                 client.username = data.identity.username || client.username;
                 console.log(`🆕 New player identity: ${client.username} (${client.pubkey?.substring(0, 10)}...)`);
               }
+              
+              // NOW determine payment requirement based on pubkey
+              let paymentRequired = true;
+              let isRejoining = false;
+              
+              // Check if this player (by pubkey) has already paid the entry fee
+              if (client.pubkey && serverState.paidPlayers.has(client.pubkey)) {
+                paymentRequired = false;
+                isRejoining = true;
+                console.log(`Player ${client.pubkey.substring(0, 10)}... has already paid - no payment required for rejoin`);
+              }
+              
+              // Send payment requirement message now that we know the pubkey
+              const paymentMessage = {
+                type: 'payment_requirement',
+                message: isRejoining 
+                  ? `Welcome back ${client.username}! No additional entry fee required.`
+                  : `Hello ${client.username}! Entry fee: ${serverState.entryFee} token${serverState.entryFee !== 1 ? 's' : ''} required to join.`,
+                serverInfo: {
+                  paymentRequired: paymentRequired,
+                  isRejoining: isRejoining,
+                  entryFee: serverState.entryFee
+                }
+              };
+              
+              console.log(`Sending payment requirement to client ${clientId}: paymentRequired=${paymentRequired}, isRejoining=${isRejoining}`);
+              sendMessageToClient(clientId, paymentMessage);
               
               updateClientList();
             }
