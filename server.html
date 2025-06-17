@@ -168,6 +168,21 @@
       background-color: #f44336;
     }
     
+    .status-running {
+      color: #4caf50;
+      font-weight: bold;
+    }
+    
+    .status-starting {
+      color: #ffaa00;
+      font-weight: bold;
+    }
+    
+    .status-not-running {
+      color: #888888;
+      font-weight: bold;
+    }
+    
     /* ANSI color simulation */
     .ansi-green {
       color: #4caf50;
@@ -407,6 +422,14 @@
           console.log(`Real-time update - Game frame: ${game.gameState.frame}, Server frame: ${server.serverState.gameState.frame}`);
         }
       }, 1000); // Update every 1 second for real-time updates
+      
+      // Set up periodic server status updates
+      setInterval(() => {
+        if (server && server.sendToMaster) {
+          // Request server list to get our own status
+          requestServerStatus();
+        }
+      }, 5000); // Update every 5 seconds
     }
     
     // Initialize Quake game in iframe
@@ -1031,6 +1054,69 @@
       
       // Log status instead of displaying in UI
       console.log(`Game server status - State: ${message.status.state}, Game ID: ${message.gameId}, Players: ${message.status.players}/${message.status.maxPlayers}`);
+    }
+    
+    // Update server status display
+    function updateServerStatus(dedicatedServerState = 'not_running') {
+      const statusText = document.getElementById('status-text');
+      if (!statusText) return;
+      
+      // Remove existing status classes
+      statusText.className = '';
+      
+      // Update text and class based on state
+      switch (dedicatedServerState) {
+        case 'running':
+          statusText.textContent = 'Running';
+          statusText.className = 'status-running';
+          break;
+        case 'starting':
+          statusText.textContent = 'Starting';
+          statusText.className = 'status-starting';
+          break;
+        case 'not_running':
+        default:
+          statusText.textContent = 'Not Running';
+          statusText.className = 'status-not-running';
+          break;
+      }
+      
+      console.log(`Server status updated to: ${dedicatedServerState}`);
+    }
+    
+    // Request server list to get our own server status
+    function requestServerStatus() {
+      if (!server || !server.sendToMaster) return;
+      
+      try {
+        server.sendToMaster({
+          type: 'get_servers'
+        });
+      } catch (error) {
+        console.error('Failed to request server status:', error);
+      }
+    }
+    
+    // Handle server list response to update our status
+    function handleServerListForStatus(servers) {
+      if (!server || !server.serverState || !server.serverState.peerId) return;
+      
+      // Find our server in the list
+      const myServer = servers.find(s => s.peerId === server.serverState.peerId);
+      
+      if (myServer) {
+        const dedicatedState = myServer.dedicatedServerState || 'not_running';
+        updateServerStatus(dedicatedState);
+        
+        // Store the state for debugging
+        server.serverState.dedicatedServerState = dedicatedState;
+        
+        console.log(`Found our server in list - State: ${dedicatedState}, Address: ${myServer.address}`);
+      } else {
+        // Server not found in list - probably not registered or removed
+        updateServerStatus('not_running');
+        console.log('Our server not found in server list');
+      }
     }
     
     // Handle game server logs
