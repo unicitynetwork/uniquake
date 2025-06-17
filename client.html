@@ -566,6 +566,12 @@
           <div class="ping-display" id="ping-display"></div>
         </div>
         
+        <h2>Player Name</h2>
+        <div class="player-name-section">
+          <input type="text" id="player-name-input" placeholder="Enter your player name..." maxlength="16" style="width: 100%; margin-bottom: 4px;">
+          <button id="save-name-button" style="width: 100%; font-size: 1.5em;">Save Name</button>
+        </div>
+        
         <h2>Game Servers</h2>
         <div id="servers-container" class="server-list"></div>
         
@@ -635,17 +641,47 @@
     // Main client, game, and integration instances
     let client, game, integration;
     let selectedServerId = null;
+    let currentPlayerName = null;
+    
+    // Get player name from localStorage or generate default
+    function getPlayerName() {
+      const savedName = localStorage.getItem('uniquake_player_name');
+      if (savedName && savedName.trim()) {
+        return savedName.trim();
+      }
+      return 'Player_' + Math.floor(Math.random() * 1000);
+    }
+    
+    // Save player name to localStorage
+    function savePlayerName(name) {
+      if (name && name.trim()) {
+        const cleanName = name.trim().substring(0, 16); // Limit to 16 chars
+        localStorage.setItem('uniquake_player_name', cleanName);
+        currentPlayerName = cleanName;
+        return cleanName;
+      }
+      return null;
+    }
     
     // Initialize client
     async function initializeClient() {
+      // Load player name from storage or generate default
+      currentPlayerName = getPlayerName();
+      
+      // Update UI with current player name
+      const playerNameInput = document.getElementById('player-name-input');
+      if (playerNameInput) {
+        playerNameInput.value = currentPlayerName;
+      }
+      
       // Create mock game
       game = new BrowserMockGame({
         updateInterval: 2000,
         onStateChange: updateGameState
       });
       
-      // Generate a unique player name with random suffix
-      const playerName = 'Player_' + Math.floor(Math.random() * 1000);
+      // Use the current player name
+      const playerName = currentPlayerName;
       
       // Create mock client
       client = new BrowserMockClient({
@@ -795,6 +831,14 @@
       
       // Create server button
       addSafeEventListener('create-server-button', 'click', createNewServer);
+      
+      // Player name functionality
+      addSafeEventListener('save-name-button', 'click', handleSavePlayerName);
+      addSafeEventListener('player-name-input', 'keypress', (e) => {
+        if (e.key === 'Enter') {
+          handleSavePlayerName();
+        }
+      });
       
       // Pubkey copy functionality
       addSafeEventListener('player-pubkey', 'click', copyPubkeyToClipboard);
@@ -1064,7 +1108,12 @@
       }
       
       // Use the direct quake URL to connect to the dedicated server with the correct address
-      let quakeClientUrl = `/quake?connect%20${serverAddress}`;
+      // Also pass the player name to QuakeJS using proper cmdline format
+      const playerName = currentPlayerName || 'UnnamedPlayer';
+      const encodedPlayerName = encodeURIComponent(playerName);
+      let quakeClientUrl = `/quake?cmdline=+set%20name%20"${encodedPlayerName}"%20+connect%20${serverAddress}`;
+      
+      console.log(`Connecting to QuakeJS with player name: ${playerName} and address: ${serverAddress}`);
       
       // We're using a relative URL which should connect directly to the server
       
@@ -1652,6 +1701,60 @@
           console.log(`Game state verified at frame ${event.frame}: Hash matches`);
         } else {
           console.warn(`Game state verification failed at frame ${event.frame}: ${event.result.error || 'Hash mismatch'}`);
+        }
+      }
+    }
+    
+    // Handle save player name
+    function handleSavePlayerName() {
+      const playerNameInput = document.getElementById('player-name-input');
+      const newName = playerNameInput.value.trim();
+      
+      if (!newName) {
+        alert('Please enter a valid player name');
+        return;
+      }
+      
+      // Validate name (basic validation)
+      if (newName.length > 16) {
+        alert('Player name must be 16 characters or less');
+        return;
+      }
+      
+      if (!/^[a-zA-Z0-9_\-\.]+$/.test(newName)) {
+        alert('Player name can only contain letters, numbers, underscore, dash, and dot');
+        return;
+      }
+      
+      // Save the name
+      const savedName = savePlayerName(newName);
+      if (savedName) {
+        alert(`Player name saved: ${savedName}`);
+        
+        // Update the client's name if client is initialized
+        if (client && client.updatePlayerName) {
+          client.updatePlayerName(savedName);
+        }
+        
+        // Update the header display immediately
+        updateTokenInfo();
+        
+        // If we're connected to a server, we need to reconnect with the new name
+        if (client && client.clientState.connected) {
+          const confirmReconnect = confirm('Name changed! Do you want to reconnect to apply the new name in-game?');
+          if (confirmReconnect) {
+            // Disconnect and reconnect to apply new name
+            const currentServerId = selectedServerId;
+            client.disconnect();
+            
+            // Wait a moment then reconnect
+            setTimeout(() => {
+              if (currentServerId) {
+                // Reconnect - the client already has the updated name
+                client.connectToServer(currentServerId);
+              }
+            }, 1000);
+          }
         }
       }
     }
