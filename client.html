@@ -173,6 +173,15 @@
       background-color: #2196f3;
     }
     
+    .server-item.malformed {
+      background-color: #ff4444;
+      border: 1px solid #cc0000;
+    }
+    
+    .server-item.malformed:hover {
+      background-color: #ff6666;
+    }
+    
     
     .game-panel {
       flex: 1;
@@ -947,9 +956,10 @@
           // Extract the server address from the displayed server info
           const addressInfos = serverItems[i].querySelectorAll('.server-info');
           for (let j = 0; j < addressInfos.length; j++) {
-            const addressMatch = addressInfos[j].textContent.match(/Address:\s+([^\s]+)/);
-            if (addressMatch && addressMatch[1] !== 'Not specified') {
-              serverAddress = addressMatch[1];
+            const addressMatch = addressInfos[j].textContent.match(/Address:\s+(.+)/);
+            if (addressMatch && addressMatch[1] && addressMatch[1].trim() !== 'Not specified') {
+              serverAddress = addressMatch[1].trim();
+              console.log(`Extracted server address from UI: "${serverAddress}"`);
               break;
             }
           }
@@ -974,10 +984,31 @@
         }
       }
       
-      // If we still don't have a server address, use the default
-      if (!serverAddress) {
-        serverAddress = 'localhost:27960';
-        console.log('Using default server address:', serverAddress);
+      // Check for malformed server metadata
+      if (!serverAddress || serverAddress === 'Not' || serverAddress === 'Not specified') {
+        console.error(`❌ MALFORMED SERVER METADATA: Server ${serverId} has invalid address: "${serverAddress}"`);
+        console.error('This server cannot be connected to due to missing or malformed address information.');
+        
+        // Show error to user
+        alert(`Cannot connect to server: Invalid server address ("${serverAddress || 'undefined'}").\n\nThis server has malformed metadata and cannot be connected to.`);
+        
+        // Mark this server as malformed in the UI
+        const serverItem = document.querySelector(`[data-server-id="${serverId}"]`);
+        if (serverItem) {
+          serverItem.classList.add('malformed');
+          const serverName = serverItem.querySelector('.server-name');
+          if (serverName) {
+            serverName.textContent += ' (MALFORMED)';
+          }
+        }
+        
+        // Disable connect button
+        const connectButton = document.getElementById('connect-button');
+        if (connectButton) {
+          connectButton.disabled = true;
+        }
+        
+        return; // Exit early, don't attempt connection
       }
       
       // Use the direct quake URL to connect to the dedicated server with the correct address
@@ -1165,8 +1196,17 @@
           serverElem.classList.add('selected');
         }
         
+        // Check for malformed server metadata
+        const isMalformed = !server.address || server.address === 'Not specified' || server.address.includes('Not');
+        if (isMalformed) {
+          serverElem.classList.add('malformed');
+          console.warn(`⚠️ MALFORMED SERVER: ${server.name} (${server.peerId}) has invalid address: "${server.address}"`);
+        }
+        
+        const serverName = isMalformed ? `${server.name} (MALFORMED)` : server.name;
+        
         serverElem.innerHTML = `
-          <div class="server-name">${server.name}</div>
+          <div class="server-name">${serverName}</div>
           <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
           <div class="server-info">ID: ${server.peerId}</div>
           <div class="server-info" style="display:none;">Address: ${server.address || 'Not specified'}</div>
@@ -1182,8 +1222,16 @@
           serverElem.classList.add('selected');
           selectedServerId = server.peerId;
           
-          // Enable connect button if not connected
-          document.getElementById('connect-button').disabled = client.clientState.connected;
+          // Disable connect button if server is malformed or client is already connected
+          const connectButton = document.getElementById('connect-button');
+          if (connectButton) {
+            connectButton.disabled = client.clientState.connected || isMalformed;
+            if (isMalformed) {
+              connectButton.title = 'Cannot connect: Server has malformed metadata';
+            } else {
+              connectButton.title = '';
+            }
+          }
         });
         
         container.appendChild(serverElem);
