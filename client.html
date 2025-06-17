@@ -158,11 +158,12 @@
     
     .server-item {
       background-color: #3d3d3d;
+      border: 2px solid #5d5d5d;
       border-radius: 3px;
       padding: 2px 4px; /* Smaller padding like other buttons */
       margin-bottom: 4px; /* Reduced margin for tighter spacing */
       cursor: pointer;
-      transition: background-color 0.2s;
+      transition: background-color 0.2s, border-color 0.2s;
     }
     
     .server-item:hover {
@@ -170,40 +171,67 @@
     }
     
     .server-item.selected {
-      background-color: #2196f3;
+      background-color: rgba(33, 150, 243, 0.3);
+      border-color: #2196f3 !important;
+      box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
     }
     
     .server-item.malformed {
-      background-color: #ff4444;
-      border: 1px solid #cc0000;
+      background-color: rgba(255, 68, 68, 0.15);
+      border: 2px solid #ff4444;
+      color: #ffffff;
     }
     
     .server-item.malformed:hover {
-      background-color: #ff6666;
+      background-color: rgba(255, 68, 68, 0.25);
     }
     
     .server-item.not-running {
-      background-color: #666666;
-      color: #aaaaaa;
+      background-color: rgba(102, 102, 102, 0.15);
+      border: 2px solid #666666;
+      color: #cccccc;
     }
     
     .server-item.not-running:hover {
-      background-color: #777777;
+      background-color: rgba(102, 102, 102, 0.25);
     }
     
     .server-item.starting {
-      background-color: #ffaa00;
-      border: 1px solid #cc8800;
+      background-color: rgba(255, 170, 0, 0.15);
+      border: 2px solid #ffaa00;
+      color: #ffffff;
     }
     
     .server-item.starting:hover {
-      background-color: #ffbb22;
+      background-color: rgba(255, 170, 0, 0.25);
+    }
+    
+    .server-item.running {
+      background-color: rgba(76, 175, 80, 0.15);
+      border: 2px solid #4caf50;
+      color: #ffffff;
+    }
+    
+    .server-item.running:hover {
+      background-color: rgba(76, 175, 80, 0.25);
     }
     
     .server-status {
       font-size: 0.8rem;
-      color: #aaa;
-      font-style: italic;
+      font-weight: bold;
+      margin-top: 2px;
+    }
+    
+    .server-status.running {
+      color: #4caf50;
+    }
+    
+    .server-status.starting {
+      color: #ffaa00;
+    }
+    
+    .server-status.not-running {
+      color: #888888;
     }
     
     
@@ -1229,21 +1257,17 @@
         
         // Check dedicated server state and apply appropriate styling
         const dedicatedState = server.dedicatedServerState || 'not_running';
-        if (dedicatedState === 'not_running') {
-          serverElem.classList.add('not-running');
-        } else if (dedicatedState === 'starting') {
-          serverElem.classList.add('starting');
-        }
-        // 'running' state uses default styling
+        const stateClass = dedicatedState.replace(/_/g, '-'); // Convert 'not_running' to 'not-running'
+        serverElem.classList.add(stateClass);
         
         const serverName = isMalformed ? `${server.name} (MALFORMED)` : server.name;
-        const stateText = dedicatedState === 'not_running' ? 'NOT RUNNING' : 
-                         dedicatedState === 'starting' ? 'STARTING' : 'RUNNING';
+        const stateText = dedicatedState === 'not_running' ? 'Not Running' : 
+                         dedicatedState === 'starting' ? 'Starting' : 'Running';
         
         serverElem.innerHTML = `
           <div class="server-name">${serverName}</div>
           <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
-          <div class="server-status">Status: ${stateText}</div>
+          <div class="server-status ${stateClass}">Status: ${stateText}</div>
           <div class="server-info">ID: ${server.peerId}</div>
           <div class="server-info" style="display:none;">Address: ${server.address || 'Not specified'}</div>
         `;
