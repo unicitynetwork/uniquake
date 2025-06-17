@@ -1343,12 +1343,54 @@
       }
       
       // Use the direct quake URL to connect to the dedicated server with the correct address
-      // Also pass the player name to QuakeJS using proper cmdline format
-      const playerName = currentPlayerName || 'UnnamedPlayer';
-      const encodedPlayerName = encodeURIComponent(playerName);
-      let quakeClientUrl = `/quake?cmdline=+set%20name%20"${encodedPlayerName}"%20+connect%20${serverAddress}`;
+      // Also pass the player name to QuakeJS using the working +name format
       
-      console.log(`Connecting to QuakeJS with player name: ${playerName} and address: ${serverAddress}`);
+      // Get the most current player name from multiple sources
+      let playerName = null;
+      
+      // 1. Try to get from input field (most current)
+      const playerNameInput = document.getElementById('player-name-input');
+      if (playerNameInput && playerNameInput.value.trim()) {
+        playerName = playerNameInput.value.trim();
+      }
+      
+      // 2. Fall back to currentPlayerName global
+      if (!playerName && currentPlayerName) {
+        playerName = currentPlayerName;
+      }
+      
+      // 3. Fall back to client info
+      if (!playerName && client && client.clientInfo && client.clientInfo.name) {
+        playerName = client.clientInfo.name;
+      }
+      
+      // 4. Fall back to token service identity
+      if (!playerName && client && client.clientState.tokenService) {
+        const identity = client.clientState.tokenService.getIdentity();
+        if (identity && identity.username) {
+          playerName = identity.username;
+        }
+      }
+      
+      // 5. Final fallback
+      if (!playerName) {
+        playerName = 'UnnamedPlayer';
+      }
+      
+      // Clean player name (remove special characters that might cause issues)
+      const cleanPlayerName = playerName.replace(/[^\w\-\.]/g, '_');
+      
+      // Use the working URL format: +name PLAYERNAME +connect SERVERADDRESS
+      const cmdline = `+name ${cleanPlayerName} +connect ${serverAddress}`;
+      const encodedCmdline = encodeURIComponent(cmdline);
+      let quakeClientUrl = `/quake?cmdline=${encodedCmdline}`;
+      
+      console.log(`Connecting to QuakeJS with:`);
+      console.log(`  Original player name: "${playerName}"`);
+      console.log(`  Clean player name: "${cleanPlayerName}"`);
+      console.log(`  Server address: ${serverAddress}`);
+      console.log(`  Command line: ${cmdline}`);
+      console.log(`  QuakeJS URL: ${quakeClientUrl}`);
       
       // We're using a relative URL which should connect directly to the server
       
