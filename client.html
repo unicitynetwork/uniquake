@@ -105,19 +105,6 @@
       color: #fff59d;
     }
     
-    .player-pubkey {
-      color: #aaa;
-      font-family: monospace;
-      cursor: pointer;
-      text-decoration: underline;
-      transition: color 0.2s;
-      position: relative;
-    }
-    
-    .player-pubkey:hover {
-      color: #4fc3f7;
-    }
-    
     .copy-hint {
       position: absolute;
       top: -30px;
@@ -615,9 +602,6 @@
         <span class="player-address" id="player-address">Generating address...
           <span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>
         </span>
-        <span class="player-pubkey" id="player-pubkey">...
-          <span class="copy-hint" id="copy-hint">Copied to clipboard</span>
-        </span>
         <span class="player-balance" id="player-balance">Balance: 0</span>
       </div>
     </div>
@@ -927,8 +911,7 @@
       // Clear identity functionality
       addSafeEventListener('clear-identity-button', 'click', clearPlayerIdentity);
       
-      // Copy functionality for pubkey and address
-      addSafeEventListener('player-pubkey', 'click', copyPubkeyToClipboard);
+      // Copy functionality for address
       addSafeEventListener('player-address', 'click', copyAddressToClipboard);
       
       
@@ -1307,64 +1290,6 @@
       }
     }
     
-    // Copy pubkey to clipboard
-    function copyPubkeyToClipboard() {
-      const playerPubkey = document.getElementById('player-pubkey');
-      const copyHint = document.getElementById('copy-hint');
-      const fullPubkey = playerPubkey.getAttribute('data-full-pubkey');
-      
-      if (!fullPubkey) {
-        return;
-      }
-      
-      // Function to show copy hint
-      function showCopyHint() {
-        copyHint.classList.add('show');
-        setTimeout(() => {
-          copyHint.classList.remove('show');
-        }, 2000);
-      }
-      
-      // Try modern clipboard API first (requires HTTPS)
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(fullPubkey).then(() => {
-          console.log('Pubkey copied to clipboard (modern API):', fullPubkey);
-          showCopyHint();
-        }).catch((err) => {
-          console.error('Modern clipboard API failed:', err);
-          // Fall back to legacy method
-          copyWithFallback();
-        });
-      } else {
-        // Use fallback method directly
-        copyWithFallback();
-      }
-      
-      function copyWithFallback() {
-        try {
-          const textArea = document.createElement('textarea');
-          textArea.value = fullPubkey;
-          textArea.style.position = 'fixed';
-          textArea.style.left = '-999999px';
-          textArea.style.top = '-999999px';
-          document.body.appendChild(textArea);
-          textArea.focus();
-          textArea.select();
-          
-          const successful = document.execCommand('copy');
-          document.body.removeChild(textArea);
-          
-          if (successful) {
-            console.log('Pubkey copied to clipboard (fallback):', fullPubkey);
-            showCopyHint();
-          } else {
-            console.error('Fallback copy method failed');
-          }
-        } catch (fallbackErr) {
-          console.error('Fallback copy method error:', fallbackErr);
-        }
-      }
-    }
     
     // Copy address to clipboard
     function copyAddressToClipboard() {
@@ -1863,13 +1788,11 @@
     function updateTokenInfo(tokens) {
       const playerNameInput = document.getElementById('player-name-input');
       const playerAddress = document.getElementById('player-address');
-      const playerPubkey = document.getElementById('player-pubkey');
       const playerBalance = document.getElementById('player-balance');
       
       if (!client || !client.clientState.tokenService) {
         if (playerNameInput) playerNameInput.placeholder = 'Enter your player name...';
         if (playerAddress) playerAddress.innerHTML = 'Generating address...<span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>';
-        if (playerPubkey) playerPubkey.innerHTML = 'No identity<span class="copy-hint" id="copy-hint">Copied to clipboard</span>';
         if (playerBalance) playerBalance.textContent = 'Balance: 0';
         return;
       }
@@ -1891,17 +1814,6 @@
       if (playerAddress) {
         playerAddress.innerHTML = `${displayAddress}<span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>`;
         playerAddress.setAttribute('data-full-address', fullAddress);
-      }
-      
-      // Truncate pubkey to 20 prefix + ... + 20 suffix (40 chars total)
-      const fullPubkey = identity.pubkey;
-      const truncatedPubkey = fullPubkey.length > 40 
-        ? fullPubkey.substring(0, 20) + '...' + fullPubkey.substring(fullPubkey.length - 20)
-        : fullPubkey;
-      
-      if (playerPubkey) {
-        playerPubkey.innerHTML = `${truncatedPubkey}<span class="copy-hint" id="copy-hint">Copied to clipboard</span>`;
-        playerPubkey.setAttribute('data-full-pubkey', fullPubkey);
       }
       
       if (playerBalance) {
