@@ -43,6 +43,32 @@
       font-weight: bold;
     }
     
+    .player-name-input {
+      background-color: #3d3d3d;
+      border: 1px solid #555;
+      border-radius: 3px;
+      padding: 4px 8px;
+      color: #4fc3f7;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      font-size: 0.7rem;
+      width: 180px;
+      transition: border-color 0.2s;
+    }
+    
+    .player-name-input:focus {
+      outline: none;
+      border-color: #4fc3f7;
+      box-shadow: 0 0 4px rgba(79, 195, 247, 0.3);
+    }
+    
+    .player-name-input:disabled {
+      background-color: #2a2a2a;
+      border-color: #444;
+      color: #888;
+      cursor: not-allowed;
+    }
+    
     .player-pubkey {
       color: #aaa;
       font-family: monospace;
@@ -548,7 +574,7 @@
   <div class="container">
     <div class="header">
       <div class="player-info" id="player-info">
-        <span class="player-name" id="player-name">Loading...</span>
+        <input type="text" id="player-name-input" class="player-name-input" placeholder="Enter your player name..." maxlength="16">
         <span class="player-pubkey" id="player-pubkey">...
           <span class="copy-hint" id="copy-hint">Copied to clipboard</span>
         </span>
@@ -564,12 +590,6 @@
             <span id="connection-text">Disconnected</span>
           </div>
           <div class="ping-display" id="ping-display"></div>
-        </div>
-        
-        <h2>Player Name</h2>
-        <div class="player-name-section">
-          <input type="text" id="player-name-input" placeholder="Enter your player name..." maxlength="16" style="width: 100%; margin-bottom: 4px;">
-          <button id="save-name-button" style="width: 100%; font-size: 1.5em;">Save Name</button>
         </div>
         
         <h2>Game Servers</h2>
@@ -802,6 +822,18 @@
       
       addSafeEventListener('connect-button', 'click', () => {
         if (selectedServerId) {
+          // Auto-save player name before connecting
+          const playerNameInput = document.getElementById('player-name-input');
+          if (playerNameInput && playerNameInput.value.trim()) {
+            const newName = playerNameInput.value.trim();
+            if (validateAndSavePlayerName(newName)) {
+              // Update the client's name if client is initialized
+              if (client && client.updatePlayerName) {
+                client.updatePlayerName(newName);
+              }
+            }
+          }
+          
           client.connectToServer(selectedServerId);
           
           // Update Quake game iframe to connect to the selected server
@@ -832,11 +864,23 @@
       // Create server button
       addSafeEventListener('create-server-button', 'click', createNewServer);
       
-      // Player name functionality
-      addSafeEventListener('save-name-button', 'click', handleSavePlayerName);
+      // Player name functionality - auto-save on blur and enter
       addSafeEventListener('player-name-input', 'keypress', (e) => {
         if (e.key === 'Enter') {
-          handleSavePlayerName();
+          e.target.blur(); // Remove focus to trigger save
+        }
+      });
+      
+      addSafeEventListener('player-name-input', 'blur', () => {
+        const playerNameInput = document.getElementById('player-name-input');
+        if (playerNameInput && playerNameInput.value.trim()) {
+          const newName = playerNameInput.value.trim();
+          if (validateAndSavePlayerName(newName)) {
+            // Update the client's name if client is initialized
+            if (client && client.updatePlayerName) {
+              client.updatePlayerName(newName);
+            }
+          }
         }
       });
       
@@ -1361,12 +1405,14 @@
       const sendButton = document.getElementById('send-button');
       const connectionStatus = document.getElementById('connection-status');
       const connectionText = document.getElementById('connection-text');
+      const playerNameInput = document.getElementById('player-name-input');
       
       if (status.connected) {
         connectButton.disabled = true;
         disconnectButton.disabled = false;
         chatInput.disabled = false;
         sendButton.disabled = false;
+        playerNameInput.disabled = true; // Disable name editing while connected
         connectionStatus.className = 'status-indicator status-connected';
         connectionText.textContent = 'Connected';
         
@@ -1383,6 +1429,7 @@
         disconnectButton.disabled = true;
         chatInput.disabled = true;
         sendButton.disabled = true;
+        playerNameInput.disabled = false; // Re-enable name editing when disconnected
         connectionStatus.className = 'status-indicator status-disconnected';
         connectionText.textContent = 'Disconnected';
         document.getElementById('ping-display').textContent = '';
@@ -1705,58 +1752,36 @@
       }
     }
     
-    // Handle save player name
-    function handleSavePlayerName() {
-      const playerNameInput = document.getElementById('player-name-input');
-      const newName = playerNameInput.value.trim();
-      
+    // Validate and save player name (no popup messages)
+    function validateAndSavePlayerName(newName) {
       if (!newName) {
-        alert('Please enter a valid player name');
-        return;
+        console.warn('Player name cannot be empty');
+        return false;
       }
       
       // Validate name (basic validation)
       if (newName.length > 16) {
-        alert('Player name must be 16 characters or less');
-        return;
+        console.warn('Player name must be 16 characters or less');
+        return false;
       }
       
       if (!/^[a-zA-Z0-9_\-\.]+$/.test(newName)) {
-        alert('Player name can only contain letters, numbers, underscore, dash, and dot');
-        return;
+        console.warn('Player name can only contain letters, numbers, underscore, dash, and dot');
+        return false;
       }
       
       // Save the name
       const savedName = savePlayerName(newName);
       if (savedName) {
-        alert(`Player name saved: ${savedName}`);
-        
-        // Update the client's name if client is initialized
-        if (client && client.updatePlayerName) {
-          client.updatePlayerName(savedName);
-        }
+        console.log(`Player name saved: ${savedName}`);
         
         // Update the header display immediately
         updateTokenInfo();
         
-        // If we're connected to a server, we need to reconnect with the new name
-        if (client && client.clientState.connected) {
-          const confirmReconnect = confirm('Name changed! Do you want to reconnect to apply the new name in-game?');
-          if (confirmReconnect) {
-            // Disconnect and reconnect to apply new name
-            const currentServerId = selectedServerId;
-            client.disconnect();
-            
-            // Wait a moment then reconnect
-            setTimeout(() => {
-              if (currentServerId) {
-                // Reconnect - the client already has the updated name
-                client.connectToServer(currentServerId);
-              }
-            }, 1000);
-          }
-        }
+        return true;
       }
+      
+      return false;
     }
     
     // Create new server function
