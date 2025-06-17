@@ -182,6 +182,30 @@
       background-color: #ff6666;
     }
     
+    .server-item.not-running {
+      background-color: #666666;
+      color: #aaaaaa;
+    }
+    
+    .server-item.not-running:hover {
+      background-color: #777777;
+    }
+    
+    .server-item.starting {
+      background-color: #ffaa00;
+      border: 1px solid #cc8800;
+    }
+    
+    .server-item.starting:hover {
+      background-color: #ffbb22;
+    }
+    
+    .server-status {
+      font-size: 0.8rem;
+      color: #aaa;
+      font-style: italic;
+    }
+    
     
     .game-panel {
       flex: 1;
@@ -1203,11 +1227,23 @@
           console.warn(`⚠️ MALFORMED SERVER: ${server.name} (${server.peerId}) has invalid address: "${server.address}"`);
         }
         
+        // Check dedicated server state and apply appropriate styling
+        const dedicatedState = server.dedicatedServerState || 'not_running';
+        if (dedicatedState === 'not_running') {
+          serverElem.classList.add('not-running');
+        } else if (dedicatedState === 'starting') {
+          serverElem.classList.add('starting');
+        }
+        // 'running' state uses default styling
+        
         const serverName = isMalformed ? `${server.name} (MALFORMED)` : server.name;
+        const stateText = dedicatedState === 'not_running' ? 'NOT RUNNING' : 
+                         dedicatedState === 'starting' ? 'STARTING' : 'RUNNING';
         
         serverElem.innerHTML = `
           <div class="server-name">${serverName}</div>
           <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
+          <div class="server-status">Status: ${stateText}</div>
           <div class="server-info">ID: ${server.peerId}</div>
           <div class="server-info" style="display:none;">Address: ${server.address || 'Not specified'}</div>
         `;
@@ -1222,12 +1258,18 @@
           serverElem.classList.add('selected');
           selectedServerId = server.peerId;
           
-          // Disable connect button if server is malformed or client is already connected
+          // Disable connect button if server is malformed, not running, or client is already connected
           const connectButton = document.getElementById('connect-button');
           if (connectButton) {
-            connectButton.disabled = client.clientState.connected || isMalformed;
+            const canConnect = !client.clientState.connected && !isMalformed && dedicatedState === 'running';
+            connectButton.disabled = !canConnect;
+            
             if (isMalformed) {
               connectButton.title = 'Cannot connect: Server has malformed metadata';
+            } else if (dedicatedState === 'not_running') {
+              connectButton.title = 'Cannot connect: Dedicated server is not running';
+            } else if (dedicatedState === 'starting') {
+              connectButton.title = 'Cannot connect: Dedicated server is still starting';
             } else {
               connectButton.title = '';
             }
