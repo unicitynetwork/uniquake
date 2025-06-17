@@ -850,6 +850,9 @@
       // Initialize resizer functionality
       initializeResizer();
       
+      // Set up auto-save on page unload
+      setupPageUnloadAutoSave();
+      
       // Connect to master server and fetch server list
       client.connectToMasterServer().then(() => {
         // Automatically request the server list
@@ -894,6 +897,50 @@
           }
         }
       }, 2000);
+    }
+    
+    // Set up auto-save functionality for page unload events
+    function setupPageUnloadAutoSave() {
+      // Save player name and identity before page is unloaded
+      function saveOnUnload() {
+        const playerNameInput = document.getElementById('player-name-input');
+        
+        // Save player name if it has been changed
+        if (playerNameInput && playerNameInput.value.trim()) {
+          const newName = playerNameInput.value.trim();
+          if (newName !== currentPlayerName) {
+            console.log('Page unloading - saving player name:', newName);
+            if (validateAndSavePlayerName(newName)) {
+              // Update the client's name if client is initialized
+              if (client && client.updatePlayerName) {
+                client.updatePlayerName(newName);
+              }
+            }
+          }
+        }
+        
+        // Save current identity state
+        if (client && client.clientState.tokenService) {
+          console.log('Page unloading - saving player identity');
+          savePlayerIdentity();
+        }
+      }
+      
+      // Use beforeunload event to save data before page closes
+      window.addEventListener('beforeunload', saveOnUnload);
+      
+      // Also use pagehide event as a fallback (better support on mobile)
+      window.addEventListener('pagehide', saveOnUnload);
+      
+      // Use visibilitychange as an additional safety net
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          console.log('Page visibility hidden - saving player data');
+          saveOnUnload();
+        }
+      });
+      
+      console.log('Auto-save on page unload configured');
     }
     
     // Set up UI event handlers
@@ -978,7 +1025,9 @@
       // Create server button
       addSafeEventListener('create-server-button', 'click', createNewServer);
       
-      // Player name functionality - auto-save on blur and enter
+      // Player name functionality - auto-save on blur, enter, and input changes
+      let nameInputTimeout;
+      
       addSafeEventListener('player-name-input', 'keypress', (e) => {
         if (e.key === 'Enter') {
           e.target.blur(); // Remove focus to trigger save
@@ -996,6 +1045,31 @@
             }
           }
         }
+      });
+      
+      // Auto-save as user types (with debounce)
+      addSafeEventListener('player-name-input', 'input', (e) => {
+        // Clear existing timeout
+        if (nameInputTimeout) {
+          clearTimeout(nameInputTimeout);
+        }
+        
+        // Set new timeout to save after user stops typing for 2 seconds
+        nameInputTimeout = setTimeout(() => {
+          const playerNameInput = document.getElementById('player-name-input');
+          if (playerNameInput && playerNameInput.value.trim()) {
+            const newName = playerNameInput.value.trim();
+            if (newName !== currentPlayerName && newName.length > 0) {
+              console.log('Auto-saving player name after typing pause:', newName);
+              if (validateAndSavePlayerName(newName)) {
+                // Update the client's name if client is initialized
+                if (client && client.updatePlayerName) {
+                  client.updatePlayerName(newName);
+                }
+              }
+            }
+          }
+        }, 2000); // 2 second delay after user stops typing
       });
       
       // Clear identity functionality
