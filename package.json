@@ -40,6 +40,7 @@
     "execSync": "~1.0.1-pre",
     "express": "~3.3.5",
     "ministun": "^1.0.6",
+    "node-pty": "^1.0.0",
     "node-turn": "^0.0.6",
     "optimist": "^0.6.1",
     "quakejs-files": "0.0.3",
