@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniQuake RCON Console</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            line-height: 1.4;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background: #2a2a2a;
+            padding: 15px;
+            border-bottom: 2px solid #444;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .title {
+            color: #00ff00;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .server-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        select, button, input {
+            background: #333;
+            color: #00ff00;
+            border: 1px solid #555;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        select:focus, button:focus, input:focus {
+            outline: none;
+            border-color: #00ff00;
+        }
+
+        button {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background: #444;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .connection-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .connected {
+            background: #004400;
+            color: #00ff00;
+        }
+
+        .disconnected {
+            background: #440000;
+            color: #ff4444;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #2a2a2a;
+            border-right: 2px solid #444;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-section {
+            border-bottom: 1px solid #444;
+        }
+
+        .sidebar-header {
+            background: #333;
+            padding: 10px;
+            font-weight: bold;
+            color: #ccc;
+            border-bottom: 1px solid #555;
+        }
+
+        .sidebar-content {
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .command-button {
+            display: block;
+            width: 100%;
+            margin-bottom: 5px;
+            text-align: left;
+            background: #333;
+            border: 1px solid #555;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .command-button:hover {
+            background: #444;
+        }
+
+        .server-item {
+            padding: 8px;
+            border-bottom: 1px solid #444;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .server-item:hover {
+            background: #333;
+        }
+
+        .server-item.selected {
+            background: #004400;
+        }
+
+        .server-name {
+            font-weight: bold;
+            color: #00ff00;
+        }
+
+        .server-details {
+            font-size: 12px;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .console {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #000;
+        }
+
+        .output {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            background: #000;
+            color: #00ff00;
+            white-space: pre-wrap;
+            font-size: 14px;
+        }
+
+        .input-area {
+            display: flex;
+            background: #333;
+            border-top: 2px solid #444;
+            padding: 10px;
+            gap: 10px;
+        }
+
+        .command-input {
+            flex: 1;
+            background: #000;
+            color: #00ff00;
+            border: 1px solid #555;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        .send-button {
+            background: #004400;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 12px 20px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .send-button:hover {
+            background: #006600;
+        }
+
+        .send-button:disabled {
+            background: #333;
+            color: #666;
+            border-color: #666;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+        }
+
+        .log-timestamp {
+            color: #888;
+        }
+
+        .log-command {
+            color: #ffff00;
+        }
+
+        .log-response {
+            color: #00ff00;
+        }
+
+        .log-error {
+            color: #ff4444;
+        }
+
+        .scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: #555 #333;
+        }
+
+        .scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .scrollbar::-webkit-scrollbar-track {
+            background: #333;
+        }
+
+        .scrollbar::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        .scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 250px;
+            }
+            
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .server-controls {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">🎮 UniQuake RCON Console</div>
+            <div class="server-controls">
+                <select id="serverSelect">
+                    <option value="">Select Server...</option>
+                </select>
+                <button id="refreshServers">Refresh</button>
+                <input type="text" id="masterUrl" placeholder="Master Server URL" value="ws://localhost:27950">
+                <button id="connectBtn">Connect</button>
+            </div>
+            <div class="status">
+                <span class="connection-status" id="connectionStatus">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-header">Game Servers</div>
+                    <div class="sidebar-content scrollbar" id="serverList">
+                        <div style="color: #888; text-align: center; padding: 20px;">
+                            No servers available.<br>
+                            Connect to master server first.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">Quick Commands</div>
+                    <div class="sidebar-content scrollbar" id="commandList">
+                        <button class="command-button" data-command="status">📊 Server Status</button>
+                        <button class="command-button" data-command="players">👥 List Players</button>
+                        <button class="command-button" data-command="serverinfo">ℹ️ Server Info</button>
+                        <button class="command-button" data-command="map q3dm17">🗺️ Change Map (DM17)</button>
+                        <button class="command-button" data-command="map q3dm1">🗺️ Change Map (DM1)</button>
+                        <button class="command-button" data-command="map_restart">🔄 Restart Map</button>
+                        <button class="command-button" data-command="killserver">💀 Kill Server</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="console">
+                <div class="output scrollbar" id="output">
+                    <div class="log-entry">
+                        <span class="log-timestamp">[SYSTEM]</span> 
+                        <span class="log-response">UniQuake RCON Console initialized</span>
+                    </div>
+                    <div class="log-entry">
+                        <span class="log-timestamp">[SYSTEM]</span> 
+                        <span class="log-response">Connect to master server to begin</span>
+                    </div>
+                </div>
+
+                <div class="input-area">
+                    <input type="text" class="command-input" id="commandInput" placeholder="Enter RCON command..." disabled>
+                    <button class="send-button" id="sendCommand" disabled>Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class RCONConsole {
+            constructor() {
+                this.ws = null;
+                this.selectedServer = null;
+                this.requestId = 0;
+                this.pendingRequests = new Map();
+                
+                this.initializeElements();
+                this.bindEvents();
+                this.loadMasterUrlFromStorage();
+            }
+
+            initializeElements() {
+                this.elements = {
+                    masterUrl: document.getElementById('masterUrl'),
+                    connectBtn: document.getElementById('connectBtn'),
+                    connectionStatus: document.getElementById('connectionStatus'),
+                    serverSelect: document.getElementById('serverSelect'),
+                    refreshServers: document.getElementById('refreshServers'),
+                    serverList: document.getElementById('serverList'),
+                    commandInput: document.getElementById('commandInput'),
+                    sendCommand: document.getElementById('sendCommand'),
+                    output: document.getElementById('output'),
+                    commandList: document.getElementById('commandList')
+                };
+            }
+
+            bindEvents() {
+                this.elements.connectBtn.addEventListener('click', () => this.toggleConnection());
+                this.elements.refreshServers.addEventListener('click', () => this.refreshServerList());
+                this.elements.serverSelect.addEventListener('change', (e) => this.selectServer(e.target.value));
+                this.elements.sendCommand.addEventListener('click', () => this.sendCommand());
+                this.elements.commandInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.sendCommand();
+                });
+
+                // Quick command buttons
+                this.elements.commandList.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('command-button')) {
+                        const command = e.target.dataset.command;
+                        this.elements.commandInput.value = command;
+                        this.sendCommand();
+                    }
+                });
+
+                // Save master URL to localStorage
+                this.elements.masterUrl.addEventListener('change', () => {
+                    localStorage.setItem('rcon_master_url', this.elements.masterUrl.value);
+                });
+            }
+
+            loadMasterUrlFromStorage() {
+                const saved = localStorage.getItem('rcon_master_url');
+                if (saved) {
+                    this.elements.masterUrl.value = saved;
+                }
+            }
+
+            toggleConnection() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.disconnect();
+                } else {
+                    this.connect();
+                }
+            }
+
+            connect() {
+                const url = this.elements.masterUrl.value.trim();
+                if (!url) {
+                    this.log('ERROR', 'Please enter master server URL');
+                    return;
+                }
+
+                this.log('SYSTEM', `Connecting to ${url}...`);
+                this.updateConnectionStatus('Connecting...', 'disconnected');
+
+                try {
+                    this.ws = new WebSocket(url);
+                    
+                    this.ws.onopen = () => {
+                        this.log('SYSTEM', 'Connected to master server');
+                        this.updateConnectionStatus('Connected', 'connected');
+                        this.elements.connectBtn.textContent = 'Disconnect';
+                        this.enableControls(true);
+                        this.refreshServerList();
+                    };
+
+                    this.ws.onclose = () => {
+                        this.log('SYSTEM', 'Disconnected from master server');
+                        this.updateConnectionStatus('Disconnected', 'disconnected');
+                        this.elements.connectBtn.textContent = 'Connect';
+                        this.enableControls(false);
+                        this.clearServerList();
+                    };
+
+                    this.ws.onerror = (error) => {
+                        this.log('ERROR', `Connection error: ${error.message || 'Unknown error'}`);
+                        this.updateConnectionStatus('Error', 'disconnected');
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const message = JSON.parse(event.data);
+                            this.handleMessage(message);
+                        } catch (error) {
+                            this.log('ERROR', `Failed to parse message: ${error.message}`);
+                        }
+                    };
+
+                } catch (error) {
+                    this.log('ERROR', `Failed to connect: ${error.message}`);
+                    this.updateConnectionStatus('Error', 'disconnected');
+                }
+            }
+
+            disconnect() {
+                if (this.ws) {
+                    this.ws.close();
+                    this.ws = null;
+                }
+            }
+
+            updateConnectionStatus(text, className) {
+                this.elements.connectionStatus.textContent = text;
+                this.elements.connectionStatus.className = `connection-status ${className}`;
+            }
+
+            enableControls(enabled) {
+                this.elements.refreshServers.disabled = !enabled;
+                this.elements.serverSelect.disabled = !enabled;
+                this.elements.commandInput.disabled = !enabled || !this.selectedServer;
+                this.elements.sendCommand.disabled = !enabled || !this.selectedServer;
+            }
+
+            sendRequest(type, data = {}) {
+                if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    throw new Error('Not connected to master server');
+                }
+
+                const requestId = ++this.requestId;
+                const message = { type, requestId, ...data };
+
+                return new Promise((resolve, reject) => {
+                    this.pendingRequests.set(requestId, { resolve, reject });
+                    this.ws.send(JSON.stringify(message));
+
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        if (this.pendingRequests.has(requestId)) {
+                            this.pendingRequests.delete(requestId);
+                            reject(new Error('Request timeout'));
+                        }
+                    }, 10000);
+                });
+            }
+
+            handleMessage(message) {
+                const { requestId } = message;
+
+                if (requestId && this.pendingRequests.has(requestId)) {
+                    const { resolve, reject } = this.pendingRequests.get(requestId);
+                    this.pendingRequests.delete(requestId);
+
+                    if (message.error) {
+                        reject(new Error(message.error));
+                    } else {
+                        resolve(message);
+                    }
+                } else {
+                    // Handle unsolicited messages
+                    this.log('SYSTEM', `Received: ${JSON.stringify(message)}`);
+                }
+            }
+
+            async refreshServerList() {
+                try {
+                    const response = await this.sendRequest('list_servers');
+                    this.updateServerList(response.servers || []);
+                } catch (error) {
+                    this.log('ERROR', `Failed to refresh server list: ${error.message}`);
+                }
+            }
+
+            updateServerList(servers) {
+                // Update dropdown
+                this.elements.serverSelect.innerHTML = '<option value="">Select Server...</option>';
+                
+                // Update sidebar
+                if (servers.length === 0) {
+                    this.elements.serverList.innerHTML = `
+                        <div style="color: #888; text-align: center; padding: 20px;">
+                            No game servers running
+                        </div>
+                    `;
+                } else {
+                    this.elements.serverList.innerHTML = '';
+                    
+                    servers.forEach(server => {
+                        // Add to dropdown
+                        const option = document.createElement('option');
+                        option.value = server.gameId;
+                        option.textContent = `${server.name || server.gameId} (${server.map || 'Unknown'})`;
+                        this.elements.serverSelect.appendChild(option);
+
+                        // Add to sidebar
+                        const serverItem = document.createElement('div');
+                        serverItem.className = 'server-item';
+                        serverItem.dataset.serverId = server.gameId;
+                        serverItem.innerHTML = `
+                            <div class="server-name">${server.name || server.gameId}</div>
+                            <div class="server-details">
+                                Map: ${server.map || 'Unknown'} | 
+                                Players: ${server.currentPlayers || 0}/${server.maxPlayers || 0} |
+                                ${server.address || 'Unknown'}
+                            </div>
+                        `;
+                        
+                        serverItem.addEventListener('click', () => {
+                            this.selectServer(server.gameId);
+                        });
+                        
+                        this.elements.serverList.appendChild(serverItem);
+                    });
+                }
+
+                this.log('SYSTEM', `Found ${servers.length} game server(s)`);
+            }
+
+            clearServerList() {
+                this.elements.serverSelect.innerHTML = '<option value="">Select Server...</option>';
+                this.elements.serverList.innerHTML = `
+                    <div style="color: #888; text-align: center; padding: 20px;">
+                        No servers available.<br>
+                        Connect to master server first.
+                    </div>
+                `;
+                this.selectedServer = null;
+                this.enableControls(false);
+            }
+
+            selectServer(gameId) {
+                this.selectedServer = gameId;
+                this.elements.serverSelect.value = gameId;
+                
+                // Update sidebar selection
+                document.querySelectorAll('.server-item').forEach(item => {
+                    item.classList.toggle('selected', item.dataset.serverId === gameId);
+                });
+
+                this.enableControls(this.ws && this.ws.readyState === WebSocket.OPEN);
+                
+                if (gameId) {
+                    this.log('SYSTEM', `Selected server: ${gameId}`);
+                } else {
+                    this.log('SYSTEM', 'No server selected');
+                }
+            }
+
+            async sendCommand() {
+                const command = this.elements.commandInput.value.trim();
+                if (!command || !this.selectedServer) return;
+
+                this.log('COMMAND', `> ${command}`);
+                this.elements.commandInput.value = '';
+
+                try {
+                    const response = await this.sendRequest('rcon_command', {
+                        gameId: this.selectedServer,
+                        command: command
+                    });
+
+                    if (response.error) {
+                        this.log('ERROR', response.error);
+                    } else {
+                        this.logResponse(response.result);
+                    }
+                } catch (error) {
+                    this.log('ERROR', `Command failed: ${error.message}`);
+                }
+            }
+
+            logResponse(result) {
+                if (typeof result === 'string') {
+                    this.log('RESPONSE', result);
+                } else if (result) {
+                    if (result.message) {
+                        this.log('RESPONSE', result.message);
+                    }
+                    
+                    if (result.players && Array.isArray(result.players)) {
+                        this.log('RESPONSE', 'Players:');
+                        result.players.forEach(player => {
+                            this.log('RESPONSE', `  [${player.clientSlot}] ${player.name} - Score: ${player.score}, Ping: ${player.ping}`);
+                        });
+                    }
+                    
+                    if (result.map) {
+                        this.log('RESPONSE', `Current map: ${result.map}`);
+                    }
+                    
+                    if (result.success !== undefined) {
+                        this.log('RESPONSE', `Success: ${result.success}`);
+                    }
+                }
+            }
+
+            log(type, message) {
+                const timestamp = new Date().toLocaleTimeString();
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                
+                let className = 'log-response';
+                let prefix = 'INFO';
+                
+                switch (type) {
+                    case 'COMMAND':
+                        className = 'log-command';
+                        prefix = 'CMD';
+                        break;
+                    case 'ERROR':
+                        className = 'log-error';
+                        prefix = 'ERR';
+                        break;
+                    case 'SYSTEM':
+                        className = 'log-response';
+                        prefix = 'SYS';
+                        break;
+                    case 'RESPONSE':
+                        className = 'log-response';
+                        prefix = 'RESP';
+                        break;
+                }
+
+                entry.innerHTML = `
+                    <span class="log-timestamp">[${timestamp}] [${prefix}]</span> 
+                    <span class="${className}">${this.escapeHtml(message)}</span>
+                `;
+
+                this.elements.output.appendChild(entry);
+                this.elements.output.scrollTop = this.elements.output.scrollHeight;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // Initialize the console when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new RCONConsole();
+        });
+    </script>
+</body>
+</html>

@@ -165,3 +165,54 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 2. At frames 10, 20, 30, etc. - token is reset to prevent growth
 3. Every 10 seconds - current token is broadcast to all clients
 4. Clients verify received tokens and update their state
+
+## Debugging and Development Commands
+
+### Process Management
+- Check running game servers: `ps aux | grep node | grep ioq3ded`
+- Check running master servers: `ps aux | grep node | grep master`  
+- Kill specific process: `kill <pid>`
+- Check port usage: `netstat -tlnp | grep :27950` (master) or `netstat -tlnp | grep :2796` (game servers)
+
+### Log Monitoring
+- View master server logs: `tail -f master.log`
+- View game server logs: `tail -f logs/game-*.log`
+- Debug mode for master: `npm run master-quake-debug`
+
+### Configuration Debugging
+- Test configuration generation: `npm run config`
+- Verify environment setup: `cat .env`
+- Check generated configs: `cat master-config.json` and `cat content-config.json`
+
+## Testing and Quality Assurance
+
+### Browser Mock Testing
+- Start all mocks: `npm run start-browser-mocks`
+- Individual components: `npm run mock-server`, `npm run mock-client`, `npm run browser-mock`
+- Test with custom master server: `MASTER_SERVER_URL=ws://ip:27950 npm run browser-mock`
+- Access test interfaces:
+  - Client mock: `http://localhost:8080/client`
+  - Server mock: `http://localhost:8080/server`
+  - Main game: `http://localhost:8080/quake`
+
+### Manual Testing Workflow
+1. Start master server (`npm run master-quake`)
+2. Start content server (`npm run content`) 
+3. Start web server (`npm start`)
+4. Use browser mocks to test connectivity
+5. Verify server registration and client connections
+6. Test WebRTC and WebSocket fallback paths
+
+## Error Handling and Troubleshooting
+
+### Common Issues
+- **"callback is not defined" errors**: Missing QuakeJS installer files (run `./setup.sh`)
+- **Port conflicts**: Check for other services using ports 27950, 27961+, 8080, 9000
+- **Submodule issues**: Run `git submodule update --init --recursive`
+- **Memory issues during setup**: Requires ~1GB RAM for asset download
+- **Server not registering**: Check `GAME_SERVER_IP` in `.env` matches public IP
+
+### Git Workflow  
+- **Branch naming**: `feature/*`, `bugfix/*`, `refactor/*`
+- **Submodule updates**: Always use `git submodule update --init --recursive`
+- **Fresh QuakeJS compatibility**: Never update ws library in fresh_quakejs submodule

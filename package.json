@@ -4,7 +4,8 @@
   "bin": {
     "uniquake-content": "bin/content.js",
     "uniquake-master": "bin/webrtc-master.js",
-    "uniquake-repak": "bin/repak.js"
+    "uniquake-repak": "bin/repak.js",
+    "uniquake-rcon": "bin/rcon.js"
   },
   "scripts": {
     "config": "node bin/generate-configs.js",

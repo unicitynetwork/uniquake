@@ -185,6 +185,28 @@ app.get('/quake', function(req, res) {
   res.send(html);
 });
 
+// RCON Console route
+app.get('/rcon', function(req, res) {
+  // Get the master server URL from query parameter or use default
+  const masterServer = req.query.master || DEFAULT_MASTER_SERVER;
+  
+  // Read the rcon.html file
+  fs.readFile(path.join(__dirname, 'rcon.html'), 'utf8', function(err, data) {
+    if (err) {
+      return res.status(500).send('Error loading RCON console page');
+    }
+    
+    // Replace the default master server URL with the provided one
+    const modifiedHtml = data.replace(
+      /value="ws:\/\/localhost:27950"/g, 
+      `value="${masterServer}"`
+    );
+    
+    // Send the modified HTML
+    res.send(modifiedHtml);
+  });
+});
+
 // Proxy request to game (handle as if we're the web server)
 app.get('/ioquake3.js', function(req, res) {
   res.sendfile(path.join(__dirname, 'build/ioquake3.js'));
@@ -201,11 +223,13 @@ server.listen(port, function() {
   console.log('Mock server listening on port ' + port);
   console.log('Client URL: http://localhost:' + port + '/client');
   console.log('Server URL: http://localhost:' + port + '/server');
+  console.log('RCON Console: http://localhost:' + port + '/rcon');
   console.log('');
   console.log('Master server configuration:');
   console.log(`- Default (from env): ${DEFAULT_MASTER_SERVER}`);
   console.log('- Override via URL: append ?master=ws://host:port to the URLs');
   console.log('Example: http://localhost:' + port + '/client?master=ws://example.com:27950');
   console.log('Example: http://localhost:' + port + '/server?master=ws://example.com:27950');
+  console.log('Example: http://localhost:' + port + '/rcon?master=ws://example.com:27950');
   console.log('======================================================');
 });
