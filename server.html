@@ -276,6 +276,22 @@
         
         
         <div class="game-state" id="game-state">No game state available</div>
+        
+        <!-- Real-time Player Statistics Panel -->
+        <div class="panel" style="margin-top: 15px;">
+          <h3 style="color: #4fc3f7; margin-bottom: 15px;">Live Player Statistics</h3>
+          <div class="player-stats" id="player-stats" style="background-color: #252525; border-radius: 3px; padding: 10px; font-size: 14px;">
+            <div id="server-status">Connecting to server...</div>
+            <div id="player-list" style="margin-top: 10px;">
+              <div style="font-weight: bold; color: #4fc3f7;">Players Online:</div>
+              <div id="players-container">No players connected</div>
+            </div>
+            <div id="server-info" style="margin-top: 10px;">
+              <div style="font-weight: bold; color: #4fc3f7;">Server Information:</div>
+              <div id="server-info-container">Loading server info...</div>
+            </div>
+          </div>
+        </div>
       </div>
       
     </div>
@@ -372,6 +388,13 @@
           requestServerStatus();
         }
       }, 5000); // Update every 5 seconds
+      
+      // Set up periodic player statistics updates using RCON
+      setInterval(() => {
+        if (serverConnection && serverConnection.readyState === WebSocket.OPEN && serverState.gameId) {
+          updatePlayerStatistics();
+        }
+      }, 3000); // Update every 3 seconds for real-time feel
     }
     
     // Connect to master server for dedicated server management
@@ -1317,6 +1340,10 @@
           handleServerUpdated(message);
           break;
           
+        case 'rcon_response':
+          handleRCONResponse(message);
+          break;
+          
         default:
           
           break;
@@ -1923,6 +1950,30 @@
       }
     }
     
+    // Handle RCON response
+    function handleRCONResponse(message) {
+      const { requestId, result, error } = message;
+      
+      if (!requestId) return;
+      
+      const pendingRequest = pendingRconRequests.get(requestId);
+      if (!pendingRequest) {
+        console.warn(`Received RCON response for unknown request ${requestId}`);
+        return;
+      }
+      
+      // Remove from pending requests
+      pendingRconRequests.delete(requestId);
+      
+      if (error) {
+        console.error(`RCON error for request ${requestId}:`, error);
+        pendingRequest.reject(new Error(error));
+      } else {
+        console.log(`RCON response for request ${requestId}:`, result);
+        pendingRequest.resolve(message);
+      }
+    }
+    
     // Format uptime in seconds to readable format
     function formatUptime(seconds) {
       if (!seconds) return 'N/A';
@@ -1932,6 +1983,340 @@
       const secs = seconds % 60;
       
       return `${hours}h ${minutes}m ${secs}s`;
+    }
+    
+    // RCON-based Player Statistics Functions
+    let rconRequestId = 0;
+    const pendingRconRequests = new Map();
+    
+    // Update player statistics using RCON
+    function updatePlayerStatistics() {
+      if (!serverState.gameId) {
+        updatePlayerStatsDisplay(null, 'No game server running');
+        return;
+      }
+      
+      // Request player status via RCON
+      sendRCONCommand('status')
+        .then(result => {
+          console.log('RCON status result:', result);
+          if (result && result.result) {
+            // Handle the structured response from getServerStatusDirect
+            if (typeof result.result === 'object') {
+              // Check if this is the structured response from getServerStatusDirect  
+              if (result.result.gameId !== undefined && result.result.players !== undefined) {
+                // This is structured server status data from getServerStatusDirect
+                const playerData = {
+                  map: result.result.map || 'Unknown',
+                  players: result.result.players || [],
+                  playerCount: result.result.currentPlayers || (result.result.players ? result.result.players.length : 0)
+                };
+                console.log('Parsed player data from structured response:', playerData);
+                updatePlayerStatsDisplay(playerData);
+              } else if (result.result.output) {
+                // Raw output from executeDirectCommand
+                console.log('Raw RCON output received:', result.result.output);
+                const playerData = parsePlayerStatusFromRCON(result.result.output);
+                updatePlayerStatsDisplay(playerData);
+              } else {
+                console.warn('Unexpected RCON result format:', result.result);
+                updatePlayerStatsDisplay(null, 'Unexpected response format');
+              }
+            } else if (typeof result.result === 'string') {
+              // Raw RCON output - parse it
+              console.log('Raw RCON string received:', result.result);
+              const playerData = parsePlayerStatusFromRCON(result.result);
+              updatePlayerStatsDisplay(playerData);
+            } else {
+              console.warn('Unexpected RCON result format:', result.result);
+              updatePlayerStatsDisplay(null, 'Unexpected response format');
+            }
+          } else {
+            updatePlayerStatsDisplay(null, 'Failed to get player status');
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching player statistics:', error);
+          updatePlayerStatsDisplay(null, `Error: ${error.message}`);
+        });
+      
+      // Also request server info via RCON
+      sendRCONCommand('serverinfo')
+        .then(result => {
+          console.log('RCON serverinfo result:', result);
+          if (result && result.result) {
+            // Handle structured data from RCON service
+            if (typeof result.result === 'object') {
+              if (result.result.serverInfo) {
+                // This is structured server info data from getServerInfoDirect
+                updateServerInfoDisplayFromObject(result.result.serverInfo);
+              } else if (result.result.output) {
+                // Raw output from executeDirectCommand
+                updateServerInfoDisplay(result.result.output);
+              } else {
+                console.warn('Unexpected serverinfo result format:', result.result);
+              }
+            } else if (typeof result.result === 'string') {
+              // Raw RCON output - parse it
+              updateServerInfoDisplay(result.result);
+            } else {
+              console.warn('Unexpected serverinfo result format:', result.result);
+            }
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching server info:', error);
+        });
+    }
+    
+    // Send RCON command and return promise
+    function sendRCONCommand(command) {
+      return new Promise((resolve, reject) => {
+        if (!serverConnection || serverConnection.readyState !== WebSocket.OPEN) {
+          reject(new Error('Not connected to master server'));
+          return;
+        }
+        
+        if (!serverState.gameId) {
+          reject(new Error('No game server running'));
+          return;
+        }
+        
+        const requestId = ++rconRequestId;
+        const request = {
+          type: 'rcon_command',
+          requestId: requestId,
+          gameId: serverState.gameId,
+          command: command
+        };
+        
+        // Store the promise callbacks
+        pendingRconRequests.set(requestId, { resolve, reject });
+        
+        // Set timeout for the request
+        setTimeout(() => {
+          if (pendingRconRequests.has(requestId)) {
+            pendingRconRequests.delete(requestId);
+            reject(new Error('RCON request timeout'));
+          }
+        }, 10000); // 10 second timeout
+        
+        serverConnection.send(JSON.stringify(request));
+      });
+    }
+    
+    // Parse player status from RCON output
+    function parsePlayerStatusFromRCON(rconOutput) {
+      const lines = rconOutput.split('\n');
+      const players = [];
+      let currentMap = 'Unknown';
+      
+      // Find map information
+      for (const line of lines) {
+        const mapMatch = line.match(/^map:\s*(.+)$/);
+        if (mapMatch) {
+          currentMap = mapMatch[1].trim();
+          break;
+        }
+      }
+      
+      // Find player table data
+      let inPlayerSection = false;
+      for (const line of lines) {
+        if (line.includes('num score ping name')) {
+          inPlayerSection = true;
+          continue;
+        }
+        
+        if (inPlayerSection && line.trim() && !line.startsWith('---')) {
+          const player = parsePlayerLine(line);
+          if (player) {
+            players.push(player);
+          }
+        }
+      }
+      
+      return {
+        map: currentMap,
+        players: players,
+        playerCount: players.length
+      };
+    }
+    
+    // Parse individual player line from RCON status output
+    function parsePlayerLine(line) {
+      try {
+        // Fixed-width parsing based on actual RCON status format
+        // Format: num score ping name            lastmsg address               qport rate
+        // Example:   0     0  999 cryptohog^7       48000 176.204.160.195       54394 25000
+        
+        if (line.length < 30) return null; // Line too short
+        
+        const num = parseInt(line.substring(0, 3).trim());
+        const score = parseInt(line.substring(4, 9).trim());
+        const pingStr = line.substring(10, 14).trim();
+        const name = line.substring(15, 30).trim().replace(/\^./g, ''); // Remove color codes
+        
+        const ping = pingStr === '999' ? 'Bot' : parseInt(pingStr);
+        
+        return {
+          slot: num,
+          name: name || `Player${num}`,
+          score: score,
+          ping: ping,
+          isBot: pingStr === '999'
+        };
+      } catch (error) {
+        console.warn('Failed to parse player line:', line, error);
+        return null;
+      }
+    }
+    
+    // Update player statistics display
+    function updatePlayerStatsDisplay(playerData, errorMessage = null) {
+      const serverStatusEl = document.getElementById('server-status');
+      const playersContainerEl = document.getElementById('players-container');
+      
+      if (!serverStatusEl || !playersContainerEl) return;
+      
+      if (errorMessage) {
+        serverStatusEl.innerHTML = `<span style="color: #f44336;">${errorMessage}</span>`;
+        playersContainerEl.innerHTML = '<div style="color: #888;">Unable to fetch player data</div>';
+        return;
+      }
+      
+      if (!playerData) {
+        serverStatusEl.innerHTML = '<span style="color: #ffaa00;">Fetching player data...</span>';
+        return;
+      }
+      
+      // Update server status
+      const statusColor = playerData.playerCount > 0 ? '#4caf50' : '#ffaa00';
+      serverStatusEl.innerHTML = `
+        <span style="color: ${statusColor};">
+          <strong>Map:</strong> ${playerData.map} | 
+          <strong>Players:</strong> ${playerData.playerCount}
+        </span>
+      `;
+      
+      // Update player list
+      if (playerData.players.length === 0) {
+        playersContainerEl.innerHTML = '<div style="color: #888; font-style: italic;">No players connected</div>';
+      } else {
+        let playersHtml = '';
+        
+        playerData.players.forEach(player => {
+          const playerType = player.isBot ? '🤖 Bot' : '👤 Player';
+          const pingDisplay = player.isBot ? 'Bot' : `${player.ping}ms`;
+          const scoreColor = player.score > 0 ? '#4caf50' : player.score < 0 ? '#f44336' : '#e0e0e0';
+          
+          playersHtml += `
+            <div style="background-color: #3d3d3d; margin: 5px 0; padding: 8px; border-radius: 3px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <span style="color: #4fc3f7; font-weight: bold;">${player.name}</span>
+                  <span style="color: #aaa; margin-left: 8px;">${playerType}</span>
+                </div>
+                <div style="display: flex; gap: 15px;">
+                  <div style="text-align: center;">
+                    <div style="color: #aaa; font-size: 12px;">Score</div>
+                    <div style="color: ${scoreColor}; font-weight: bold;">${player.score}</div>
+                  </div>
+                  <div style="text-align: center;">
+                    <div style="color: #aaa; font-size: 12px;">Ping</div>
+                    <div style="color: #e0e0e0;">${pingDisplay}</div>
+                  </div>
+                  <div style="text-align: center;">
+                    <div style="color: #aaa; font-size: 12px;">Slot</div>
+                    <div style="color: #e0e0e0;">#${player.slot}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        
+        playersContainerEl.innerHTML = playersHtml;
+      }
+    }
+    
+    // Update server info display from raw RCON output
+    function updateServerInfoDisplay(serverInfoOutput) {
+      const serverInfoContainerEl = document.getElementById('server-info-container');
+      if (!serverInfoContainerEl) return;
+      
+      // Parse server info from RCON output
+      const lines = serverInfoOutput.split('\n');
+      const serverInfo = {};
+      
+      for (const line of lines) {
+        const match = line.match(/^(\w+)\s+(.+)$/);
+        if (match) {
+          serverInfo[match[1]] = match[2].trim();
+        }
+      }
+      
+      // Display key server information
+      const hostname = serverInfo.sv_hostname || 'Unknown';
+      const gametype = serverInfo.g_gametype || '0';
+      const fraglimit = serverInfo.fraglimit || '25';
+      const timelimit = serverInfo.timelimit || '15';
+      const maxclients = serverInfo.sv_maxclients || '16';
+      
+      const gametypeNames = {
+        '0': 'Free For All',
+        '1': 'Tournament',
+        '2': 'Single Player',
+        '3': 'Team Deathmatch',
+        '4': 'Capture The Flag'
+      };
+      
+      const gametypeDisplay = gametypeNames[gametype] || `Type ${gametype}`;
+      
+      serverInfoContainerEl.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
+          <div><strong>Hostname:</strong> ${hostname}</div>
+          <div><strong>Game Type:</strong> ${gametypeDisplay}</div>
+          <div><strong>Frag Limit:</strong> ${fraglimit}</div>
+          <div><strong>Time Limit:</strong> ${timelimit} min</div>
+          <div><strong>Max Players:</strong> ${maxclients}</div>
+          <div><strong>Protocol:</strong> ${serverInfo.com_protocol || 'Unknown'}</div>
+        </div>
+      `;
+    }
+    
+    // Update server info display from structured object
+    function updateServerInfoDisplayFromObject(serverInfo) {
+      const serverInfoContainerEl = document.getElementById('server-info-container');
+      if (!serverInfoContainerEl) return;
+      
+      // Extract info from structured object
+      const hostname = serverInfo.sv_hostname || serverInfo.hostname || 'Unknown';
+      const gametype = serverInfo.g_gametype || '0';
+      const fraglimit = serverInfo.fraglimit || '25';
+      const timelimit = serverInfo.timelimit || '15';
+      const maxclients = serverInfo.sv_maxclients || serverInfo.maxPlayers || '16';
+      
+      const gametypeNames = {
+        '0': 'Free For All',
+        '1': 'Tournament', 
+        '2': 'Single Player',
+        '3': 'Team Deathmatch',
+        '4': 'Capture The Flag'
+      };
+      
+      const gametypeDisplay = gametypeNames[gametype] || `Type ${gametype}`;
+      
+      serverInfoContainerEl.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
+          <div><strong>Hostname:</strong> ${hostname}</div>
+          <div><strong>Game Type:</strong> ${gametypeDisplay}</div>
+          <div><strong>Frag Limit:</strong> ${fraglimit}</div>
+          <div><strong>Time Limit:</strong> ${timelimit} min</div>
+          <div><strong>Max Players:</strong> ${maxclients}</div>
+          <div><strong>Protocol:</strong> ${serverInfo.com_protocol || 'Unknown'}</div>
+        </div>
+      `;
     }
   </script>
 </body>
