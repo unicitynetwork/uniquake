@@ -254,7 +254,9 @@
     
     <div class="serving-message" id="serving-message" style="background-color: #2a2a2a; border: 2px solid #4fc3f7; border-radius: 5px; padding: 15px; margin-bottom: 20px; text-align: center;">
       <div style="font-size: 24px; font-weight: bold; color: #4fc3f7; margin-bottom: 10px;">
-        Serving server name: <span id="server-name-display">Loading...</span>
+        Server Name: 
+        <input type="text" id="server-name-input" style="background-color: #3d3d3d; border: 2px solid #4fc3f7; border-radius: 3px; padding: 8px 12px; color: #4fc3f7; font-family: 'Courier New', monospace; font-size: 20px; font-weight: bold; text-align: center; width: 300px; margin: 0 10px;" placeholder="Loading..." maxlength="32">
+        <button id="set-server-name-button" style="background-color: #4fc3f7; color: #000; border: none; border-radius: 3px; padding: 8px 16px; font-family: 'Courier New', monospace; font-size: 16px; font-weight: bold; cursor: pointer; margin-left: 10px;">Set</button>
       </div>
       <div style="font-size: 16px; color: #e0e0e0;">
         You and your friends can pick it from the list of servers and click connect. Close this window to finish the game.
@@ -340,9 +342,10 @@
       config.serverName = serverName;
       
       // Update the serving message with the server name
-      const serverNameDisplay = document.getElementById('server-name-display');
-      if (serverNameDisplay) {
-        serverNameDisplay.textContent = serverName;
+      const serverNameInput = document.getElementById('server-name-input');
+      if (serverNameInput) {
+        serverNameInput.value = serverName;
+        serverNameInput.placeholder = serverName;
       }
       
       // Connect to master server for dedicated server management
@@ -543,6 +546,17 @@
         });
       }
       
+      // Server name input functionality
+      addSafeEventListener('set-server-name-button', 'click', () => {
+        setServerName();
+      });
+      
+      addSafeEventListener('server-name-input', 'keypress', (e) => {
+        if (e.key === 'Enter') {
+          setServerName();
+        }
+      });
+      
       // Server control buttons removed
       
       // Server action buttons removed
@@ -550,6 +564,61 @@
       // Action buttons removed - no UI controls needed
       
       // Game iframe removed
+    }
+    
+    // Set server name from input field
+    function setServerName() {
+      const serverNameInput = document.getElementById('server-name-input');
+      if (!serverNameInput) return;
+      
+      const newName = serverNameInput.value.trim();
+      if (!newName) {
+        alert('Server name cannot be empty');
+        return;
+      }
+      
+      if (newName.length > 32) {
+        alert('Server name must be 32 characters or less');
+        return;
+      }
+      
+      // Validate server name (basic validation)
+      if (!/^[a-zA-Z0-9_\-\.\s]+$/.test(newName)) {
+        alert('Server name can only contain letters, numbers, underscore, dash, dot, and spaces');
+        return;
+      }
+      
+      // Update the global server name
+      currentServerName = newName;
+      
+      console.log(`Server name changed to: ${newName}`);
+      
+      // Update server registration with new name if connected
+      if (serverConnection && serverConnection.readyState === WebSocket.OPEN && serverState.registered) {
+        const updateMsg = {
+          type: 'update_server',
+          serverInfo: {
+            name: newName,
+            map: 'q3dm1',
+            game: 'baseq3',
+            players: serverState.clients.size,
+            maxPlayers: 16,
+            tokenEnabled: true,
+            address: 'ws-proxy'
+          }
+        };
+        
+        serverConnection.send(JSON.stringify(updateMsg));
+        console.log('Sent server name update to master server');
+      }
+      
+      // Update the UI displays
+      updateGameStateDisplay();
+      
+      // Update placeholder
+      serverNameInput.placeholder = newName;
+      
+      console.log('Server name updated successfully');
     }
     
     // Legacy start server function - now handled by real server
@@ -1091,8 +1160,8 @@
         // Use the globally stored server name (consistent across all displays)
         serverName = currentServerName;
       } else {
-        const serverNameDisplay = document.getElementById('server-name-display');
-        serverName = serverNameDisplay ? serverNameDisplay.textContent : 'Unknown';
+        const serverNameInput = document.getElementById('server-name-input');
+        serverName = serverNameInput ? (serverNameInput.value || serverNameInput.placeholder) : 'Unknown';
       }
       const serverId = serverState.peerId || 'Not registered';
       
