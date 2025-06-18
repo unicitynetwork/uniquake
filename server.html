@@ -598,13 +598,8 @@
         const updateMsg = {
           type: 'update_server',
           serverInfo: {
-            name: newName,
-            map: 'q3dm1',
-            game: 'baseq3',
-            players: serverState.clients.size,
-            maxPlayers: 16,
-            tokenEnabled: true,
-            address: 'ws-proxy'
+            name: newName
+            // Only update the name - server registry will merge with existing data
           }
         };
         
@@ -1318,6 +1313,10 @@
           handleClientDisconnectedByMaster(message);
           break;
           
+        case 'server_updated':
+          handleServerUpdated(message);
+          break;
+          
         default:
           
           break;
@@ -1912,6 +1911,16 @@
       
       // Alert the user
       alert(`Master server error: ${message.error}`);
+    }
+    
+    // Handle server update confirmation
+    function handleServerUpdated(message) {
+      if (message.success) {
+        console.log(`Server information updated successfully: ${message.peerId}`);
+      } else {
+        console.error(`Failed to update server information: ${message.error || 'Unknown error'}`);
+        alert(`Failed to update server name: ${message.error || 'Unknown error'}`);
+      }
     }
     
     // Format uptime in seconds to readable format
