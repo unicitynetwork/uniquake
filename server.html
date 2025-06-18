@@ -2203,6 +2203,10 @@
       if (playerData.players.length === 0) {
         playersContainerEl.innerHTML = '<div style="color: #888; font-style: italic;">No players connected</div>';
       } else {
+        // Find the highest score to determine winner candidate(s)
+        const maxScore = Math.max(...playerData.players.map(p => p.score));
+        const hasWinnerCandidates = playerData.players.length > 1 && maxScore > 0;
+        
         let playersHtml = '';
         
         playerData.players.forEach(player => {
@@ -2210,12 +2214,19 @@
           const pingDisplay = player.isBot ? 'Bot' : `${player.ping}ms`;
           const scoreColor = player.score > 0 ? '#4caf50' : player.score < 0 ? '#f44336' : '#e0e0e0';
           
+          // Check if this player is a winner candidate
+          const isWinnerCandidate = hasWinnerCandidates && player.score === maxScore;
+          const backgroundColor = isWinnerCandidate ? '#4a5c2a' : '#3d3d3d'; // Darker green for winners
+          const borderStyle = isWinnerCandidate ? 'border: 2px solid #4caf50;' : '';
+          const winnerIcon = isWinnerCandidate ? '👑 ' : '';
+          
           playersHtml += `
-            <div style="background-color: #3d3d3d; margin: 5px 0; padding: 8px; border-radius: 3px;">
+            <div style="background-color: ${backgroundColor}; margin: 5px 0; padding: 8px; border-radius: 3px; ${borderStyle}">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="flex: 1;">
-                  <span style="color: #4fc3f7; font-weight: bold;">${player.name}</span>
+                  <span style="color: #4fc3f7; font-weight: bold;">${winnerIcon}${player.name}</span>
                   <span style="color: #aaa; margin-left: 8px;">${playerType}</span>
+                  ${isWinnerCandidate ? '<span style="color: #4caf50; margin-left: 8px; font-size: 12px;">LEADING</span>' : ''}
                 </div>
                 <div style="display: flex; gap: 15px;">
                   <div style="text-align: center;">
@@ -2225,10 +2236,6 @@
                   <div style="text-align: center;">
                     <div style="color: #aaa; font-size: 12px;">Ping</div>
                     <div style="color: #e0e0e0;">${pingDisplay}</div>
-                  </div>
-                  <div style="text-align: center;">
-                    <div style="color: #aaa; font-size: 12px;">Slot</div>
-                    <div style="color: #e0e0e0;">#${player.slot}</div>
                   </div>
                 </div>
               </div>
