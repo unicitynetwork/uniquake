@@ -313,6 +313,7 @@
     };
     let selectedClientId = null;
     let dedicatedServerInfo = null; // Dedicated server information
+    let currentServerName = null; // Store the current server name
     
     /**
      * Generate a random server name
@@ -335,6 +336,7 @@
       
       // Generate random server name
       const serverName = generateServerName();
+      currentServerName = serverName; // Store globally
       config.serverName = serverName;
       
       // Update the serving message with the server name
@@ -503,7 +505,7 @@
     // Get server configuration (using defaults since UI inputs are removed)
     function getServerConfig() {
       return {
-        serverName: undefined, // Will be auto-generated
+        serverName: currentServerName, // Use the globally stored server name
         map: 'q3dm1',
         maxPlayers: 16,
         tokenEnabled: true
@@ -1085,9 +1087,12 @@
       let serverName = 'Unknown';
       if (dedicatedServerInfo && dedicatedServerInfo.serverInfo && dedicatedServerInfo.serverInfo.name) {
         serverName = dedicatedServerInfo.serverInfo.name;
+      } else if (currentServerName) {
+        // Use the globally stored server name (consistent across all displays)
+        serverName = currentServerName;
       } else {
-        const config = getServerConfig();
-        serverName = config.serverName || 'Unknown';
+        const serverNameDisplay = document.getElementById('server-name-display');
+        serverName = serverNameDisplay ? serverNameDisplay.textContent : 'Unknown';
       }
       const serverId = serverState.peerId || 'Not registered';
       
