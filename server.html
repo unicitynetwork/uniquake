@@ -721,43 +721,70 @@
       console.log('🏁 Game Over initiated by admin');
       
       try {
-        // 1. Get current player scores to determine winners
+        // 1. FIRST: Use latest stored player scores (updated every 3 seconds)
         let finalScores = [];
         
-        if (serverState.gameId) {
-          try {
-            // Try to get final scores from current RCON status
-            const statusResult = await sendRCONCommand('status');
-            if (statusResult && statusResult.result) {
-              let rconOutput = '';
-              if (typeof statusResult.result === 'string') {
-                rconOutput = statusResult.result;
-              } else if (statusResult.result.output) {
-                rconOutput = statusResult.result.output;
-              }
-              
-              if (rconOutput) {
-                const playerData = parsePlayerStatusFromRCON(rconOutput);
-                if (playerData && playerData.players && playerData.players.length > 0) {
-                  finalScores = playerData.players.map(player => ({
-                    score: player.score || 0,
-                    ping: player.ping || 999,
-                    clientId: player.clientSlot || 0,
-                    name: player.name || 'Unknown'
-                  })).sort((a, b) => b.score - a.score);
-                  
-                  console.log('📊 Final scores retrieved:', finalScores);
-                }
-              }
-            }
-          } catch (rconError) {
-            console.warn('Failed to get final scores via RCON:', rconError.message);
+        console.log('📊 Using latest stored player scores for Game Over...');
+        console.log('🔍 Latest player scores data:', latestPlayerScores);
+        
+        if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+          finalScores = latestPlayerScores.players.map(player => ({
+            score: player.score || 0,
+            ping: player.ping || 999,
+            clientId: player.clientSlot || 0,
+            name: player.name || 'Unknown'
+          })).sort((a, b) => b.score - a.score);
+          
+          console.log('📊 Final scores from stored data:', finalScores);
+          console.log('🏆 Winner determination: highest score =', finalScores[0]?.score);
+          
+          if (latestPlayerScores.lastUpdate) {
+            const ageSeconds = Math.floor((Date.now() - latestPlayerScores.lastUpdate) / 1000);
+            console.log(`📅 Score data age: ${ageSeconds} seconds old`);
+          }
+        } else {
+          console.warn('⚠️  No stored player scores available!');
+          console.warn('This means no players were detected during the game session.');
+        }
+        
+        // 2. SECOND: Stop the dedicated server and mark game as ended
+        console.log('🛑 Stopping dedicated server...');
+        gameEnded = true; // Stop all periodic updates
+        await stopServer();
+        
+        // 3. THIRD: Gray out and freeze player statistics display
+        const playerStatsElement = document.getElementById('player-stats');
+        if (playerStatsElement) {
+          playerStatsElement.style.opacity = '0.5';
+          playerStatsElement.style.pointerEvents = 'none';
+          
+          // Add "GAME ENDED" overlay
+          const gameEndedOverlay = document.createElement('div');
+          gameEndedOverlay.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(244, 67, 54, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 16px;
+            z-index: 100;
+          `;
+          gameEndedOverlay.textContent = '🏁 GAME ENDED';
+          
+          const container = playerStatsElement.parentElement;
+          if (container) {
+            container.style.position = 'relative';
+            container.appendChild(gameEndedOverlay);
           }
         }
         
-        // 2. Distribute rewards before stopping server
+        // 4. FOURTH: Distribute rewards using stored scores
         if (serverState.collectedFees && serverState.collectedFees.length > 0) {
-          console.log('💰 Distributing rewards to winners...');
+          console.log('💰 Distributing rewards to winners using stored scores...');
           await distributeTokenRewards(finalScores);
           
           // Wait a moment for reward distribution to complete
@@ -766,7 +793,7 @@
           console.log('💰 No collected fees to distribute');
         }
         
-        // 3. Show match end results if we have scores
+        // 5. Show match end results if we have scores
         if (finalScores.length > 0) {
           matchEndDetection = {
             lastKnownState: 'ended',
@@ -786,11 +813,11 @@
         console.log('🛑 Stopping dedicated server...');
         await stopServer();
         
-        // 5. Close server window after a brief delay
+        // 5. Show completion message (window stays open for debugging)
         setTimeout(() => {
-          console.log('🚪 Closing server window...');
+          console.log('🎮 Game Over completed - window staying open for debugging');
           
-          // Show final goodbye message
+          // Show final completion message
           const servingMessage = document.getElementById('serving-message');
           if (servingMessage) {
             servingMessage.innerHTML = `
@@ -801,15 +828,15 @@
                 Rewards have been distributed and server has been shut down.
               </div>
               <div style="font-size: 14px; color: #888;">
-                This window will close automatically in 3 seconds...
+                Window remains open for debugging. You can manually close it.
               </div>
             `;
           }
           
-          // Close window after showing message
-          setTimeout(() => {
-            window.close();
-          }, 3000);
+          // DISABLED: Automatic window closing for debugging
+          // setTimeout(() => {
+          //   window.close();
+          // }, 3000);
           
         }, 1000);
         
@@ -2152,8 +2179,22 @@
       lastDistributionTime: null
     };
     
+    // Game state control
+    let gameEnded = false;
+    
+    // Latest player scores tracking
+    let latestPlayerScores = {
+      lastUpdate: null,
+      players: [] // Array of {name, score, ping, clientSlot, address}
+    };
+    
     // Update player statistics using RCON
     function updatePlayerStatistics() {
+      if (gameEnded) {
+        // Game has ended, don't update statistics anymore
+        return;
+      }
+      
       if (!serverState.gameId) {
         updatePlayerStatsDisplay(null, 'No game server running');
         return;
@@ -2356,6 +2397,21 @@
       if (!playerData) {
         serverStatusEl.innerHTML = '<span style="color: #ffaa00;">Fetching player data...</span>';
         return;
+      }
+      
+      // UPDATE: Store latest player scores for Game Over functionality
+      if (playerData.players && playerData.players.length > 0) {
+        latestPlayerScores = {
+          lastUpdate: Date.now(),
+          players: playerData.players.map(player => ({
+            name: player.name,
+            score: player.score || 0,
+            ping: player.ping || 999,
+            clientSlot: player.clientSlot || 0,
+            address: player.address || 'Unknown'
+          }))
+        };
+        console.log('📊 Updated latest player scores:', latestPlayerScores);
       }
       
       // Update server status
@@ -2662,14 +2718,23 @@
           winners = finalScores.filter(player => player.score === highestScore);
           console.log(`Match end distribution: ${winners.length} winner(s) with score ${highestScore}`);
         } else {
-          // Page close scenario - use current connected players with highest scores
+          // No valid scores found - this should only happen if RCON failed
+          console.warn('⚠️  No player scores available for reward distribution!');
+          console.warn('This means either:');
+          console.warn('1. No players were connected when Game Over was clicked');
+          console.warn('2. RCON status command failed to return player data');
+          console.warn('3. Score parsing failed');
+          
+          // In this case, split rewards equally among connected web clients
           const connectedPlayers = Array.from(serverState.clients.values())
             .filter(client => client.connected && client.pubkey)
             .map(client => ({
               name: client.username || client.id,
               pubkey: client.pubkey,
-              score: 0 // Would need to get current scores from RCON status
+              score: 0 // No game scores available - equal distribution
             }));
+          
+          console.log(`Fallback: Equal distribution among ${connectedPlayers.length} connected web clients`);
           
           if (connectedPlayers.length === 0) {
             console.log('No connected players with pubkeys for reward distribution');
@@ -2835,6 +2900,16 @@
       matchEndDetection.finalScores = [];
       matchEndDetection.winner = null;
       matchEndDetection.matchEndReason = null;
+      
+      // Reset player scores tracking for new match
+      latestPlayerScores = {
+        lastUpdate: null,
+        players: []
+      };
+      console.log('🔄 Cleared player scores for new match');
+      
+      // Allow score tracking to resume
+      gameEnded = false;
       
       // Broadcast reset announcement
       broadcastToAllClients({
