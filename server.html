@@ -292,6 +292,15 @@
             </div>
           </div>
         </div>
+        
+        <!-- Match End Results Modal -->
+        <div id="match-end-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); z-index: 1000; justify-content: center; align-items: center;">
+          <div style="background-color: #2d2d2d; border-radius: 10px; padding: 30px; max-width: 500px; width: 90%; text-align: center; border: 3px solid #4fc3f7;">
+            <h2 style="color: #4fc3f7; margin-bottom: 20px; font-size: 24px;">🏁 Match Ended!</h2>
+            <div id="match-end-content"></div>
+            <button id="close-match-modal" style="background-color: #4fc3f7; color: #000; border: none; padding: 10px 20px; border-radius: 5px; font-size: 16px; font-weight: bold; margin-top: 20px; cursor: pointer;">Close</button>
+          </div>
+        </div>
       </div>
       
     </div>
@@ -1989,6 +1998,15 @@
     let rconRequestId = 0;
     const pendingRconRequests = new Map();
     
+    // Match end detection state
+    let matchEndDetection = {
+      lastKnownState: 'playing', // 'playing', 'ended', 'waiting_restart'
+      matchEndTime: null,
+      finalScores: [],
+      winner: null,
+      matchEndReason: null
+    };
+    
     // Update player statistics using RCON
     function updatePlayerStatistics() {
       if (!serverState.gameId) {
@@ -2016,6 +2034,10 @@
               } else if (result.result.output) {
                 // Raw output from executeDirectCommand
                 console.log('Raw RCON output received:', result.result.output);
+                
+                // Check for match end events in raw output
+                checkForMatchEndEvents(result.result.output);
+                
                 const playerData = parsePlayerStatusFromRCON(result.result.output);
                 updatePlayerStatsDisplay(playerData);
               } else {
@@ -2325,6 +2347,150 @@
         </div>
       `;
     }
+    
+    // Match End Detection Functions
+    function checkForMatchEndEvents(rconOutput) {
+      const lines = rconOutput.split('\n');
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Check for match end triggers
+        if (line.includes('Exit: Timelimit hit.')) {
+          handleMatchEnd('timelimit', lines, i);
+          break;
+        } else if (line.includes('Exit: Fraglimit hit.')) {
+          handleMatchEnd('fraglimit', lines, i);
+          break;
+        } else if (line.includes('broadcast: print "Timelimit hit.')) {
+          // This usually comes before Exit: line, so continue checking
+          continue;
+        } else if (line.includes('broadcast: print "Fraglimit hit.')) {
+          // This usually comes before Exit: line, so continue checking
+          continue;
+        }
+      }
+    }
+    
+    function handleMatchEnd(reason, lines, exitLineIndex) {
+      // Prevent duplicate processing
+      if (matchEndDetection.lastKnownState === 'ended' && 
+          matchEndDetection.matchEndTime && 
+          (Date.now() - matchEndDetection.matchEndTime) < 10000) {
+        return; // Ignore if we already processed a match end in the last 10 seconds
+      }
+      
+      console.log(`🏁 Match ended due to ${reason}!`);
+      
+      // Extract final scores from the lines following the Exit line
+      const finalScores = [];
+      for (let i = exitLineIndex + 1; i < lines.length && i < exitLineIndex + 10; i++) {
+        const scoreLine = lines[i];
+        if (scoreLine.includes('score:') && scoreLine.includes('client:')) {
+          const scoreMatch = scoreLine.match(/score:\s*(\d+)\s+ping:\s*(\d+)\s+client:\s*(\d+)\s+(.+)/);
+          if (scoreMatch) {
+            finalScores.push({
+              score: parseInt(scoreMatch[1]),
+              ping: parseInt(scoreMatch[2]),
+              clientId: parseInt(scoreMatch[3]),
+              name: scoreMatch[4].trim()
+            });
+          }
+        }
+      }
+      
+      // Sort by score to determine winner
+      finalScores.sort((a, b) => b.score - a.score);
+      
+      // Update match end state
+      matchEndDetection = {
+        lastKnownState: 'ended',
+        matchEndTime: Date.now(),
+        finalScores: finalScores,
+        winner: finalScores.length > 0 ? finalScores[0] : null,
+        matchEndReason: reason
+      };
+      
+      // Show match end results
+      displayMatchEndResults();
+    }
+    
+    function displayMatchEndResults() {
+      const modal = document.getElementById('match-end-modal');
+      const content = document.getElementById('match-end-content');
+      
+      if (!modal || !content || !matchEndDetection.winner) return;
+      
+      const winner = matchEndDetection.winner;
+      const reason = matchEndDetection.matchEndReason;
+      const reasonText = reason === 'timelimit' ? 'Time Limit Reached' : 'Frag Limit Reached';
+      
+      let resultsHtml = `
+        <div style="margin-bottom: 20px;">
+          <div style="font-size: 18px; color: #ffaa00; margin-bottom: 10px;">${reasonText}</div>
+          <div style="font-size: 32px; color: #4caf50; margin-bottom: 15px;">👑 ${winner.name}</div>
+          <div style="font-size: 20px; color: #4fc3f7; margin-bottom: 20px;">Winner with ${winner.score} points!</div>
+        </div>
+        
+        <div style="background-color: #252525; border-radius: 5px; padding: 15px; margin-bottom: 20px;">
+          <div style="font-size: 16px; color: #4fc3f7; margin-bottom: 10px; font-weight: bold;">Final Scores:</div>
+      `;
+      
+      matchEndDetection.finalScores.forEach((player, index) => {
+        const position = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+        const nameColor = index === 0 ? '#4caf50' : '#e0e0e0';
+        
+        resultsHtml += `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin: 5px 0; padding: 5px;">
+            <span style="color: ${nameColor}; font-weight: ${index === 0 ? 'bold' : 'normal'};">
+              ${position} ${player.name}
+            </span>
+            <span style="color: #4fc3f7; font-weight: bold;">${player.score} points</span>
+          </div>
+        `;
+      });
+      
+      resultsHtml += `
+        </div>
+        <div style="font-size: 14px; color: #888;">
+          Match ended at ${new Date(matchEndDetection.matchEndTime).toLocaleTimeString()}
+        </div>
+      `;
+      
+      content.innerHTML = resultsHtml;
+      modal.style.display = 'flex';
+      
+      // Add confetti effect for winner announcement
+      if (window.confetti) {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      }
+    }
+    
+    // Set up modal close handler
+    document.addEventListener('DOMContentLoaded', function() {
+      const closeButton = document.getElementById('close-match-modal');
+      const modal = document.getElementById('match-end-modal');
+      
+      if (closeButton && modal) {
+        closeButton.addEventListener('click', function() {
+          modal.style.display = 'none';
+          // Reset match end state after viewing results
+          matchEndDetection.lastKnownState = 'playing';
+        });
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', function(e) {
+          if (e.target === modal) {
+            modal.style.display = 'none';
+            matchEndDetection.lastKnownState = 'playing';
+          }
+        });
+      }
+    });
   </script>
 </body>
 </html>
