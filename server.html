@@ -699,14 +699,32 @@
       }
       
       if (dedicatedServerInfo && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
-        const stopMsg = {
-          unicity: true,
-          type: 'stop_game_server',
-          gameId: dedicatedServerInfo.gameId
-        };
-        serverConnection.send(JSON.stringify(stopMsg));
+        return new Promise((resolve, reject) => {
+          // Set up a timeout in case the stop confirmation never comes
+          const stopTimeout = setTimeout(() => {
+            console.warn('⚠️  Server stop confirmation timeout - assuming stopped');
+            resolve(true);
+          }, 10000); // 10 second timeout
+          
+          // Store the resolve function to call when we get the confirmation
+          window.stopServerResolve = () => {
+            clearTimeout(stopTimeout);
+            console.log('✅ Server stop confirmed');
+            resolve(true);
+          };
+          
+          console.log('🛑 Sending stop message to dedicated server...');
+          const stopMsg = {
+            unicity: true,
+            type: 'stop_game_server',
+            gameId: dedicatedServerInfo.gameId
+          };
+          serverConnection.send(JSON.stringify(stopMsg));
+        });
+      } else {
+        console.log('🛑 No dedicated server to stop');
+        return true;
       }
-      return true;
     }
     
     // Gracefully end the match with reward distribution
@@ -747,10 +765,9 @@
           console.warn('This means no players were detected during the game session.');
         }
         
-        // 2. SECOND: Stop the dedicated server and mark game as ended
-        console.log('🛑 Stopping dedicated server...');
+        // 2. SECOND: Mark game as ended (stop periodic updates but keep server running for now)
+        console.log('🛑 Marking game as ended (keeping server running for reward distribution)...');
         gameEnded = true; // Stop all periodic updates
-        await stopServer();
         
         // 3. THIRD: Gray out and freeze player statistics display
         const playerStatsElement = document.getElementById('player-stats');
@@ -803,7 +820,12 @@
             matchEndReason: 'admin'
           };
           
+          // Display results on server page
           displayMatchEndResults();
+          
+          // Broadcast match end results to all connected players
+          console.log('📡 Broadcasting match end results to all players...');
+          broadcastMatchEndResults(matchEndDetection);
           
           // Wait for user to view results
           await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1937,6 +1959,23 @@
       });
     }
     
+    // Broadcast match end results to all players
+    function broadcastMatchEndResults(matchEndData) {
+      const message = {
+        type: 'match:end',
+        matchEndTime: matchEndData.matchEndTime,
+        matchEndReason: matchEndData.matchEndReason,
+        winner: matchEndData.winner,
+        finalScores: matchEndData.finalScores,
+        reasonText: matchEndData.matchEndReason === 'timelimit' ? 'Time Limit Reached' : 
+                   matchEndData.matchEndReason === 'fraglimit' ? 'Frag Limit Reached' : 
+                   matchEndData.matchEndReason === 'admin' ? 'Match Ended by Admin' : 'Match Ended'
+      };
+      
+      console.log('📡 Sending match end data to all clients:', message);
+      broadcastToAllClients(message);
+    }
+    
     // Handle client disconnection notified by master server (WebSocket closure)
     function handleClientDisconnectedByMaster(message) {
       const clientId = message.clientId;
@@ -2016,14 +2055,20 @@
     
     // Handle successful game server stop
     function handleGameServerStopped(message) {
-      
-      
-      // Log status instead of displaying in UI
-      
+      console.log('📡 Received game server stopped confirmation');
       
       // Clear server state
       serverState.gameId = null;
       serverState.remoteServerInfo = null;
+      
+      // Clear dedicated server info
+      dedicatedServerInfo = null;
+      
+      // Call the resolve function if it exists
+      if (window.stopServerResolve) {
+        window.stopServerResolve();
+        window.stopServerResolve = null;
+      }
     }
     
     // Handle game server status update
