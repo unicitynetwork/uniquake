@@ -2180,8 +2180,9 @@
                 // Raw output from executeDirectCommand
                 console.log('Raw RCON output received:', result.result.output);
                 
-                // Check for match end events in raw output
-                checkForMatchEndEvents(result.result.output);
+                // DISABLED: Check for match end events in raw output
+                // This was causing premature reward distribution every 3 seconds
+                // checkForMatchEndEvents(result.result.output);
                 
                 const playerData = parsePlayerStatusFromRCON(result.result.output);
                 updatePlayerStatsDisplay(playerData);
@@ -2868,46 +2869,49 @@
         });
       }
       
-      // Set up page close handler for reward distribution
-      window.addEventListener('beforeunload', function(event) {
-        // Trigger reward distribution when page is being closed
-        if (serverState.collectedFees && serverState.collectedFees.length > 0) {
-          console.log('🔄 Page closing - triggering reward distribution...');
-          
-          // Use synchronous approach for page close to ensure it completes
-          navigator.sendBeacon && navigator.sendBeacon('/api/distribute-rewards', JSON.stringify({
-            gameId: serverState.gameId,
-            collectedFees: serverState.collectedFees,
-            connectedPlayers: Array.from(serverState.clients.values()).filter(c => c.connected && c.pubkey)
-          }));
-          
-          // Also try async distribution (may not complete if page closes too quickly)
-          distributeTokenRewards(null, true);
-          
-          // Optionally show a confirmation dialog
-          const confirmationMessage = `You have ${serverState.collectedFees.length} collected entry fee tokens. Closing this page will distribute them among connected players. Continue?`;
-          event.returnValue = confirmationMessage;
-          return confirmationMessage;
-        }
-      });
+      // DISABLED: Page close reward distribution
+      // This was causing premature reward distribution 
+      // window.addEventListener('beforeunload', function(event) {
+      //   // Trigger reward distribution when page is being closed
+      //   if (serverState.collectedFees && serverState.collectedFees.length > 0) {
+      //     console.log('🔄 Page closing - triggering reward distribution...');
+      //     
+      //     // Use synchronous approach for page close to ensure it completes
+      //     navigator.sendBeacon && navigator.sendBeacon('/api/distribute-rewards', JSON.stringify({
+      //       gameId: serverState.gameId,
+      //       collectedFees: serverState.collectedFees,
+      //       connectedPlayers: Array.from(serverState.clients.values()).filter(c => c.connected && c.pubkey)
+      //     }));
+      //     
+      //     // Also try async distribution (may not complete if page closes too quickly)
+      //     distributeTokenRewards(null, true);
+      //     
+      //     // Optionally show a confirmation dialog
+      //     const confirmationMessage = `You have ${serverState.collectedFees.length} collected entry fee tokens. Closing this page will distribute them among connected players. Continue?`;
+      //     event.returnValue = confirmationMessage;
+      //     return confirmationMessage;
+      //   }
+      // });
       
-      // Additional cleanup on page hide (mobile/tab switching)
-      document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'hidden' && serverState.collectedFees && serverState.collectedFees.length > 0) {
-          // Page is being hidden - this might be the last chance to distribute rewards
-          console.log('📱 Page hidden - attempting reward distribution...');
-          distributeTokenRewards(null, true);
-        }
-      });
+      // DISABLED: Page visibility change reward distribution
+      // This was causing premature reward distribution when switching tabs
+      // document.addEventListener('visibilitychange', function() {
+      //   if (document.visibilityState === 'hidden' && serverState.collectedFees && serverState.collectedFees.length > 0) {
+      //     // Page is being hidden - this might be the last chance to distribute rewards
+      //     console.log('📱 Page hidden - attempting reward distribution...');
+      //     distributeTokenRewards(null, true);
+      //   }
+      // });
       
-      // Handle page unload for reward distribution
-      window.addEventListener('unload', function() {
-        if (serverState.collectedFees && serverState.collectedFees.length > 0) {
-          console.log('🚪 Page unloading - final reward distribution attempt...');
-          // This might not complete but worth trying
-          distributeTokenRewards(null, true);
-        }
-      });
+      // DISABLED: Page unload reward distribution  
+      // This was causing premature reward distribution
+      // window.addEventListener('unload', function() {
+      //   if (serverState.collectedFees && serverState.collectedFees.length > 0) {
+      //     console.log('🚪 Page unloading - final reward distribution attempt...');
+      //     // This might not complete but worth trying
+      //     distributeTokenRewards(null, true);
+      //   }
+      // });
     });
   </script>
 </body>
