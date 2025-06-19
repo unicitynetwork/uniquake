@@ -698,6 +698,13 @@
         console.log('Stopped game state token broadcasts');
       }
       
+      // Debug server state
+      console.log('🔍 Stop server debug info:');
+      console.log('  dedicatedServerInfo:', dedicatedServerInfo);
+      console.log('  serverConnection:', serverConnection);
+      console.log('  serverConnection.readyState:', serverConnection ? serverConnection.readyState : 'null');
+      console.log('  WebSocket.OPEN:', WebSocket.OPEN);
+      
       if (dedicatedServerInfo && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
         return new Promise((resolve, reject) => {
           // Set up a timeout in case the stop confirmation never comes
@@ -714,6 +721,12 @@
           };
           
           console.log('🛑 Sending stop message to dedicated server...');
+          console.log('🛑 Stop message payload:', {
+            unicity: true,
+            type: 'stop_game_server',
+            gameId: dedicatedServerInfo.gameId
+          });
+          
           const stopMsg = {
             unicity: true,
             type: 'stop_game_server',
@@ -722,7 +735,10 @@
           serverConnection.send(JSON.stringify(stopMsg));
         });
       } else {
-        console.log('🛑 No dedicated server to stop');
+        console.log('🛑 Cannot stop server - missing requirements:');
+        console.log('  dedicatedServerInfo exists:', !!dedicatedServerInfo);
+        console.log('  serverConnection exists:', !!serverConnection);
+        console.log('  connection is open:', serverConnection ? serverConnection.readyState === WebSocket.OPEN : false);
         return true;
       }
     }
@@ -833,7 +849,9 @@
         
         // 4. Stop the dedicated server
         console.log('🛑 Stopping dedicated server...');
-        await stopServer();
+        console.log('🛑 About to call stopServer() function');
+        const stopResult = await stopServer();
+        console.log('🛑 stopServer() returned:', stopResult);
         
         // 5. Show completion message (window stays open for debugging)
         setTimeout(() => {
@@ -1255,9 +1273,16 @@
     
     // Handle dedicated server stopped  
     function handleGameServerStopped(message) {
-      console.log('Dedicated server stopped:', message);
+      console.log('📡 Received game server stopped confirmation:', message);
       dedicatedServerInfo = null;
       updateServerStatus('not_running');
+      
+      // Call the resolve function if it exists (for Game Over waiting)
+      if (window.stopServerResolve) {
+        console.log('✅ Calling stop server resolve function');
+        window.stopServerResolve();
+        window.stopServerResolve = null;
+      }
     }
     
     // Handle client connection (from real game server via master server)
@@ -2041,35 +2066,7 @@
       }
     }
     
-    // Handle successful game server start
-    function handleGameServerStarted(message) {
-      
-      
-      // Log status instead of displaying in UI
-      
-      
-      // Update server state
-      serverState.gameId = message.gameId;
-      serverState.remoteServerInfo = message.serverInfo;
-    }
     
-    // Handle successful game server stop
-    function handleGameServerStopped(message) {
-      console.log('📡 Received game server stopped confirmation');
-      
-      // Clear server state
-      serverState.gameId = null;
-      serverState.remoteServerInfo = null;
-      
-      // Clear dedicated server info
-      dedicatedServerInfo = null;
-      
-      // Call the resolve function if it exists
-      if (window.stopServerResolve) {
-        window.stopServerResolve();
-        window.stopServerResolve = null;
-      }
-    }
     
     // Handle game server status update
     function handleGameServerStatus(message) {
