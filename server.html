@@ -291,6 +291,19 @@
         
         <div class="game-state" id="game-state">No game state available</div>
         
+        <!-- Match Control Panel -->
+        <div class="panel" style="margin-top: 15px;">
+          <h3 style="color: #ff9800; margin-bottom: 15px;">Match Control</h3>
+          <div class="match-control" id="match-control" style="background-color: #252525; border-radius: 3px; padding: 10px; font-size: 14px;">
+            <div id="match-status" style="font-weight: bold; color: #ff9800; margin-bottom: 8px;">Match not started</div>
+            <div id="match-timer" style="color: #4fc3f7; margin-bottom: 5px;">⏱️ Time Remaining: --:--</div>
+            <div id="match-frags" style="color: #4fc3f7; margin-bottom: 5px;">🎯 Highest Score: 0 / 30</div>
+            <div style="font-size: 12px; color: #888; margin-top: 8px;">
+              Match ends after 1 minute or when any player reaches 30 frags
+            </div>
+          </div>
+        </div>
+
         <!-- Real-time Player Statistics Panel -->
         <div class="panel" style="margin-top: 15px;">
           <h3 style="color: #4fc3f7; margin-bottom: 15px;">Live Player Statistics</h3>
@@ -360,7 +373,8 @@
       // Entry fee tracking - track by pubkey to prevent double payment
       paidPlayers: new Set(), // Set of pubkeys that have paid entry fee for this game
       entryFee: 1, // Entry fee in tokens
-      collectedFees: [] // Array of collected entry fee tokens
+      collectedFees: [], // Array of collected entry fee tokens
+      restartCycle: null // Server restart cycle state
     };
     let selectedClientId = null;
     let dedicatedServerInfo = null; // Dedicated server information
@@ -682,6 +696,7 @@
       // Real server handles registration and startup automatically
       return true;
     }
+
     
     // Legacy register function - now handled by real server
     async function registerWithMaster() {
@@ -690,7 +705,7 @@
     }
     
     // Stop the dedicated server
-    async function stopServer() {
+    async function stopServer(isRestartCycle = false) {
       // Stop game state token broadcasts
       if (serverState.gameStateInterval) {
         clearInterval(serverState.gameStateInterval);
@@ -730,7 +745,8 @@
           const stopMsg = {
             unicity: true,
             type: 'stop_game_server',
-            gameId: dedicatedServerInfo.gameId
+            gameId: dedicatedServerInfo.gameId,
+            isRestartCycle: isRestartCycle
           };
           serverConnection.send(JSON.stringify(stopMsg));
         });
@@ -753,6 +769,9 @@
       }
       
       console.log('🏁 Game Over initiated by admin');
+      
+      // Stop match control when manual Game Over is triggered
+      stopMatchControl();
       
       try {
         // 1. FIRST: Use latest stored player scores (updated every 3 seconds)
@@ -793,6 +812,7 @@
           
           // Add "GAME ENDED" overlay
           const gameEndedOverlay = document.createElement('div');
+          gameEndedOverlay.className = 'game-ended-overlay';
           gameEndedOverlay.style.cssText = `
             position: absolute;
             top: 50%;
@@ -847,38 +867,9 @@
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
         
-        // 4. Stop the dedicated server
-        console.log('🛑 Stopping dedicated server...');
-        console.log('🛑 About to call stopServer() function');
-        const stopResult = await stopServer();
-        console.log('🛑 stopServer() returned:', stopResult);
-        
-        // 5. Show completion message (window stays open for debugging)
-        setTimeout(() => {
-          console.log('🎮 Game Over completed - window staying open for debugging');
-          
-          // Show final completion message
-          const servingMessage = document.getElementById('serving-message');
-          if (servingMessage) {
-            servingMessage.innerHTML = `
-              <div style="font-size: 24px; font-weight: bold; color: #4caf50; margin-bottom: 10px;">
-                🎮 Match Ended Successfully!
-              </div>
-              <div style="font-size: 16px; color: #e0e0e0; margin-bottom: 15px;">
-                Rewards have been distributed and server has been shut down.
-              </div>
-              <div style="font-size: 14px; color: #888;">
-                Window remains open for debugging. You can manually close it.
-              </div>
-            `;
-          }
-          
-          // DISABLED: Automatic window closing for debugging
-          // setTimeout(() => {
-          //   window.close();
-          // }, 3000);
-          
-        }, 1000);
+        // 4. Begin automatic server restart cycle
+        console.log('🔄 Starting automatic server restart cycle...');
+        await startServerRestartCycle('admin');
         
       } catch (error) {
         console.error('Error during game over process:', error);
@@ -1268,14 +1259,26 @@
         serverId: message.serverId,
         serverInfo: message.serverInfo
       };
+      
+      // Update server state with new game ID
+      serverState.gameId = message.gameId;
+      serverState.remoteServerInfo = message.serverInfo;
+      
       updateServerStatus('running');
+      console.log(`✅ Server state updated with new game ID: ${message.gameId}`);
     }
     
     // Handle dedicated server stopped  
     function handleGameServerStopped(message) {
       console.log('📡 Received game server stopped confirmation:', message);
+      
+      // Clear server state
       dedicatedServerInfo = null;
+      serverState.gameId = null;
+      serverState.remoteServerInfo = null;
+      
       updateServerStatus('not_running');
+      console.log('🛑 Server state cleared after shutdown');
       
       // Call the resolve function if it exists (for Game Over waiting)
       if (window.stopServerResolve) {
@@ -1872,6 +1875,12 @@
           
           console.log(`Entry fee collected from ${client.pubkey.substring(0, 10)}... - Total collected fees: ${serverState.collectedFees.length}`);
           
+          // Start match control when first player pays entry fee
+          if (serverState.collectedFees.length === 1 && !matchControl.isActive) {
+            console.log('🎮 First player paid - starting match control');
+            startMatchControl();
+          }
+          
           // Send acknowledgment
           sendMessageToClient(clientId, {
             type: 'token:entry:ack',
@@ -2224,6 +2233,23 @@
     // Game state control
     let gameEnded = false;
     
+    // Match control settings
+    const MATCH_SETTINGS = {
+      DURATION_MINUTES: 1, // Temporarily set to 1 minute for testing
+      FRAG_LIMIT: 30,
+      CHECK_INTERVAL_MS: 3000 // Check every 3 seconds
+    };
+    
+    // Match control state
+    let matchControl = {
+      isActive: false,
+      startTime: null,
+      duration: MATCH_SETTINGS.DURATION_MINUTES * 60 * 1000, // 15 minutes in ms
+      fragLimit: MATCH_SETTINGS.FRAG_LIMIT,
+      checkInterval: null,
+      timeoutId: null
+    };
+    
     // Latest player scores tracking
     let latestPlayerScores = {
       lastUpdate: null,
@@ -2234,6 +2260,12 @@
     function updatePlayerStatistics() {
       if (gameEnded) {
         // Game has ended, don't update statistics anymore
+        return;
+      }
+      
+      // Don't make RCON requests during server restart cycle
+      if (serverState.restartCycle && serverState.restartCycle.active) {
+        updatePlayerStatsDisplay(null, 'Server restarting...');
         return;
       }
       
@@ -2263,9 +2295,7 @@
                 // Raw output from executeDirectCommand
                 console.log('Raw RCON output received:', result.result.output);
                 
-                // DISABLED: Check for match end events in raw output
-                // This was causing premature reward distribution every 3 seconds
-                // checkForMatchEndEvents(result.result.output);
+                // Server log parsing for match end detection removed - we use explicit timeout/score detection instead
                 
                 const playerData = parsePlayerStatusFromRCON(result.result.output);
                 updatePlayerStatsDisplay(playerData);
@@ -2511,6 +2541,9 @@
         
         playersContainerEl.innerHTML = playersHtml;
       }
+      
+      // Update match control UI whenever player stats are updated
+      updateMatchControlUI();
     }
     
     // Update server info display from raw RCON output
@@ -2592,77 +2625,7 @@
       `;
     }
     
-    // Match End Detection Functions
-    function checkForMatchEndEvents(rconOutput) {
-      const lines = rconOutput.split('\n');
-      
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        
-        // Check for match end triggers
-        if (line.includes('Exit: Timelimit hit.')) {
-          handleMatchEnd('timelimit', lines, i);
-          break;
-        } else if (line.includes('Exit: Fraglimit hit.')) {
-          handleMatchEnd('fraglimit', lines, i);
-          break;
-        } else if (line.includes('broadcast: print "Timelimit hit.')) {
-          // This usually comes before Exit: line, so continue checking
-          continue;
-        } else if (line.includes('broadcast: print "Fraglimit hit.')) {
-          // This usually comes before Exit: line, so continue checking
-          continue;
-        }
-      }
-    }
-    
-    function handleMatchEnd(reason, lines, exitLineIndex) {
-      // Prevent duplicate processing
-      if (matchEndDetection.lastKnownState === 'ended' && 
-          matchEndDetection.matchEndTime && 
-          (Date.now() - matchEndDetection.matchEndTime) < 10000) {
-        return; // Ignore if we already processed a match end in the last 10 seconds
-      }
-      
-      console.log(`🏁 Match ended due to ${reason}!`);
-      
-      // Extract final scores from the lines following the Exit line
-      const finalScores = [];
-      for (let i = exitLineIndex + 1; i < lines.length && i < exitLineIndex + 10; i++) {
-        const scoreLine = lines[i];
-        if (scoreLine.includes('score:') && scoreLine.includes('client:')) {
-          const scoreMatch = scoreLine.match(/score:\s*(\d+)\s+ping:\s*(\d+)\s+client:\s*(\d+)\s+(.+)/);
-          if (scoreMatch) {
-            finalScores.push({
-              score: parseInt(scoreMatch[1]),
-              ping: parseInt(scoreMatch[2]),
-              clientId: parseInt(scoreMatch[3]),
-              name: scoreMatch[4].trim()
-            });
-          }
-        }
-      }
-      
-      // Sort by score to determine winner
-      finalScores.sort((a, b) => b.score - a.score);
-      
-      // Update match end state
-      matchEndDetection = {
-        lastKnownState: 'ended',
-        matchEndTime: Date.now(),
-        finalScores: finalScores,
-        winner: finalScores.length > 0 ? finalScores[0] : null,
-        matchEndReason: reason
-      };
-      
-      // Show match end results
-      displayMatchEndResults();
-      
-      // Distribute rewards after match end
-      setTimeout(() => {
-        distributeTokenRewards(finalScores);
-      }, 2000); // Wait 2 seconds to let modal display first
-    }
+    // Server log parsing for match end detection removed - we use explicit timeout/score detection instead
     
     function displayMatchEndResults() {
       const modal = document.getElementById('match-end-modal');
@@ -2721,6 +2684,395 @@
       }
     }
     
+    // Match Control Functions
+    function startMatchControl() {
+      if (matchControl.isActive) {
+        console.log('🎮 Match control already active');
+        return;
+      }
+      
+      console.log(`🎮 Starting match control: ${MATCH_SETTINGS.DURATION_MINUTES} minutes, ${MATCH_SETTINGS.FRAG_LIMIT} frag limit`);
+      
+      matchControl.isActive = true;
+      matchControl.startTime = Date.now();
+      
+      // Set up time limit timeout
+      matchControl.timeoutId = setTimeout(() => {
+        console.log('⏰ Time limit reached - ending match');
+        triggerAutomaticMatchEnd('timelimit');
+      }, matchControl.duration);
+      
+      // Start checking for frag limit
+      matchControl.checkInterval = setInterval(() => {
+        checkFragLimit();
+      }, MATCH_SETTINGS.CHECK_INTERVAL_MS);
+      
+      console.log(`✅ Match control started - will end in ${MATCH_SETTINGS.DURATION_MINUTES} minutes or at ${MATCH_SETTINGS.FRAG_LIMIT} frags`);
+      
+      // Update UI
+      updateMatchControlUI();
+    }
+    
+    function stopMatchControl() {
+      if (!matchControl.isActive) {
+        return;
+      }
+      
+      console.log('🛑 Stopping match control');
+      
+      matchControl.isActive = false;
+      
+      // Clear timers
+      if (matchControl.timeoutId) {
+        clearTimeout(matchControl.timeoutId);
+        matchControl.timeoutId = null;
+      }
+      
+      if (matchControl.checkInterval) {
+        clearInterval(matchControl.checkInterval);
+        matchControl.checkInterval = null;
+      }
+      
+      matchControl.startTime = null;
+      
+      // Update UI
+      updateMatchControlUI();
+    }
+    
+    function checkFragLimit() {
+      if (!matchControl.isActive || gameEnded) {
+        return;
+      }
+      
+      // Check if any player has reached the frag limit
+      if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+        const highestScore = Math.max(...latestPlayerScores.players.map(p => p.score || 0));
+        
+        if (highestScore >= matchControl.fragLimit) {
+          console.log(`🎯 Frag limit reached - highest score: ${highestScore}`);
+          triggerAutomaticMatchEnd('fraglimit');
+        }
+      }
+    }
+    
+    function triggerAutomaticMatchEnd(reason) {
+      if (gameEnded) {
+        return; // Already ended
+      }
+      
+      console.log(`🏁 Automatically ending match due to: ${reason}`);
+      
+      // Stop match control
+      stopMatchControl();
+      
+      // Use the existing handleGameOver logic but with automatic trigger
+      handleAutomaticGameOver(reason);
+    }
+    
+    async function handleAutomaticGameOver(reason) {
+      console.log(`🏁 Automatic Game Over initiated: ${reason}`);
+      
+      try {
+        // 1. FIRST: Use latest stored player scores
+        let finalScores = [];
+        
+        console.log('📊 Using latest stored player scores for automatic Game Over...');
+        console.log('🔍 Latest player scores data:', latestPlayerScores);
+        
+        if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+          finalScores = latestPlayerScores.players.map(player => ({
+            score: player.score || 0,
+            ping: player.ping || 999,
+            clientId: player.clientSlot || 0,
+            name: player.name || 'Unknown'
+          })).sort((a, b) => b.score - a.score);
+          
+          console.log('📊 Final scores from stored data:', finalScores);
+          console.log('🏆 Winner determination: highest score =', finalScores[0]?.score);
+        } else {
+          console.warn('⚠️  No stored player scores available!');
+        }
+        
+        // 2. SECOND: Mark game as ended
+        console.log('🛑 Marking game as ended (keeping server running for reward distribution)...');
+        gameEnded = true; // Stop all periodic updates
+        
+        // 3. THIRD: Gray out and freeze player statistics display
+        const playerStatsElement = document.getElementById('player-stats');
+        if (playerStatsElement) {
+          playerStatsElement.style.opacity = '0.5';
+          playerStatsElement.style.pointerEvents = 'none';
+          
+          // Add "GAME ENDED" overlay
+          const gameEndedOverlay = document.createElement('div');
+          gameEndedOverlay.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(244, 67, 54, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 16px;
+            z-index: 100;
+          `;
+          gameEndedOverlay.textContent = '🏁 GAME ENDED';
+          
+          const container = playerStatsElement.parentElement;
+          if (container) {
+            container.style.position = 'relative';
+            container.appendChild(gameEndedOverlay);
+          }
+        }
+        
+        // 4. FOURTH: Distribute rewards using stored scores
+        if (serverState.collectedFees && serverState.collectedFees.length > 0) {
+          console.log('💰 Distributing rewards to winners using stored scores...');
+          await distributeTokenRewards(finalScores);
+          
+          // Wait a moment for reward distribution to complete
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } else {
+          console.log('💰 No collected fees to distribute');
+        }
+        
+        // 5. Show match end results if we have scores
+        if (finalScores.length > 0) {
+          matchEndDetection = {
+            lastKnownState: 'ended',
+            matchEndTime: Date.now(),
+            finalScores: finalScores,
+            winner: finalScores[0],
+            matchEndReason: reason
+          };
+          
+          // Display results on server page
+          displayMatchEndResults();
+          
+          // Broadcast match end results to all connected players
+          console.log('📡 Broadcasting match end results to all players...');
+          broadcastMatchEndResults(matchEndDetection);
+          
+          // Wait for user to view results
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        
+        // 6. Begin automatic server restart cycle
+        console.log('🔄 Starting automatic server restart cycle...');
+        await startServerRestartCycle(reason);
+        
+      } catch (error) {
+        console.error('Error during automatic game over process:', error);
+      }
+    }
+    
+    function getRemainingTime() {
+      if (!matchControl.isActive || !matchControl.startTime) {
+        return null;
+      }
+      
+      const elapsed = Date.now() - matchControl.startTime;
+      const remaining = matchControl.duration - elapsed;
+      
+      return Math.max(0, remaining);
+    }
+    
+    function formatRemainingTime(milliseconds) {
+      if (milliseconds === null || milliseconds <= 0) {
+        return 'Match not active';
+      }
+      
+      const minutes = Math.floor(milliseconds / 60000);
+      const seconds = Math.floor((milliseconds % 60000) / 1000);
+      
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+    
+    function updateMatchControlUI() {
+      const matchStatusEl = document.getElementById('match-status');
+      const matchTimerEl = document.getElementById('match-timer');
+      const matchFragsEl = document.getElementById('match-frags');
+      
+      if (!matchStatusEl || !matchTimerEl || !matchFragsEl) return;
+      
+      if (matchControl.isActive && !gameEnded) {
+        // Match is active
+        matchStatusEl.textContent = '🎮 Match Active';
+        matchStatusEl.style.color = '#4caf50';
+        
+        // Update timer
+        const remaining = getRemainingTime();
+        const timeText = formatRemainingTime(remaining);
+        matchTimerEl.innerHTML = `⏱️ Time Remaining: <span style="font-weight: bold;">${timeText}</span>`;
+        
+        // Update highest score
+        let highestScore = 0;
+        if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+          highestScore = Math.max(...latestPlayerScores.players.map(p => p.score || 0));
+        }
+        
+        const fragColor = highestScore >= matchControl.fragLimit ? '#f44336' : '#4fc3f7';
+        matchFragsEl.innerHTML = `🎯 Highest Score: <span style="font-weight: bold; color: ${fragColor};">${highestScore} / ${matchControl.fragLimit}</span>`;
+        
+      } else if (gameEnded) {
+        // Match ended
+        matchStatusEl.textContent = '🏁 Match Ended';
+        matchStatusEl.style.color = '#f44336';
+        matchTimerEl.innerHTML = '⏱️ Time Remaining: <span style="font-weight: bold;">ENDED</span>';
+        matchFragsEl.innerHTML = '🎯 Match Complete';
+        
+      } else if (serverState.restartCycle && serverState.restartCycle.active) {
+        // Server restart cycle active
+        const phase = serverState.restartCycle.phase;
+        const remaining = serverState.restartCycle.remainingTime;
+        
+        if (phase === 'waiting') {
+          matchStatusEl.textContent = '⏳ Waiting for New Match';
+          matchStatusEl.style.color = '#ff9800';
+          matchTimerEl.innerHTML = `⏱️ Next Match in: <span style="font-weight: bold;">${Math.ceil(remaining / 1000)}s</span>`;
+          matchFragsEl.innerHTML = '🔄 Server will restart soon';
+        } else if (phase === 'restarting') {
+          matchStatusEl.textContent = '🔄 Restarting Server';
+          matchStatusEl.style.color = '#2196f3';
+          matchTimerEl.innerHTML = '⏱️ Server restarting...';
+          matchFragsEl.innerHTML = '🔄 Please wait';
+        }
+        
+      } else {
+        // Match not started
+        matchStatusEl.textContent = 'Match not started';
+        matchStatusEl.style.color = '#ff9800';
+        matchTimerEl.innerHTML = '⏱️ Time Remaining: --:--';
+        matchFragsEl.innerHTML = '🎯 Highest Score: 0 / 30';
+      }
+    }
+    
+    // Server Restart Cycle Functions
+    async function startServerRestartCycle(matchEndReason) {
+      console.log('🔄 Starting server restart cycle after match end');
+      
+      try {
+        // 1. Set server status to waiting and initialize restart cycle
+        serverState.restartCycle = {
+          active: true,
+          phase: 'waiting',
+          remainingTime: 30000, // 30 seconds
+          startTime: Date.now()
+        };
+        
+        // 2. Update server metadata to waiting_to_start_new_match
+        await updateServerStatus('waiting_to_start_new_match');
+        
+        // 3. Broadcast to all clients that server is restarting BEFORE stopping server
+        // This ensures clients receive the message while connections are still active
+        broadcastToAllClients({
+          type: 'server:restart:cycle',
+          phase: 'waiting',
+          remainingTime: 30000,
+          message: 'Server will restart in 30 seconds for next match'
+        });
+        
+        // 4. Wait a moment to ensure clients receive the restart notification
+        console.log('⏳ Waiting 2 seconds for clients to receive restart notification...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // 5. Now stop the dedicated server after clients have been notified
+        console.log('🛑 Stopping dedicated server for restart cycle...');
+        const stopResult = await stopServer(true);
+        console.log('🛑 Server stopped:', stopResult);
+        
+        // 6. Start countdown timer
+        const countdownInterval = setInterval(() => {
+          const elapsed = Date.now() - serverState.restartCycle.startTime;
+          const remaining = 30000 - elapsed;
+          
+          serverState.restartCycle.remainingTime = remaining;
+          updateMatchControlUI();
+          
+          // Broadcast countdown updates every 10 seconds
+          if (remaining > 0 && remaining % 10000 < 1000) {
+            broadcastToAllClients({
+              type: 'server:restart:countdown',
+              remainingTime: remaining,
+              message: `Server restarting in ${Math.ceil(remaining / 1000)} seconds`
+            });
+          }
+          
+          if (remaining <= 0) {
+            clearInterval(countdownInterval);
+            restartServer();
+          }
+        }, 1000);
+        
+        // Update UI
+        updateMatchControlUI();
+        
+        console.log('⏳ 30-second countdown started before server restart');
+        
+      } catch (error) {
+        console.error('Error in server restart cycle:', error);
+      }
+    }
+    
+    async function restartServer() {
+      console.log('🔄 Beginning server restart...');
+      
+      try {
+        // Update restart cycle phase
+        serverState.restartCycle.phase = 'restarting';
+        updateMatchControlUI();
+        
+        // Broadcast restart beginning
+        broadcastToAllClients({
+          type: 'server:restart:starting',
+          message: 'Server is restarting now...'
+        });
+        
+        // Start new dedicated server
+        console.log('🚀 Starting new dedicated server...');
+        const startResult = await startRemoteServer();
+        console.log('🚀 New server started:', startResult);
+        
+        // Wait a moment for server to initialize
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Update server status to running
+        await updateServerStatus('running');
+        
+        // Clear restart cycle
+        serverState.restartCycle = null;
+        
+        // Reset for next match
+        resetForNextMatch();
+        
+        // Broadcast restart complete - tell clients to reconnect
+        broadcastToAllClients({
+          type: 'server:restart:complete',
+          message: 'Server restarted! Reconnecting your game...',
+          serverInfo: serverState.remoteServerInfo
+        });
+        
+        // Update UI
+        updateMatchControlUI();
+        
+        console.log('✅ Server restart cycle completed successfully');
+        
+      } catch (error) {
+        console.error('Error restarting server:', error);
+        
+        // Reset restart cycle on error
+        serverState.restartCycle = null;
+        updateMatchControlUI();
+        
+        broadcastToAllClients({
+          type: 'server:restart:error',
+          message: 'Server restart failed. Please refresh your page.'
+        });
+      }
+    }
+    
     // Token Reward Distribution Functions
     async function distributeTokenRewards(finalScores = null, isPageClose = false) {
       // Prevent duplicate distribution
@@ -2732,10 +3084,7 @@
       // Check if we have collected fees to distribute
       if (!serverState.collectedFees || serverState.collectedFees.length === 0) {
         console.log('No collected entry fees to distribute');
-        if (!isPageClose) {
-          // Reset for next match even if no rewards to distribute
-          resetForNextMatch();
-        }
+        // Reset removed - this should only happen when server actually restarts, not during reward distribution
         return;
       }
       
@@ -2890,12 +3239,7 @@
         serverState.collectedFees = [];
         console.log(`🎯 Reward distribution complete: ${totalDistributed} tokens distributed to ${successfulDistributions.length} winner(s)`);
         
-        // Reset for next match if this was triggered by match end
-        if (!isPageClose) {
-          setTimeout(() => {
-            resetForNextMatch();
-          }, 3000); // Wait 3 seconds before resetting for next match
-        }
+        // Reset removed - this should only happen when server actually restarts, not when rewards are distributed
         
       } catch (error) {
         console.error('Error during reward distribution:', error);
@@ -2952,6 +3296,23 @@
       
       // Allow score tracking to resume
       gameEnded = false;
+      
+      // Remove "GAME ENDED" overlay if it exists
+      const gameEndedOverlays = document.querySelectorAll('.game-ended-overlay');
+      gameEndedOverlays.forEach(overlay => {
+        overlay.remove();
+      });
+      
+      // Restore player stats display opacity
+      const playerStatsElement = document.getElementById('player-stats');
+      if (playerStatsElement) {
+        playerStatsElement.style.opacity = '1';
+        playerStatsElement.style.pointerEvents = 'auto';
+      }
+      
+      // Reset match control for new match
+      stopMatchControl();
+      console.log('🔄 Match control reset for new match');
       
       // Broadcast reset announcement
       broadcastToAllClients({

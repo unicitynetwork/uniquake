@@ -265,6 +265,16 @@
       background-color: rgba(76, 175, 80, 0.25);
     }
     
+    .server-item.game-over {
+      background-color: rgba(255, 152, 0, 0.15);
+      border: 2px solid #ff9800;
+      color: #ffffff;
+    }
+    
+    .server-item.game-over:hover {
+      background-color: rgba(255, 152, 0, 0.25);
+    }
+    
     .server-status {
       font-size: 0.8rem;
       font-weight: bold;
@@ -281,6 +291,10 @@
     
     .server-status.not-running {
       color: #888888;
+    }
+    
+    .server-status.game-over {
+      color: #ff9800;
     }
     
     
@@ -1662,7 +1676,8 @@
         
         const serverName = isMalformed ? `${server.name} (MALFORMED)` : server.name;
         const stateText = dedicatedState === 'not_running' ? 'Not Running' : 
-                         dedicatedState === 'starting' ? 'Starting' : 'Running';
+                         dedicatedState === 'starting' ? 'Starting' :
+                         dedicatedState === 'game_over' ? 'Game Over' : 'Running';
         
         serverElem.innerHTML = `
           <div class="server-name">${serverName}</div>
@@ -1694,6 +1709,8 @@
               connectButton.title = 'Cannot connect: Dedicated server is not running';
             } else if (dedicatedState === 'starting') {
               connectButton.title = 'Cannot connect: Dedicated server is still starting';
+            } else if (dedicatedState === 'game_over') {
+              connectButton.title = 'Cannot connect: Game is over, waiting for restart';
             } else {
               connectButton.title = '';
             }
