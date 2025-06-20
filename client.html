@@ -691,7 +691,6 @@
     var script = document.createElement('script');
     script.src = '/webrtc-adapter.js';
     script.onload = function() {
-      console.log('WebRTC adapter loaded, initializing client');
       initializeClient();
     };
     document.head.appendChild(script);
@@ -745,7 +744,6 @@
         };
         
         localStorage.setItem('uniquake_player_identity', JSON.stringify(identityData));
-        console.log(`Player identity saved to localStorage for: ${currentName}`);
         return true;
       } catch (error) {
         console.error('Failed to save player identity:', error);
@@ -758,17 +756,10 @@
       try {
         const savedData = localStorage.getItem('uniquake_player_identity');
         if (!savedData) {
-          console.log('No saved player identity found');
           return null;
         }
         
         const identityData = JSON.parse(savedData);
-        console.log('Loaded player identity from localStorage:', {
-          username: identityData.username,
-          pubkey: identityData.pubkey?.substring(0, 10) + '...',
-          tokenCount: identityData.tokens?.total || 0,
-          savedAt: new Date(identityData.savedAt).toLocaleString()
-        });
         
         return identityData;
       } catch (error) {
@@ -782,7 +773,6 @@
       try {
         localStorage.removeItem('uniquake_player_name');
         localStorage.removeItem('uniquake_player_identity');
-        console.log('All player data cleared from localStorage');
         return true;
       } catch (error) {
         console.error('Failed to clear player data:', error);
@@ -823,7 +813,6 @@
         onServerList: updateServerList,
         // Add handler for the new serverStateUpdate event
         onServerStateUpdate: function(serverInfo) {
-          console.log("[SERVER_STATE] Received server state update event:", JSON.stringify(serverInfo));
           // Call updateGameState to refresh the UI with the latest server info
           if (game) {
             updateGameState(game.getGameState());
@@ -845,7 +834,6 @@
       // Try to restore saved identity before initializing client
       const savedIdentity = loadPlayerIdentity();
       if (savedIdentity) {
-        console.log('Found saved identity, restoring player data...');
         // Modify client's token service config to use saved identity
         client.config.restoreIdentity = savedIdentity;
       }
@@ -856,7 +844,6 @@
       // Store reference to game integration for syncing
       client.gameIntegration = integration;
       
-      console.log('Client system initialized');
       
       // Set up UI event handlers
       setupUIHandlers();
@@ -875,7 +862,6 @@
         // Set up periodic server list refresh every 5 seconds
         setInterval(() => {
           if (client && client.requestServerList) {
-            console.log('Auto-refreshing server list...');
             client.requestServerList();
           }
         }, 5000);
@@ -907,7 +893,6 @@
           
           // Only log in debug mode to avoid console spam
           if (client.config.debug) {
-            console.log('Auto-requesting game state verification...');
           }
         }
       }, 2000);
@@ -923,7 +908,6 @@
         if (playerNameInput && playerNameInput.value.trim()) {
           const newName = playerNameInput.value.trim();
           if (newName !== currentPlayerName) {
-            console.log('Page unloading - saving player name:', newName);
             if (validateAndSavePlayerName(newName)) {
               // Update the client's name if client is initialized
               if (client && client.updatePlayerName) {
@@ -935,7 +919,6 @@
         
         // Save current identity state
         if (client && client.clientState.tokenService) {
-          console.log('Page unloading - saving player identity');
           savePlayerIdentity();
         }
       }
@@ -949,12 +932,10 @@
       // Use visibilitychange as an additional safety net
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
-          console.log('Page visibility hidden - saving player data');
           saveOnUnload();
         }
       });
       
-      console.log('Auto-save on page unload configured');
     }
     
     // Set up UI event handlers
@@ -1074,7 +1055,6 @@
           if (playerNameInput && playerNameInput.value.trim()) {
             const newName = playerNameInput.value.trim();
             if (newName !== currentPlayerName && newName.length > 0) {
-              console.log('Auto-saving player name after typing pause:', newName);
               if (validateAndSavePlayerName(newName)) {
                 // Update the client's name if client is initialized
                 if (client && client.updatePlayerName) {
@@ -1103,7 +1083,6 @@
         // The "connect localhost:27960" parameter tells it to connect to our local dedicated server
         iframe.src = '/?connect%20localhost:27960';
         
-        console.log('Directly connecting to localhost:27960 using the original QuakeJS web server');
         
         // Update connection status
         if (client && client.clientState) {
@@ -1155,7 +1134,6 @@
                 try {
                   gameIframe.contentWindow.focus();
                 } catch (e) {
-                  console.log("Error in delayed focus:", e);
                 }
               }, 100);
             } catch (e) {
@@ -1170,7 +1148,6 @@
           }
           gameIframe.focus();
           
-          console.log("Game controls enabled - multiple methods used to capture keyboard input");
         });
         
         // Get the keyboard indicator element
@@ -1198,7 +1175,6 @@
           }
           
           
-          console.log("Game iframe focused - keyboard input active");
         });
         
         gameIframe.addEventListener('blur', function() {
@@ -1219,7 +1195,6 @@
           }
           
           
-          console.log("Game iframe lost focus - keyboard input inactive");
         });
       } else {
         console.warn("Game iframe element not found");
@@ -1256,14 +1231,12 @@
           // Move focus away from iframe
           document.body.focus();
           
-          console.log("Game controls disabled (Escape pressed)");
         }
       });
       
       // Make sure the iframe is properly loaded before focusing
       if (gameIframe) {
         gameIframe.addEventListener('load', function() {
-          console.log("Game iframe loaded, ready for focus");
         });
       }
     }
@@ -1304,7 +1277,6 @@
             const addressMatch = addressInfos[j].textContent.match(/Address:\s+(.+)/);
             if (addressMatch && addressMatch[1] && addressMatch[1].trim() !== 'Not specified') {
               serverAddress = addressMatch[1].trim();
-              console.log(`Extracted server address from UI: "${serverAddress}"`);
               break;
             }
           }
@@ -1315,7 +1287,6 @@
             address: serverAddress
           };
           
-          console.log('Found server info from UI:', serverInfo);
           break;
         }
       }
@@ -1325,7 +1296,6 @@
         const serverFromList = client.clientState.serverList.find(s => s.peerId === serverId);
         if (serverFromList && serverFromList.address) {
           serverAddress = serverFromList.address;
-          console.log('Found server address from client state:', serverAddress);
         }
       }
       
@@ -1399,12 +1369,6 @@
       const encodedCmdline = encodeURIComponent(cmdline);
       let quakeClientUrl = `/quake?cmdline=${encodedCmdline}`;
       
-      console.log(`Connecting to QuakeJS with:`);
-      console.log(`  Original player name: "${playerName}"`);
-      console.log(`  Clean player name: "${cleanPlayerName}"`);
-      console.log(`  Server address: ${serverAddress}`);
-      console.log(`  Command line: ${cmdline}`);
-      console.log(`  QuakeJS URL: ${quakeClientUrl}`);
       
       // We're using a relative URL which should connect directly to the server
       
@@ -1426,7 +1390,6 @@
               }
             }
             
-            console.log("Game focus set automatically after load");
           }
         }, 1000);
         
@@ -1438,7 +1401,6 @@
       
       // Set the iframe source
       iframe.src = quakeClientUrl;
-      console.log('Connecting Quake client to server with URL:', quakeClientUrl);
       
       // Add initial server ID overlay
       addServerIdOverlay(serverId);
@@ -1597,7 +1559,6 @@
       
       // Reinitialize token service with new identity
       if (client && client.clientState.tokenService) {
-        console.log('Clearing player identity and regenerating token service...');
         
         // Clear existing token service
         client.clientState.tokenService = null;
@@ -1781,7 +1742,6 @@
         updateTokenInfo(status.tokens);
       }
       
-      console.log('Client status updated:', status);
     }
     
     // Update game state display

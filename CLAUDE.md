@@ -30,26 +30,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Environment config: Run `./setup.sh` or copy `.env.example` to `.env` and configure `HOST_IP`
 
 ## Build & Run Commands
-- Install dependencies: `npm install`
-- Configure for your host: `npm run config` (generates configs from .env)
-- Start web server: `npm start` (auto-generates config)
-- Run QuakeJS master server: `npm run master` (uses fresh_quakejs submodule)
-- Run WebRTC master server: `npm run webrtc-master`
-- Run combined master: `npm run master-quake` (recommended)
-- Run content server: `npm run content`
-- Run browser mocks:
-  - All components: `npm run start-browser-mocks`
-  - Individual: `npm run mock-server`, `npm run mock-client`, `npm run browser-mock`
-- Development server: `npm run browser-mock-all` (runs master server + browser mock)
-- Configure master server in browser mocks:
+
+### Essential Setup Commands
+- **Initial setup**: `./setup.sh` (handles submodules, dependencies, and game assets)
+- **Manual setup**: `npm install` then configure submodules (see Project Setup)
+- **Environment config**: `npm run config` (generates configs from .env after changes)
+
+### Server Commands
+- **Production**: `npm run master-quake` (recommended - unified master server)
+- **Development**: `npm run start-browser-mocks` (master + browser interface)
+- **Individual services**:
+  - Web server: `npm start`
+  - Content server: `npm run content`
+  - WebRTC master only: `npm run webrtc-master`
+  - QuakeJS master only: `npm run master`
+
+### Development & Testing
+- **Browser mocks**: Individual components available via `npm run mock-server`, `npm run mock-client`, `npm run browser-mock`
+- **Debug mode**: `npm run master-quake-debug` (enables debug logging)
+- **Configure master server in browser mocks**:
   - Via env var: `MASTER_SERVER_URL=ws://your-server-ip:27950 npm run browser-mock`
   - Via URL: `http://localhost:8080/client?master=ws://your-server-ip:27950`
-- Build engine: `cd ioq3 && make PLATFORM=js EMSCRIPTEN=<path_to_emscripten>`
-- Repackage assets: `npm run repak` or `node bin/repak.js`
-- Testing: Manual testing through browser mocks (no automated tests found)
-- Manage dedicated servers:
-  - Check running servers: `ps aux | grep node | grep quakejs`
-  - Kill server: `kill <pid>`
+
+### Asset Management
+- **Repackage assets**: `npm run repak` or `node bin/repak.js`
+- **Manual engine build**: `cd fresh_quakejs/ioq3 && make PLATFORM=js EMSCRIPTEN=<path>`
+
+### Process Management
+- **Check servers**: `ps aux | grep node | grep ioq3ded` (dedicated) or `ps aux | grep node | grep master` (master)
+- **Kill servers**: `kill <pid>`
 
 ## Code Style Guidelines
 - Imports: Node.js require pattern; group external modules first, then internal
@@ -86,12 +95,15 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 - **Signaling Protocol**: Custom WebSocket-based signaling for WebRTC negotiation
 - **Unicity Integration**: Support for @unicitylabs packages for advanced networking features
 
-### Server Lifecycle
+### Server Lifecycle & Game State Management
 1. Combined master starts and initializes both WebRTC and QuakeJS protocol handlers
 2. Game Server Manager spawns dedicated servers on demand (ports 27961+)
 3. Servers register with master server and send periodic heartbeats
 4. Clients connect via WebRTC (preferred) or WebSocket fallback
 5. Master server handles signaling between peers and maintains server list
+6. **Automatic match restart cycle**: When matches end via timeout/score cap → 30s countdown → server restart → client auto-reconnect
+7. **Manual match end**: "End Match and Pay Rewards" button → complete server stop (no restart)
+8. **Game state tokens**: Servers send periodic state tokens for verification; inactive servers (>1min without tokens) are automatically terminated
 
 ### Development Workflow
 - Branch naming: feature/*, bugfix/*, refactor/*
@@ -216,3 +228,24 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 - **Branch naming**: `feature/*`, `bugfix/*`, `refactor/*`
 - **Submodule updates**: Always use `git submodule update --init --recursive`
 - **Fresh QuakeJS compatibility**: Never update ws library in fresh_quakejs submodule
+
+## Server State Management
+
+### Dedicated Server States
+- `not_running`: Server process not active
+- `starting`: Server process spawning, waiting for first heartbeat
+- `running`: Server active and receiving heartbeats  
+- `game_over`: Match ended, server in 30s countdown before restart
+
+### Client UI States
+- **Running servers**: Green, clickable connect button
+- **Game Over servers**: Orange, disabled connect button, shows countdown
+- **Starting servers**: Yellow, disabled connect button
+- **Not Running servers**: Gray, disabled connect button
+- **Malformed servers**: Red, always disabled (invalid address data)
+
+### Token Monitoring & Server Termination
+- Servers must send game state tokens at least every 60 seconds
+- Token monitoring runs every 30 seconds checking for inactive servers
+- Inactive servers are automatically terminated (separate from 2-hour session timeout)
+- Session timeout (2 hours) handles general connection cleanup
