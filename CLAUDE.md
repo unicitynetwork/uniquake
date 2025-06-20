@@ -141,6 +141,12 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 - Without these files, the QuakeJS client will encounter "callback is not defined" errors
 - Files are downloaded from official content.quakejs.com during setup
 
+### Automated Setup
+- **Recommended**: Use `./setup.sh` for complete automated setup
+- Handles all submodule issues, downloads game assets, configures environment
+- Interactive prompts for HOST_IP configuration
+- Automatically generates all config files
+
 ## Configuration System
 
 ### Environment-Based Configuration
@@ -206,6 +212,11 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
   - Client mock: `http://localhost:8080/client`
   - Server mock: `http://localhost:8080/server`
   - Main game: `http://localhost:8080/quake`
+
+### Lint and Type Checking
+- **Lint**: Check for available linting commands in package.json
+- **Tests**: Check for test commands and framework used
+- Always run lint/typecheck after making changes if commands are available
 
 ### Manual Testing Workflow
 1. Start master server (`npm run master-quake`)

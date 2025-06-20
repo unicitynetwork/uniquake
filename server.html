@@ -1264,6 +1264,9 @@
       serverState.gameId = message.gameId;
       serverState.remoteServerInfo = message.serverInfo;
       
+      // Reset for next match - this clears the "GAME ENDED" overlay
+      resetForNextMatch();
+      
       updateServerStatus('running');
       console.log(`✅ Server state updated with new game ID: ${message.gameId}`);
     }
@@ -2460,6 +2463,14 @@
       
       if (!serverStatusEl || !playersContainerEl) return;
       
+      // Remove any existing game ended overlays if the game is not ended
+      if (!gameEnded) {
+        const gameEndedOverlays = document.querySelectorAll('.game-ended-overlay');
+        gameEndedOverlays.forEach(overlay => {
+          overlay.remove();
+        });
+      }
+      
       if (errorMessage) {
         serverStatusEl.innerHTML = `<span style="color: #f44336;">${errorMessage}</span>`;
         playersContainerEl.innerHTML = '<div style="color: #888;">Unable to fetch player data</div>';
@@ -2805,6 +2816,7 @@
           
           // Add "GAME ENDED" overlay
           const gameEndedOverlay = document.createElement('div');
+          gameEndedOverlay.className = 'game-ended-overlay';
           gameEndedOverlay.style.cssText = `
             position: absolute;
             top: 50%;
