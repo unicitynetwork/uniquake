@@ -825,13 +825,33 @@
             font-weight: bold;
             font-size: 16px;
             z-index: 100;
+            text-align: center;
           `;
-          gameEndedOverlay.textContent = '🏁 GAME ENDED';
+          gameEndedOverlay.innerHTML = '🏁 GAME ENDED<br><span style="font-size: 14px;">NEXT MATCH STARTS IN <span class="game-ended-countdown">30</span> SECONDS</span>';
           
           const container = playerStatsElement.parentElement;
           if (container) {
             container.style.position = 'relative';
             container.appendChild(gameEndedOverlay);
+            
+            // Update countdown in overlay - wait for restart cycle to be initialized
+            const updateOverlayCountdown = setInterval(() => {
+              if (serverState.restartCycle && serverState.restartCycle.active) {
+                const remaining = Math.ceil(serverState.restartCycle.remainingTime / 1000);
+                const countdownEls = container.querySelectorAll('.game-ended-countdown');
+                countdownEls.forEach(el => {
+                  if (remaining > 0) {
+                    el.textContent = remaining;
+                  } else {
+                    clearInterval(updateOverlayCountdown);
+                  }
+                });
+              }
+              // If restart cycle is not active, check if overlay should be removed
+              else if (serverState.restartCycle === null || !gameEnded) {
+                clearInterval(updateOverlayCountdown);
+              }
+            }, 1000);
           }
         }
         
@@ -2836,6 +2856,23 @@
           if (container) {
             container.style.position = 'relative';
             container.appendChild(gameEndedOverlay);
+            
+            // Update countdown in overlay
+            const updateOverlayCountdown = setInterval(() => {
+              if (serverState.restartCycle && serverState.restartCycle.active) {
+                const remaining = Math.ceil(serverState.restartCycle.remainingTime / 1000);
+                const countdownEls = container.querySelectorAll('.game-ended-countdown');
+                countdownEls.forEach(el => {
+                  if (remaining > 0) {
+                    el.textContent = remaining;
+                  } else {
+                    clearInterval(updateOverlayCountdown);
+                  }
+                });
+              } else {
+                clearInterval(updateOverlayCountdown);
+              }
+            }, 1000);
           }
         }
         
@@ -2977,6 +3014,12 @@
         // 2. Update server metadata to waiting_to_start_new_match
         await updateServerStatus('waiting_to_start_new_match');
         
+        // 2.5. Update any existing GAME ENDED overlays with countdown
+        const gameEndedOverlays = document.querySelectorAll('.game-ended-overlay');
+        gameEndedOverlays.forEach(overlay => {
+          overlay.innerHTML = '🏁 GAME ENDED<br><span style="font-size: 14px;">NEXT MATCH STARTS IN <span class="game-ended-countdown">30</span> SECONDS</span>';
+        });
+        
         // 3. Broadcast to all clients that server is restarting BEFORE stopping server
         // This ensures clients receive the message while connections are still active
         broadcastToAllClients({
@@ -3002,6 +3045,14 @@
           
           serverState.restartCycle.remainingTime = remaining;
           updateMatchControlUI();
+          
+          // Update GAME ENDED overlay countdowns
+          const countdownEls = document.querySelectorAll('.game-ended-countdown');
+          countdownEls.forEach(el => {
+            if (remaining > 0) {
+              el.textContent = Math.ceil(remaining / 1000);
+            }
+          });
           
           // Broadcast countdown updates every 10 seconds
           if (remaining > 0 && remaining % 10000 < 1000) {
