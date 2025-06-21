@@ -1459,7 +1459,7 @@
         scoreOverlay.style.pointerEvents = 'none';
         scoreOverlay.style.border = '1px solid #4fc3f7';
         scoreOverlay.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.5)';
-        scoreOverlay.style.minWidth = '140px';
+        scoreOverlay.style.minWidth = '150px';
         scoreOverlay.style.textAlign = 'center';
         
         // Set initial content
@@ -1467,6 +1467,7 @@
           <div style="color: #ffeb3b; font-size: 12px; margin-bottom: 2px;">YOUR SCORE</div>
           <div style="font-size: 18px; color: #4fc3f7;">0</div>
           <div style="color: #aaa; font-size: 10px; margin-top: 2px;">Rank: -</div>
+          <div style="color: #4caf50; font-size: 11px; margin-top: 3px; font-weight: bold;">💰 0 tokens</div>
           <div style="color: #666; font-size: 11px; margin-top: 4px; border-top: 1px solid #555; padding-top: 4px;">⏸️ No Match</div>
         `;
         
@@ -1497,6 +1498,18 @@
         // Get current score data
         const playerScore = client.getLatestPlayerScore();
         const countdown = client.getMatchCountdown();
+        
+        // Get current token balance
+        let balance = '0';
+        try {
+          if (client.clientState.tokenService) {
+            const inventory = client.getTokenInventory();
+            balance = inventory.value || '0';
+          }
+        } catch (error) {
+          // If balance retrieval fails, default to '0'
+          balance = '0';
+        }
         
         // Determine score color based on rank
         let scoreColor = '#4fc3f7'; // Default blue
@@ -1542,6 +1555,7 @@
             ${playerScore.rank > 0 ? `Rank: ${playerScore.rank}` : 'Rank: -'}
             ${playerScore.ping < 999 ? ` | ${playerScore.ping}ms` : ''}
           </div>
+          <div style="color: #4caf50; font-size: 11px; margin-top: 3px; font-weight: bold;">💰 ${balance} tokens</div>
           ${countdownText}
         `;
       } catch (e) {
