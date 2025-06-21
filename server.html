@@ -1285,8 +1285,8 @@
       serverState.gameId = message.gameId;
       serverState.remoteServerInfo = message.serverInfo;
       
-      // Reset for next match - this clears the "GAME ENDED" overlay
-      resetForNextMatch();
+      // Reset for next match - this clears the "GAME ENDED" overlay (automatic restart)
+      resetForNextMatch(true);
       
       // Send server running status to master server (clear countdown)
       if (serverConnection && serverConnection.readyState === WebSocket.OPEN && serverState.registered) {
@@ -3165,8 +3165,8 @@
         // Clear restart cycle
         serverState.restartCycle = null;
         
-        // Reset for next match
-        resetForNextMatch();
+        // Reset for next match (automatic restart)
+        resetForNextMatch(true);
         
         // Broadcast restart complete - tell clients to reconnect
         broadcastToAllClients({
@@ -3390,16 +3390,21 @@
     }
     
     // Reset for next match - clear paid players and start new entry fee collection
-    function resetForNextMatch() {
+    function resetForNextMatch(isAutomaticRestart = false) {
       console.log('🔄 Resetting for next match - clearing paid players list');
       
-      // Clear the list of players who have paid entry fees
-      serverState.paidPlayers.clear();
-      
-      // Reset all client entry token status
-      serverState.clients.forEach(client => {
-        client.entryTokenReceived = false;
-      });
+      // For automatic restarts, preserve existing paid players so they don't need to pay again
+      if (!isAutomaticRestart) {
+        // Clear the list of players who have paid entry fees (manual end only)
+        serverState.paidPlayers.clear();
+        
+        // Reset all client entry token status (manual end only)
+        serverState.clients.forEach(client => {
+          client.entryTokenReceived = false;
+        });
+      } else {
+        console.log('🔄 Automatic restart - preserving existing paid players');
+      }
       
       // Reset match end detection state
       matchEndDetection.lastKnownState = 'playing';
@@ -3435,15 +3440,34 @@
       stopMatchControl();
       console.log('🔄 Match control reset for new match');
       
+      // For automatic restarts, immediately start match control if there are paid players
+      if (isAutomaticRestart && serverState.paidPlayers.size > 0) {
+        console.log(`🎮 Automatic restart - starting match control immediately (${serverState.paidPlayers.size} paid players)`);
+        setTimeout(() => {
+          startMatchControl();
+        }, 1000); // Small delay to ensure everything is properly reset
+      } else if (isAutomaticRestart && serverState.paidPlayers.size === 0) {
+        console.log('🎮 Automatic restart - no paid players, match control will wait for entry fees');
+      } else {
+        console.log('🎮 Manual reset - match control will wait for entry fees');
+      }
+      
       // Broadcast reset announcement
+      const message = isAutomaticRestart 
+        ? `🔄 Match restarted! Continuing with existing players.`
+        : `🔄 New match started! Entry fees reset - all players must pay again.`;
+        
       broadcastToAllClients({
         type: 'chat',
         from: 'SERVER',
-        message: `🔄 New match started! Entry fees reset - all players must pay again.`,
+        message: message,
         timestamp: Date.now()
       });
       
-      console.log('✅ Next match setup complete - players must pay entry fees again');
+      const completionMessage = isAutomaticRestart
+        ? '✅ Automatic restart complete - match control will resume'
+        : '✅ Next match setup complete - players must pay entry fees again';
+      console.log(completionMessage);
       updateGameStateDisplay();
     }
     
