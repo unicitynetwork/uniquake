@@ -700,6 +700,10 @@
     let selectedServerId = null;
     let currentPlayerName = null;
     
+    // Client-side timer tracking for smooth countdown updates
+    let serverTimers = {}; // Store timer data for each server
+    let localTimerInterval = null; // Interval for updating local timers
+    
     // Get player name from localStorage or generate default
     function getPlayerName() {
       const savedName = localStorage.getItem('uniquake_player_name');
@@ -896,6 +900,9 @@
           }
         }
       }, 2000);
+      
+      // Set up local timer for smooth countdown updates
+      startLocalTimerUpdates();
     }
     
     // Set up auto-save functionality for page unload events
@@ -933,6 +940,13 @@
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
           saveOnUnload();
+        }
+      });
+      
+      // Clean up timer interval when page unloads
+      window.addEventListener('beforeunload', () => {
+        if (localTimerInterval) {
+          clearInterval(localTimerInterval);
         }
       });
       
@@ -1608,6 +1622,14 @@
       const container = document.getElementById('servers-container');
       container.innerHTML = '';
       
+      // Update server timer data with latest from server
+      servers.forEach(server => {
+        updateServerTimerData(server);
+      });
+      
+      // Clean up timer data for servers that are no longer active
+      const activeServerIds = servers.map(s => s.peerId);
+      cleanupTimerData(activeServerIds);
       
       if (servers.length === 0) {
         container.innerHTML = '<div class="server-item">No servers available</div>';
@@ -1637,20 +1659,24 @@
         serverElem.classList.add(stateClass);
         
         const serverName = isMalformed ? `${server.name} (MALFORMED)` : server.name;
+        
+        // Get current timer values (either from server or local calculation)
+        const timerData = getDisplayTimerValues(server.peerId, dedicatedState);
+        
         let stateText = dedicatedState === 'not_running' ? 'Not Running' : 
                        dedicatedState === 'starting' ? 'Starting' :
                        dedicatedState === 'game_over' ? 'Game Over' : 'Running';
         
         // Add countdown to state text if server is in game_over and has countdown
-        if (dedicatedState === 'game_over' && server.restartCountdown && server.restartCountdown > 0) {
-          stateText = `Game Over - Next Match in ${server.restartCountdown}s`;
+        if (dedicatedState === 'game_over' && timerData.restartCountdown > 0) {
+          stateText = `Game Over - Next Match in ${timerData.restartCountdown}s`;
         }
         
         // Prepare additional info line for match timer (for running games)
         let additionalInfo = '';
-        if (dedicatedState === 'running' && server.matchTimeRemaining && server.matchTimeRemaining > 0) {
-          const minutes = Math.floor(server.matchTimeRemaining / 60);
-          const seconds = server.matchTimeRemaining % 60;
+        if (dedicatedState === 'running' && timerData.matchTimeRemaining > 0) {
+          const minutes = Math.floor(timerData.matchTimeRemaining / 60);
+          const seconds = timerData.matchTimeRemaining % 60;
           const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
           additionalInfo = `<div class="server-info" style="color: #4fc3f7;">⏱️ Match Time: ${timeText}</div>`;
         }
@@ -1687,8 +1713,8 @@
             } else if (dedicatedState === 'starting') {
               connectButton.title = 'Cannot connect: Dedicated server is still starting';
             } else if (dedicatedState === 'game_over') {
-              if (server.restartCountdown && server.restartCountdown > 0) {
-                connectButton.title = `Cannot connect: Game is over, next match starts in ${server.restartCountdown} seconds`;
+              if (timerData.restartCountdown > 0) {
+                connectButton.title = `Cannot connect: Game is over, next match starts in ${timerData.restartCountdown} seconds`;
               } else {
                 connectButton.title = 'Cannot connect: Game is over, waiting for restart';
               }
@@ -2216,6 +2242,173 @@
         setTimeout(initializeResizer, 100);
       }
     });
+    
+    // Timer management functions for smooth countdown updates
+    
+    /**
+     * Update server timer data with latest info from server
+     */
+    function updateServerTimerData(server) {
+      const peerId = server.peerId;
+      const currentTime = Date.now();
+      
+      // Initialize timer data if it doesn't exist
+      if (!serverTimers[peerId]) {
+        serverTimers[peerId] = {
+          lastServerUpdate: currentTime,
+          serverRestartCountdown: 0,
+          serverMatchTimeRemaining: 0,
+          localStartTime: currentTime,
+          state: server.dedicatedServerState || 'not_running'
+        };
+      }
+      
+      const timerData = serverTimers[peerId];
+      
+      // Update with server data if provided
+      if (server.restartCountdown !== undefined && server.restartCountdown !== null) {
+        // Server provided new countdown value - sync our local timer
+        timerData.serverRestartCountdown = server.restartCountdown;
+        timerData.lastServerUpdate = currentTime;
+        timerData.localStartTime = currentTime;
+      }
+      
+      if (server.matchTimeRemaining !== undefined && server.matchTimeRemaining !== null) {
+        // Server provided new match time - sync our local timer
+        timerData.serverMatchTimeRemaining = server.matchTimeRemaining;
+        timerData.lastServerUpdate = currentTime;
+        timerData.localStartTime = currentTime;
+      }
+      
+      // Update state
+      timerData.state = server.dedicatedServerState || 'not_running';
+      
+      // Clean up timer data for servers that are no longer in game_over or running
+      if (timerData.state !== 'game_over' && timerData.state !== 'running') {
+        timerData.serverRestartCountdown = 0;
+        timerData.serverMatchTimeRemaining = 0;
+      }
+    }
+    
+    /**
+     * Get current display timer values (either from server or calculated locally)
+     */
+    function getDisplayTimerValues(peerId, dedicatedState) {
+      const timerData = serverTimers[peerId];
+      const currentTime = Date.now();
+      
+      if (!timerData) {
+        return {
+          restartCountdown: 0,
+          matchTimeRemaining: 0
+        };
+      }
+      
+      const timeSinceUpdate = (currentTime - timerData.localStartTime) / 1000; // seconds
+      
+      let restartCountdown = 0;
+      let matchTimeRemaining = 0;
+      
+      // Calculate current countdown based on time elapsed since last server update
+      if (dedicatedState === 'game_over' && timerData.serverRestartCountdown > 0) {
+        restartCountdown = Math.max(0, Math.ceil(timerData.serverRestartCountdown - timeSinceUpdate));
+      }
+      
+      // Calculate current match time based on time elapsed since last server update
+      if (dedicatedState === 'running' && timerData.serverMatchTimeRemaining > 0) {
+        matchTimeRemaining = Math.max(0, Math.ceil(timerData.serverMatchTimeRemaining - timeSinceUpdate));
+      }
+      
+      return {
+        restartCountdown,
+        matchTimeRemaining
+      };
+    }
+    
+    /**
+     * Start local timer updates for smooth countdown display
+     */
+    function startLocalTimerUpdates() {
+      // Clear any existing interval
+      if (localTimerInterval) {
+        clearInterval(localTimerInterval);
+      }
+      
+      // Update timer displays every second for smooth countdown
+      localTimerInterval = setInterval(() => {
+        updateLocalTimerDisplays();
+      }, 1000);
+    }
+    
+    /**
+     * Update timer displays using local calculations
+     */
+    function updateLocalTimerDisplays() {
+      // Find all server items and update their timer displays
+      const serverItems = document.querySelectorAll('.server-item');
+      
+      serverItems.forEach(serverItem => {
+        const peerId = serverItem.getAttribute('data-server-id');
+        if (!peerId || !serverTimers[peerId]) return;
+        
+        const timerData = serverTimers[peerId];
+        const dedicatedState = timerData.state;
+        
+        // Get current timer values
+        const currentTimers = getDisplayTimerValues(peerId, dedicatedState);
+        
+        // Update restart countdown display
+        if (dedicatedState === 'game_over') {
+          const statusElement = serverItem.querySelector('.server-status');
+          if (statusElement && currentTimers.restartCountdown > 0) {
+            const newText = `Status: Game Over - Next Match in ${currentTimers.restartCountdown}s`;
+            if (statusElement.textContent !== newText) {
+              statusElement.textContent = newText;
+            }
+          } else if (statusElement && currentTimers.restartCountdown <= 0) {
+            const newText = 'Status: Game Over';
+            if (statusElement.textContent !== newText) {
+              statusElement.textContent = newText;
+            }
+          }
+          
+          // Update connect button tooltip
+          const connectButton = document.getElementById('connect-button');
+          if (connectButton && selectedServerId === peerId) {
+            if (currentTimers.restartCountdown > 0) {
+              connectButton.title = `Cannot connect: Game is over, next match starts in ${currentTimers.restartCountdown} seconds`;
+            } else {
+              connectButton.title = 'Cannot connect: Game is over, waiting for restart';
+            }
+          }
+        }
+        
+        // Update match timer display
+        if (dedicatedState === 'running') {
+          const matchTimerElement = serverItem.querySelector('.server-info[style*=\"color: #4fc3f7\"]');
+          if (matchTimerElement && currentTimers.matchTimeRemaining > 0) {
+            const minutes = Math.floor(currentTimers.matchTimeRemaining / 60);
+            const seconds = currentTimers.matchTimeRemaining % 60;
+            const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            const newText = `⏱️ Match Time: ${timeText}`;
+            if (matchTimerElement.textContent !== newText) {
+              matchTimerElement.textContent = newText;
+            }
+          }
+        }
+      });
+    }
+    
+    /**
+     * Clean up timer data for removed servers
+     */
+    function cleanupTimerData(activeServerIds) {
+      Object.keys(serverTimers).forEach(peerId => {
+        if (!activeServerIds.includes(peerId)) {
+          delete serverTimers[peerId];
+        }
+      });
+    }
   </script>
 </body>
 </html>
