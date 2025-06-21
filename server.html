@@ -443,6 +443,13 @@
           updatePlayerStatistics();
         }
       }, 3000); // Update every 3 seconds for real-time feel
+      
+      // Set up periodic broadcasts of individual player scores and countdown
+      setInterval(() => {
+        if (serverConnection && serverConnection.readyState === WebSocket.OPEN && serverState.gameId) {
+          sendPlayerScoresAndCountdown();
+        }
+      }, 1000); // Send every 1 second for real-time updates
     }
     
     // Connect to master server for dedicated server management
@@ -3387,6 +3394,95 @@
         }
       }
       return null;
+    }
+    
+    // Send individual player scores and countdown to all connected clients
+    function sendPlayerScoresAndCountdown() {
+      // Don't send updates if game has ended
+      if (gameEnded) {
+        return;
+      }
+      
+      // Don't send updates during server restart cycle
+      if (serverState.restartCycle && serverState.restartCycle.active) {
+        return;
+      }
+      
+      // Calculate countdown till match end
+      let countdown = null;
+      if (matchControl.isActive) {
+        const remaining = getRemainingTime();
+        countdown = {
+          totalSeconds: Math.max(0, Math.floor(remaining / 1000)),
+          timeText: formatRemainingTime(remaining),
+          isActive: true
+        };
+      } else {
+        countdown = {
+          totalSeconds: 0,
+          timeText: "Match not active",
+          isActive: false
+        };
+      }
+      
+      // Get current player scores
+      const currentScores = latestPlayerScores.players || [];
+      
+      // Send individual scores and common countdown to each connected client
+      serverState.clients.forEach((client, clientId) => {
+        if (client.connected) {
+          // Find this client's score by matching username
+          let playerScore = null;
+          if (currentScores.length > 0) {
+            const matchingPlayer = currentScores.find(player => 
+              player.name === client.username || 
+              player.name === client.id
+            );
+            
+            if (matchingPlayer) {
+              playerScore = {
+                score: matchingPlayer.score || 0,
+                ping: matchingPlayer.ping || 999,
+                name: matchingPlayer.name,
+                rank: calculatePlayerRank(matchingPlayer.score, currentScores)
+              };
+            }
+          }
+          
+          // If no score found, provide default values
+          if (!playerScore) {
+            playerScore = {
+              score: 0,
+              ping: 999,
+              name: client.username || client.id,
+              rank: currentScores.length + 1 // Last place if no score found
+            };
+          }
+          
+          // Send the update to this specific client
+          sendMessageToClient(clientId, {
+            type: 'player_score_update',
+            playerScore: playerScore,
+            countdown: countdown,
+            allScores: currentScores.map(p => ({
+              name: p.name,
+              score: p.score || 0,
+              ping: p.ping || 999
+            })).sort((a, b) => b.score - a.score), // Send all scores sorted by score for leaderboard
+            timestamp: Date.now()
+          });
+        }
+      });
+    }
+    
+    // Helper function to calculate a player's rank based on their score
+    function calculatePlayerRank(playerScore, allScores) {
+      const sortedScores = allScores
+        .map(p => p.score || 0)
+        .sort((a, b) => b - a); // Sort descending
+      
+      const rank = sortedScores.findIndex(score => score <= playerScore) + 1;
+      return rank > 0 ? rank : allScores.length + 1;
     }
     
     // Reset for next match - clear paid players and start new entry fee collection

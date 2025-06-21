@@ -821,6 +821,11 @@
           if (game) {
             updateGameState(game.getGameState());
           }
+        },
+        // Add handler for player score updates
+        onPlayerScoreUpdate: function(scoreData) {
+          // Update the player score overlay with new data
+          updatePlayerScoreOverlay();
         }
       });
       
@@ -900,6 +905,11 @@
           }
         }
       }, 2000);
+      
+      // Set up periodic player score overlay updates
+      setInterval(() => {
+        updatePlayerScoreOverlay();
+      }, 1000); // Update every second for smooth score/countdown updates
       
       // Set up local timer for smooth countdown updates
       startLocalTimerUpdates();
@@ -1410,6 +1420,7 @@
         // Re-add server ID overlay after game loads
         setTimeout(function() {
           addServerIdOverlay(serverId);
+          addPlayerScoreOverlay(); // Add player score overlay
         }, 1500);
       };
       
@@ -1418,8 +1429,105 @@
       
       // Add initial server ID overlay
       addServerIdOverlay(serverId);
+      // Add initial player score overlay  
+      addPlayerScoreOverlay();
     }
     
+    // Add player score overlay to game window
+    function addPlayerScoreOverlay() {
+      try {
+        // Remove any existing player score overlay first
+        const existingOverlay = document.getElementById('player-score-overlay');
+        if (existingOverlay) {
+          existingOverlay.remove();
+        }
+        
+        // Create new player score overlay
+        const scoreOverlay = document.createElement('div');
+        scoreOverlay.id = 'player-score-overlay';
+        scoreOverlay.style.position = 'absolute';
+        scoreOverlay.style.top = '10px';
+        scoreOverlay.style.right = '10px';
+        scoreOverlay.style.background = 'rgba(0, 0, 0, 0.7)';
+        scoreOverlay.style.color = '#4fc3f7';
+        scoreOverlay.style.padding = '8px 12px';
+        scoreOverlay.style.borderRadius = '5px';
+        scoreOverlay.style.fontSize = '14px';
+        scoreOverlay.style.fontFamily = 'monospace';
+        scoreOverlay.style.fontWeight = 'bold';
+        scoreOverlay.style.zIndex = '10';
+        scoreOverlay.style.pointerEvents = 'none';
+        scoreOverlay.style.border = '1px solid #4fc3f7';
+        scoreOverlay.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.5)';
+        scoreOverlay.style.minWidth = '120px';
+        scoreOverlay.style.textAlign = 'center';
+        
+        // Set initial content
+        scoreOverlay.innerHTML = `
+          <div style="color: #ffeb3b; font-size: 12px; margin-bottom: 2px;">YOUR SCORE</div>
+          <div style="font-size: 18px; color: #4fc3f7;">0</div>
+          <div style="color: #aaa; font-size: 10px; margin-top: 2px;">Rank: -</div>
+        `;
+        
+        // Add to game container
+        const gameContainer = document.querySelector('.game-container');
+        if (gameContainer) {
+          gameContainer.appendChild(scoreOverlay);
+        } else {
+          console.warn('Game container not found, cannot add player score overlay');
+        }
+      } catch (e) {
+        console.error("Could not create player score overlay:", e);
+      }
+    }
+    
+    // Update player score overlay with current data
+    function updatePlayerScoreOverlay() {
+      try {
+        const scoreOverlay = document.getElementById('player-score-overlay');
+        if (!scoreOverlay) {
+          return; // Overlay doesn't exist yet
+        }
+        
+        if (!client) {
+          return; // Client not initialized
+        }
+        
+        // Get current score data
+        const playerScore = client.getLatestPlayerScore();
+        const countdown = client.getMatchCountdown();
+        
+        // Determine score color based on rank
+        let scoreColor = '#4fc3f7'; // Default blue
+        if (playerScore.rank === 1) {
+          scoreColor = '#4caf50'; // Green for 1st place
+        } else if (playerScore.rank === 2) {
+          scoreColor = '#ff9800'; // Orange for 2nd place  
+        } else if (playerScore.rank === 3) {
+          scoreColor = '#ff5722'; // Red-orange for 3rd place
+        }
+        
+        // Create countdown display
+        let countdownText = '';
+        if (countdown.isActive && countdown.totalSeconds > 0) {
+          countdownText = `<div style="color: #ffeb3b; font-size: 10px; margin-top: 4px; border-top: 1px solid #555; padding-top: 4px;">⏱️ ${countdown.timeText}</div>`;
+        }
+        
+        // Update overlay content
+        scoreOverlay.innerHTML = `
+          <div style="color: #ffeb3b; font-size: 12px; margin-bottom: 2px;">YOUR SCORE</div>
+          <div style="font-size: 18px; color: ${scoreColor};">${playerScore.score}</div>
+          <div style="color: #aaa; font-size: 10px; margin-top: 2px;">
+            ${playerScore.rank > 0 ? `Rank: ${playerScore.rank}` : 'Rank: -'}
+            ${playerScore.ping < 999 ? ` | ${playerScore.ping}ms` : ''}
+          </div>
+          ${countdownText}
+        `;
+      } catch (e) {
+        console.error("Could not update player score overlay:", e);
+      }
+    }
+
     // Add server ID overlay to game window with verification status
     function addServerIdOverlay(serverId, verificationStatus = 'pending') {
       try {
