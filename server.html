@@ -782,10 +782,16 @@
       stopMatchControl();
       
       try {
-        // 1. FIRST: Use latest stored player scores (updated every 3 seconds)
+        // 1. FIRST: Get fresh scores from RCON right before game end to ensure accuracy
+        console.log('📊 Getting fresh scores from RCON for accurate Game Over results...');
+        await updatePlayerStatistics(); // Force fresh RCON update
+        
+        // Small delay to ensure RCON response is processed
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         let finalScores = [];
         
-        console.log('📊 Using latest stored player scores for Game Over...');
+        console.log('📊 Using freshly updated player scores for Game Over...');
         console.log('🔍 Latest player scores data:', latestPlayerScores);
         
         if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
@@ -2278,8 +2284,8 @@
     
     // Match control settings
     const MATCH_SETTINGS = {
-      DURATION_MINUTES: 1, // Temporarily set to 1 minute for testing
-      FRAG_LIMIT: 30,
+      DURATION_MINUTES: 15, // 15 minutes per match
+      FRAG_LIMIT: 5, // 5 frags to win
       CHECK_INTERVAL_MS: 3000 // Check every 3 seconds
     };
     
@@ -2829,10 +2835,16 @@
       console.log(`🏁 Automatic Game Over initiated: ${reason}`);
       
       try {
-        // 1. FIRST: Use latest stored player scores
+        // 1. FIRST: Get fresh scores from RCON right before automatic game end
+        console.log('📊 Getting fresh scores from RCON for accurate automatic Game Over results...');
+        await updatePlayerStatistics(); // Force fresh RCON update
+        
+        // Small delay to ensure RCON response is processed
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         let finalScores = [];
         
-        console.log('📊 Using latest stored player scores for automatic Game Over...');
+        console.log('📊 Using freshly updated player scores for automatic Game Over...');
         console.log('🔍 Latest player scores data:', latestPlayerScores);
         
         if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
@@ -3488,13 +3500,32 @@
       // Send individual scores and common countdown to each connected client
       serverState.clients.forEach((client, clientId) => {
         if (client.connected) {
-          // Find this client's score by matching username
+          // Find this client's score by matching username (improved matching)
           let playerScore = null;
           if (currentScores.length > 0) {
-            const matchingPlayer = currentScores.find(player => 
-              player.name === client.username || 
-              player.name === client.id
-            );
+            const clientName = (client.username || client.id || '').toLowerCase().trim();
+            const matchingPlayer = currentScores.find(player => {
+              const playerName = (player.name || '').toLowerCase().trim();
+              // Try exact match first, then partial match
+              const isMatch = playerName === clientName || 
+                     playerName.includes(clientName) || 
+                     clientName.includes(playerName) ||
+                     player.name === client.username || 
+                     player.name === client.id;
+              
+              // Debug logging for matching issues
+              if (isMatch) {
+                console.log(`✅ Score match found: client "${clientName}" -> player "${playerName}" (score: ${player.score})`);
+              }
+              
+              return isMatch;
+            });
+            
+            // Debug logging if no match found
+            if (!matchingPlayer) {
+              console.warn(`⚠️  No score match for client "${clientName}". Available players:`, 
+                currentScores.map(p => `"${p.name}" (score: ${p.score})`));
+            }
             
             if (matchingPlayer) {
               playerScore = {
