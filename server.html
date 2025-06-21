@@ -3044,7 +3044,49 @@
     }
     
     // Server Restart Cycle Functions
+    // RESTART FUNCTIONALITY DISABLED
+    // TO RE-ENABLE RESTART: Uncomment the full function implementation below
     async function startServerRestartCycle(matchEndReason) {
+      console.log('🔄 Server restart cycle disabled - match will end without restart');
+      console.log('Match end reason:', matchEndReason);
+      
+      // Instead of restarting, just end the match cleanly
+      try {
+        // Update any existing GAME ENDED overlays to show final state
+        const gameEndedOverlays = document.querySelectorAll('.game-ended-overlay');
+        gameEndedOverlays.forEach(overlay => {
+          overlay.innerHTML = '🏁 GAME ENDED<br><span style="font-size: 14px;">MATCH COMPLETED - SERVER WILL TERMINATE</span>';
+        });
+        
+        // Broadcast final match end message to clients
+        broadcastToAllClients({
+          type: 'match:final:end',
+          message: 'Match ended - server terminating',
+          reason: matchEndReason
+        });
+        
+        // Wait for clients to receive the message
+        console.log('⏳ Waiting 3 seconds for clients to receive final message...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Stop the dedicated server (final shutdown)
+        console.log('🛑 Stopping dedicated server (final shutdown)...');
+        const stopResult = await stopServer(false); // false = no restart
+        console.log('🛑 Server stopped:', stopResult);
+        
+        // Update server status to ended
+        await updateServerStatus('not_running');
+        
+        console.log('✅ Match ended cleanly - no restart');
+        
+      } catch (error) {
+        console.error('Error in final match end:', error);
+      }
+      
+      /* 
+      // ORIGINAL RESTART IMPLEMENTATION - COMMENTED OUT
+      // TO RE-ENABLE RESTART: Remove the above code and uncomment this block
+      
       console.log('🔄 Starting server restart cycle after match end');
       
       try {
@@ -3134,9 +3176,23 @@
       } catch (error) {
         console.error('Error in server restart cycle:', error);
       }
+      */
     }
     
+    // RESTART FUNCTIONALITY DISABLED
+    // TO RE-ENABLE RESTART: Uncomment the full function implementation below
     async function restartServer() {
+      console.log('🔄 Server restart function disabled - should not be called');
+      console.log('⚠️  If this function is called, it means restart logic was not fully disabled');
+      
+      // This function should never be called when restart is disabled
+      // Log error and do nothing
+      console.error('restartServer() called when restart functionality is disabled');
+      
+      /*
+      // ORIGINAL RESTART IMPLEMENTATION - COMMENTED OUT
+      // TO RE-ENABLE RESTART: Uncomment this block
+      
       console.log('🔄 Beginning server restart...');
       
       try {
@@ -3199,6 +3255,7 @@
           message: 'Server restart failed. Please refresh your page.'
         });
       }
+      */
     }
     
     // Token Reward Distribution Functions
