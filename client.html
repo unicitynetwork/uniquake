@@ -643,6 +643,10 @@
           <button id="create-server-button" style="background-color: #ffeb3b; color: #000; font-weight: bold; width: 100%;">Create New Server</button>
         </div>
         
+        <div class="button-row">
+          <button id="request-scores-button" style="background-color: #9c27b0; color: #fff; width: 100%;" disabled>Get Scores from Master</button>
+        </div>
+        
         
         <!-- Direct connection button removed for security -->
         <!--
@@ -1043,6 +1047,9 @@
       
       // Create server button
       addSafeEventListener('create-server-button', 'click', createNewServer);
+      
+      // Request scores button
+      addSafeEventListener('request-scores-button', 'click', requestScoresFromMaster);
       
       // Player name functionality - auto-save on blur, enter, and input changes
       let nameInputTimeout;
@@ -1865,6 +1872,24 @@
               connectButton.title = '';
             }
           }
+          
+          // Enable/disable request scores button based on connection and server selection
+          const requestScoresButton = document.getElementById('request-scores-button');
+          if (requestScoresButton) {
+            // Enable request scores button if connected to master and server is selected
+            const canRequestScores = client.clientState.connected && selectedServerId && !isMalformed;
+            requestScoresButton.disabled = !canRequestScores;
+            
+            if (!client.clientState.connected) {
+              requestScoresButton.title = 'Must be connected to master server';
+            } else if (isMalformed) {
+              requestScoresButton.title = 'Cannot request scores: Server has malformed metadata';
+            } else if (!selectedServerId) {
+              requestScoresButton.title = 'Select a server to request scores';
+            } else {
+              requestScoresButton.title = 'Request player scores directly from master server via RCON';
+            }
+          }
         });
         
         container.appendChild(serverElem);
@@ -1881,6 +1906,7 @@
       const connectionText = document.getElementById('connection-text');
       const playerNameInput = document.getElementById('player-name-input');
       const clearButton = document.getElementById('clear-identity-button');
+      const requestScoresButton = document.getElementById('request-scores-button');
       
       if (status.connected) {
         connectButton.disabled = true;
@@ -1889,6 +1915,10 @@
         sendButton.disabled = false;
         playerNameInput.disabled = true; // Disable name editing while connected
         clearButton.disabled = true; // Disable clear while connected
+        // Enable request scores button when connected to master server
+        if (requestScoresButton) {
+          requestScoresButton.disabled = !selectedServerId; // Enable only if server is selected
+        }
         connectionStatus.className = 'status-indicator status-connected';
         connectionText.textContent = 'Connected';
         
@@ -1907,6 +1937,10 @@
         sendButton.disabled = true;
         playerNameInput.disabled = false; // Re-enable name editing when disconnected
         clearButton.disabled = false; // Re-enable clear when disconnected
+        // Disable request scores button when disconnected from master server
+        if (requestScoresButton) {
+          requestScoresButton.disabled = true;
+        }
         connectionStatus.className = 'status-indicator status-disconnected';
         connectionText.textContent = 'Disconnected';
         document.getElementById('ping-display').textContent = '';
@@ -2277,6 +2311,74 @@
         console.log('Server window opened successfully');
       } else {
         alert('Failed to open server window. Please check if pop-ups are blocked.');
+      }
+    }
+    
+    // Request scores from master server function
+    async function requestScoresFromMaster() {
+      if (!client) {
+        alert('Client not initialized');
+        return;
+      }
+      
+      if (!client.clientState.connected) {
+        alert('Not connected to master server');
+        return;
+      }
+      
+      if (!selectedServerId) {
+        alert('Please select a game server first');
+        return;
+      }
+      
+      try {
+        // Get the current player name
+        const playerName = currentPlayerName || client.clientInfo.name || 'Unknown';
+        
+        // Update button state
+        const button = document.getElementById('request-scores-button');
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Requesting Scores...';
+        
+        console.log(`Requesting scores for server ${selectedServerId} from master server...`);
+        
+        // Request scores using the new method
+        const result = await client.requestScoresFromMaster(null, selectedServerId, playerName);
+        
+        console.log('Received scores from master server:', result);
+        
+        // Show success message with score data
+        const scoreCount = result.allScores ? result.allScores.length : 0;
+        const playerScore = result.playerScore;
+        
+        let message = `Successfully retrieved scores from master server!\n\n`;
+        message += `Server: ${result.gameId || selectedServerId}\n`;
+        message += `Total Players: ${scoreCount}\n`;
+        
+        if (playerScore) {
+          message += `Your Score: ${playerScore.score} (Rank: ${playerScore.rank})\n`;
+          message += `Your Ping: ${playerScore.ping}ms\n`;
+        }
+        
+        if (result.matchInfo) {
+          message += `Map: ${result.matchInfo.map}\n`;
+          message += `Max Players: ${result.matchInfo.maxPlayers}\n`;
+        }
+        
+        alert(message);
+        
+        // The score data has already been processed by handleScoresResponse
+        // and the UI should be automatically updated via the playerScoreUpdate event
+        
+      } catch (error) {
+        console.error('Failed to request scores from master:', error);
+        alert(`Failed to get scores from master server: ${error.message}`);
+      } finally {
+        // Restore button state
+        const button = document.getElementById('request-scores-button');
+        button.disabled = false;
+        button.textContent = originalText;
       }
     }
     
