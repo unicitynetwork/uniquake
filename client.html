@@ -1459,7 +1459,7 @@
         scoreOverlay.style.pointerEvents = 'none';
         scoreOverlay.style.border = '1px solid #4fc3f7';
         scoreOverlay.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.5)';
-        scoreOverlay.style.minWidth = '120px';
+        scoreOverlay.style.minWidth = '140px';
         scoreOverlay.style.textAlign = 'center';
         
         // Set initial content
@@ -1467,6 +1467,7 @@
           <div style="color: #ffeb3b; font-size: 12px; margin-bottom: 2px;">YOUR SCORE</div>
           <div style="font-size: 18px; color: #4fc3f7;">0</div>
           <div style="color: #aaa; font-size: 10px; margin-top: 2px;">Rank: -</div>
+          <div style="color: #666; font-size: 11px; margin-top: 4px; border-top: 1px solid #555; padding-top: 4px;">⏸️ No Match</div>
         `;
         
         // Add to game container
@@ -1507,10 +1508,30 @@
           scoreColor = '#ff5722'; // Red-orange for 3rd place
         }
         
-        // Create countdown display
+        // Create countdown display - always show, with different states
         let countdownText = '';
+        let countdownColor = '#666'; // Gray for inactive
+        let countdownIcon = '⏱️';
+        
         if (countdown.isActive && countdown.totalSeconds > 0) {
-          countdownText = `<div style="color: #ffeb3b; font-size: 10px; margin-top: 4px; border-top: 1px solid #555; padding-top: 4px;">⏱️ ${countdown.timeText}</div>`;
+          // Active match with time remaining
+          if (countdown.totalSeconds <= 30) {
+            countdownColor = '#f44336'; // Red for last 30 seconds
+            countdownIcon = '🚨';
+          } else if (countdown.totalSeconds <= 60) {
+            countdownColor = '#ff9800'; // Orange for last minute
+            countdownIcon = '⚠️';
+          } else {
+            countdownColor = '#4fc3f7'; // Blue for normal time
+            countdownIcon = '⏱️';
+          }
+          countdownText = `<div style="color: ${countdownColor}; font-size: 11px; margin-top: 4px; border-top: 1px solid #555; padding-top: 4px; font-weight: bold;">${countdownIcon} ${countdown.timeText}</div>`;
+        } else if (countdown.isActive) {
+          // Match active but no time data
+          countdownText = `<div style="color: #4fc3f7; font-size: 11px; margin-top: 4px; border-top: 1px solid #555; padding-top: 4px;">⏱️ Match Active</div>`;
+        } else {
+          // Match not active
+          countdownText = `<div style="color: #666; font-size: 11px; margin-top: 4px; border-top: 1px solid #555; padding-top: 4px;">⏸️ No Match</div>`;
         }
         
         // Update overlay content
