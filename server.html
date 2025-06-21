@@ -2740,11 +2740,16 @@
       matchControl.isActive = true;
       matchControl.startTime = Date.now();
       
-      // Set up time limit timeout
-      matchControl.timeoutId = setTimeout(() => {
-        console.log('⏰ Time limit reached - ending match');
-        triggerAutomaticMatchEnd('timelimit');
-      }, matchControl.duration);
+      // Set up time limit timeout using interval-based checking to avoid browser throttling
+      matchControl.timeoutId = setInterval(() => {
+        const elapsed = Date.now() - matchControl.startTime;
+        if (elapsed >= matchControl.duration) {
+          console.log('⏰ Time limit reached - ending match');
+          clearInterval(matchControl.timeoutId);
+          matchControl.timeoutId = null;
+          triggerAutomaticMatchEnd('timelimit');
+        }
+      }, 1000); // Check every second instead of using setTimeout
       
       // Start checking for frag limit
       matchControl.checkInterval = setInterval(() => {
@@ -2768,7 +2773,7 @@
       
       // Clear timers
       if (matchControl.timeoutId) {
-        clearTimeout(matchControl.timeoutId);
+        clearInterval(matchControl.timeoutId);
         matchControl.timeoutId = null;
       }
       
@@ -3132,7 +3137,15 @@
         serverState.restartCycle.phase = 'restarting';
         updateMatchControlUI();
         
-        // Broadcast restart beginning
+        // Broadcast explicit game restart command to all clients
+        broadcastToAllClients({
+          type: 'game:restart:command',
+          message: 'Server restarted - reconnecting game...',
+          serverPeerId: serverState.registered ? serverState.peerId : null,
+          timestamp: Date.now()
+        });
+        
+        // Also broadcast restart beginning for compatibility
         broadcastToAllClients({
           type: 'server:restart:starting',
           message: 'Server is restarting now...'
