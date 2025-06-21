@@ -427,6 +427,7 @@
       // Set up real-time UI updates for server stats
       setInterval(() => {
         updateGameStateDisplay();
+        updateMatchControlUI(); // Also update match control UI (includes timer updates to master)
       }, 1000); // Update every 1 second for real-time updates
       
       // Set up periodic server status updates
@@ -1286,6 +1287,18 @@
       
       // Reset for next match - this clears the "GAME ENDED" overlay
       resetForNextMatch();
+      
+      // Send server running status to master server (clear countdown)
+      if (serverConnection && serverConnection.readyState === WebSocket.OPEN && serverState.registered) {
+        const runningUpdateMsg = {
+          type: 'update_server',
+          serverInfo: {
+            restartCountdown: 0,
+            state: 'running'
+          }
+        };
+        serverConnection.send(JSON.stringify(runningUpdateMsg));
+      }
       
       updateServerStatus('running');
       console.log(`✅ Server state updated with new game ID: ${message.gameId}`);
@@ -2996,6 +3009,26 @@
         matchTimerEl.innerHTML = '⏱️ Time Remaining: --:--';
         matchFragsEl.innerHTML = '🎯 Highest Score: 0 / 30';
       }
+      
+      // Send match timer update to master server every 10 seconds (for running matches)
+      if (matchControl.isActive && !gameEnded && serverConnection && serverConnection.readyState === WebSocket.OPEN && serverState.registered) {
+        const remaining = getRemainingTime();
+        if (remaining !== null) {
+          // Only send update every 10 seconds to avoid overwhelming master server
+          const currentTime = Date.now();
+          if (!matchControl.lastMasterUpdate || currentTime - matchControl.lastMasterUpdate >= 10000) {
+            matchControl.lastMasterUpdate = currentTime;
+            const matchTimerUpdateMsg = {
+              type: 'update_server',
+              serverInfo: {
+                matchTimeRemaining: Math.ceil(remaining / 1000), // Convert to seconds
+                state: 'running'
+              }
+            };
+            serverConnection.send(JSON.stringify(matchTimerUpdateMsg));
+          }
+        }
+      }
     }
     
     // Server Restart Cycle Functions
@@ -3053,6 +3086,18 @@
               el.textContent = Math.ceil(remaining / 1000);
             }
           });
+          
+          // Send countdown update to master server every 5 seconds
+          if (remaining > 0 && remaining % 5000 < 1000 && serverConnection && serverConnection.readyState === WebSocket.OPEN && serverState.registered) {
+            const countdownUpdateMsg = {
+              type: 'update_server',
+              serverInfo: {
+                restartCountdown: remaining > 0 ? Math.ceil(remaining / 1000) : 0,
+                state: 'game_over'
+              }
+            };
+            serverConnection.send(JSON.stringify(countdownUpdateMsg));
+          }
           
           // Broadcast countdown updates every 10 seconds
           if (remaining > 0 && remaining % 10000 < 1000) {

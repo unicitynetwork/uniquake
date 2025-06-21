@@ -113,6 +113,13 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 
 ## Important Notes
 
+### Binary Commands
+The project includes several binary commands accessible via npm:
+- `uniquake-content`: Content server binary
+- `uniquake-master`: WebRTC master server binary  
+- `uniquake-repak`: Asset repackaging tool
+- `uniquake-rcon`: Remote console tool
+
 ### Submodule Management
 - The project uses nested submodules: `fresh_quakejs` contains the `ioq3` submodule
 - Always use `git clone --recursive` or `git submodule update --init --recursive`
@@ -127,7 +134,7 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 - Master server: 27950 (WebSocket)
 - Dedicated servers: 27961+ (auto-assigned)
 - Web server: 8080 (default)
-- Content server: varies (configured in content.js)
+- Content server: 9000 (default, configurable)
 
 ### Memory Requirements
 - Downloading game assets requires ~1GB RAM
@@ -214,9 +221,9 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
   - Main game: `http://localhost:8080/quake`
 
 ### Lint and Type Checking
-- **Lint**: Check for available linting commands in package.json
-- **Tests**: Check for test commands and framework used
-- Always run lint/typecheck after making changes if commands are available
+- **Note**: No lint or test commands are currently defined in package.json
+- Consider adding linting configuration (ESLint) and test framework in future
+- Code follows existing patterns: 2 spaces, single quotes, camelCase
 
 ### Manual Testing Workflow
 1. Start master server (`npm run master-quake`)
@@ -260,3 +267,9 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 - Token monitoring runs every 30 seconds checking for inactive servers
 - Inactive servers are automatically terminated (separate from 2-hour session timeout)
 - Session timeout (2 hours) handles general connection cleanup
+
+## Unicity Integration
+- Project uses @unicitylabs/shared and @unicitylabs/tx-flow-engine packages
+- Game state tokens are managed for blockchain verification
+- Token service handles transaction flow and state management
+- "End Match and Pay Rewards" button triggers token-based reward distribution

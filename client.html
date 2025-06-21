@@ -1452,7 +1452,6 @@
         const gameContainer = document.querySelector('.game-container');
         if (gameContainer) {
           gameContainer.appendChild(serverIdOverlay);
-          console.log('Server ID overlay added:', serverId, 'status:', verificationStatus);
         } else {
           console.warn('Game container not found, cannot add server ID overlay');
         }
@@ -1609,12 +1608,14 @@
       const container = document.getElementById('servers-container');
       container.innerHTML = '';
       
+      
       if (servers.length === 0) {
         container.innerHTML = '<div class="server-item">No servers available</div>';
         return;
       }
       
       servers.forEach(server => {
+        
         const serverElem = document.createElement('div');
         serverElem.className = 'server-item';
         serverElem.setAttribute('data-server-id', server.peerId);
@@ -1636,14 +1637,29 @@
         serverElem.classList.add(stateClass);
         
         const serverName = isMalformed ? `${server.name} (MALFORMED)` : server.name;
-        const stateText = dedicatedState === 'not_running' ? 'Not Running' : 
-                         dedicatedState === 'starting' ? 'Starting' :
-                         dedicatedState === 'game_over' ? 'Game Over' : 'Running';
+        let stateText = dedicatedState === 'not_running' ? 'Not Running' : 
+                       dedicatedState === 'starting' ? 'Starting' :
+                       dedicatedState === 'game_over' ? 'Game Over' : 'Running';
+        
+        // Add countdown to state text if server is in game_over and has countdown
+        if (dedicatedState === 'game_over' && server.restartCountdown && server.restartCountdown > 0) {
+          stateText = `Game Over - Next Match in ${server.restartCountdown}s`;
+        }
+        
+        // Prepare additional info line for match timer (for running games)
+        let additionalInfo = '';
+        if (dedicatedState === 'running' && server.matchTimeRemaining && server.matchTimeRemaining > 0) {
+          const minutes = Math.floor(server.matchTimeRemaining / 60);
+          const seconds = server.matchTimeRemaining % 60;
+          const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+          additionalInfo = `<div class="server-info" style="color: #4fc3f7;">⏱️ Match Time: ${timeText}</div>`;
+        }
         
         serverElem.innerHTML = `
           <div class="server-name">${serverName}</div>
           <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
           <div class="server-status ${stateClass}">Status: ${stateText}</div>
+          ${additionalInfo}
           <div class="server-info">ID: ${server.peerId}</div>
           <div class="server-info" style="display:none;">Address: ${server.address || 'Not specified'}</div>
         `;
@@ -1671,7 +1687,11 @@
             } else if (dedicatedState === 'starting') {
               connectButton.title = 'Cannot connect: Dedicated server is still starting';
             } else if (dedicatedState === 'game_over') {
-              connectButton.title = 'Cannot connect: Game is over, waiting for restart';
+              if (server.restartCountdown && server.restartCountdown > 0) {
+                connectButton.title = `Cannot connect: Game is over, next match starts in ${server.restartCountdown} seconds`;
+              } else {
+                connectButton.title = 'Cannot connect: Game is over, waiting for restart';
+              }
             } else {
               connectButton.title = '';
             }
@@ -1759,7 +1779,6 @@
           // Use the token service's normalization and hash calculation
           // This ensures we use exactly the same process as the server
           localStateHash = client.clientState.tokenService.hashGameState(gameState);
-          console.log(`Calculated local hash for frame ${gameState.frame}:`, localStateHash);
           
           // Restore previous debug setting
           client.clientState.tokenService.debugMode = debugEnabled;
@@ -1816,18 +1835,15 @@
       const serverFrame = client?.clientState?.lastGameStateVerification?.serverFrame || verifiedFrame;
       
       // IMPORTANT: Get server info prioritizing the dedicated server state info message
-      console.log("[SERVER_STATE] Looking for server state info sources");
       
       let serverInfo;
       // First priority: Use dedicated server state info from client state (from server:state:update message)
       if (client?.clientState?.serverStateInfo) {
         serverInfo = client.clientState.serverStateInfo;
-        console.log("[SERVER_STATE] Using dedicated server state info:", JSON.stringify(serverInfo));
       }
       // Second priority: Use server info from verification object
       else if (client?.clientState?.lastGameStateVerification?.serverInfo) {
         serverInfo = client.clientState.lastGameStateVerification.serverInfo;
-        console.log("[SERVER_STATE] Using server info from verification:", JSON.stringify(serverInfo));
       }
       // Fallback: Use client-side data
       else {
@@ -1836,22 +1852,18 @@
           itemCount: Object.keys(gameState.items || {}).length,
           timestamp: gameState.timestamp
         };
-        console.log("[SERVER_STATE] Using fallback client-side server info:", JSON.stringify(serverInfo));
       }
       
       // Check if serverInfo has all required fields and enforce them
       if (!serverInfo.playerCount && serverInfo.playerCount !== 0) {
-        console.log("[SERVER_STATE] playerCount missing, setting to 0");
         serverInfo.playerCount = 0;
       }
       
       if (!serverInfo.itemCount && serverInfo.itemCount !== 0) {
-        console.log("[SERVER_STATE] itemCount missing, setting to 0");
         serverInfo.itemCount = 0;
       }
       
       if (!serverInfo.timestamp) {
-        console.log("[SERVER_STATE] timestamp missing, setting to current time");
         serverInfo.timestamp = Date.now();
       }
       
@@ -1877,7 +1889,6 @@
         // Ensure we're using the exactly same state normalization as the server
         const normalizedState = client.clientState.tokenService.normalizeGameState(gameState);
         localStateHash = client.clientState.tokenService.hashGameState(normalizedState);
-        console.log(`Recalculated hash using normalized state with only frame and gameId:`, localStateHash);
       }
       
       // Update game state display
