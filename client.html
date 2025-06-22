@@ -643,9 +643,6 @@
           <button id="create-server-button" style="background-color: #ffeb3b; color: #000; font-weight: bold; width: 100%;">Create New Server</button>
         </div>
         
-        <div class="button-row">
-          <button id="request-scores-button" style="background-color: #9c27b0; color: #fff; width: 100%;" disabled>Get Scores from Master</button>
-        </div>
         
         
         <!-- Direct connection button removed for security -->
@@ -910,10 +907,15 @@
         }
       }, 2000);
       
-      // Set up periodic player score overlay updates
+      // Set up periodic player score overlay updates using direct master server requests
+      setInterval(() => {
+        updatePlayerScoreOverlayFromMaster();
+      }, 3000); // Update every 3 seconds via direct master server requests (reduces server load)
+      
+      // Also update UI overlay every second for smooth countdown display
       setInterval(() => {
         updatePlayerScoreOverlay();
-      }, 1000); // Update every second for smooth score/countdown updates
+      }, 1000); // Update every second for smooth countdown updates
       
       // Set up local timer for smooth countdown updates
       startLocalTimerUpdates();
@@ -1048,8 +1050,6 @@
       // Create server button
       addSafeEventListener('create-server-button', 'click', createNewServer);
       
-      // Request scores button
-      addSafeEventListener('request-scores-button', 'click', requestScoresFromMaster);
       
       // Player name functionality - auto-save on blur, enter, and input changes
       let nameInputTimeout;
@@ -1873,23 +1873,6 @@
             }
           }
           
-          // Enable/disable request scores button based on connection and server selection
-          const requestScoresButton = document.getElementById('request-scores-button');
-          if (requestScoresButton) {
-            // Enable request scores button if connected to master and server is selected
-            const canRequestScores = client.clientState.connected && selectedServerId && !isMalformed;
-            requestScoresButton.disabled = !canRequestScores;
-            
-            if (!client.clientState.connected) {
-              requestScoresButton.title = 'Must be connected to master server';
-            } else if (isMalformed) {
-              requestScoresButton.title = 'Cannot request scores: Server has malformed metadata';
-            } else if (!selectedServerId) {
-              requestScoresButton.title = 'Select a server to request scores';
-            } else {
-              requestScoresButton.title = 'Request player scores directly from master server via RCON';
-            }
-          }
         });
         
         container.appendChild(serverElem);
@@ -1906,7 +1889,6 @@
       const connectionText = document.getElementById('connection-text');
       const playerNameInput = document.getElementById('player-name-input');
       const clearButton = document.getElementById('clear-identity-button');
-      const requestScoresButton = document.getElementById('request-scores-button');
       
       if (status.connected) {
         connectButton.disabled = true;
@@ -1915,10 +1897,6 @@
         sendButton.disabled = false;
         playerNameInput.disabled = true; // Disable name editing while connected
         clearButton.disabled = true; // Disable clear while connected
-        // Enable request scores button when connected to master server
-        if (requestScoresButton) {
-          requestScoresButton.disabled = !selectedServerId; // Enable only if server is selected
-        }
         connectionStatus.className = 'status-indicator status-connected';
         connectionText.textContent = 'Connected';
         
@@ -1937,10 +1915,6 @@
         sendButton.disabled = true;
         playerNameInput.disabled = false; // Re-enable name editing when disconnected
         clearButton.disabled = false; // Re-enable clear when disconnected
-        // Disable request scores button when disconnected from master server
-        if (requestScoresButton) {
-          requestScoresButton.disabled = true;
-        }
         connectionStatus.className = 'status-indicator status-disconnected';
         connectionText.textContent = 'Disconnected';
         document.getElementById('ping-display').textContent = '';
@@ -2314,73 +2288,6 @@
       }
     }
     
-    // Request scores from master server function
-    async function requestScoresFromMaster() {
-      if (!client) {
-        alert('Client not initialized');
-        return;
-      }
-      
-      if (!client.clientState.connected) {
-        alert('Not connected to master server');
-        return;
-      }
-      
-      if (!selectedServerId) {
-        alert('Please select a game server first');
-        return;
-      }
-      
-      try {
-        // Get the current player name
-        const playerName = currentPlayerName || client.clientInfo.name || 'Unknown';
-        
-        // Update button state
-        const button = document.getElementById('request-scores-button');
-        const originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = 'Requesting Scores...';
-        
-        console.log(`Requesting scores for server ${selectedServerId} from master server...`);
-        
-        // Request scores using the new method
-        const result = await client.requestScoresFromMaster(null, selectedServerId, playerName);
-        
-        console.log('Received scores from master server:', result);
-        
-        // Show success message with score data
-        const scoreCount = result.allScores ? result.allScores.length : 0;
-        const playerScore = result.playerScore;
-        
-        let message = `Successfully retrieved scores from master server!\n\n`;
-        message += `Server: ${result.gameId || selectedServerId}\n`;
-        message += `Total Players: ${scoreCount}\n`;
-        
-        if (playerScore) {
-          message += `Your Score: ${playerScore.score} (Rank: ${playerScore.rank})\n`;
-          message += `Your Ping: ${playerScore.ping}ms\n`;
-        }
-        
-        if (result.matchInfo) {
-          message += `Map: ${result.matchInfo.map}\n`;
-          message += `Max Players: ${result.matchInfo.maxPlayers}\n`;
-        }
-        
-        alert(message);
-        
-        // The score data has already been processed by handleScoresResponse
-        // and the UI should be automatically updated via the playerScoreUpdate event
-        
-      } catch (error) {
-        console.error('Failed to request scores from master:', error);
-        alert(`Failed to get scores from master server: ${error.message}`);
-      } finally {
-        // Restore button state
-        const button = document.getElementById('request-scores-button');
-        button.disabled = false;
-        button.textContent = originalText;
-      }
-    }
     
     // Panel resizer functionality
     function initializeResizer() {
@@ -2653,6 +2560,59 @@
           delete serverTimers[peerId];
         }
       });
+    }
+    
+    /**
+     * Update player score overlay using direct requests to master server
+     * This bypasses the server page to avoid browser tab throttling issues
+     */
+    async function updatePlayerScoreOverlayFromMaster() {
+      try {
+        // Only request scores if client is connected and has a selected server
+        if (!client || !client.clientState.connected || !selectedServerId) {
+          return;
+        }
+        
+        // Track when we make master server requests for timestamp checking
+        client.clientState.lastMasterScoreRequest = Date.now();
+        client.clientState.usingScoreFallback = false; // Reset fallback flag
+        
+        // Get player name for score matching
+        const playerName = document.getElementById('player-name-input')?.value || '';
+        
+        // Request scores directly from master server
+        const scoreData = await client.requestScoresFromMaster(null, selectedServerId, playerName);
+        
+        if (scoreData && scoreData.success) {
+          console.log('✅ Received fresh scores from master server:', scoreData);
+          
+          // Update client state with fresh data - this will be picked up by updatePlayerScoreOverlay()
+          if (scoreData.playerScore) {
+            client.clientState.latestPlayerScore = {
+              score: scoreData.playerScore.score || 0,
+              ping: scoreData.playerScore.ping || 999,
+              name: scoreData.playerScore.name || playerName,
+              rank: scoreData.playerScore.rank || 0,
+              lastUpdate: Date.now()
+            };
+          }
+          
+          if (scoreData.allScores) {
+            client.clientState.allPlayerScores = scoreData.allScores;
+          }
+          
+          // Update match info if available
+          if (scoreData.matchInfo) {
+            console.log('📊 Match info from master:', scoreData.matchInfo);
+          }
+          
+        } else {
+          console.warn('⚠️ Failed to get scores from master server:', scoreData?.error || 'Unknown error');
+        }
+        
+      } catch (error) {
+        console.error('❌ Error requesting scores from master server:', error);
+      }
     }
   </script>
 </body>
