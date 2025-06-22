@@ -5,7 +5,8 @@
     "uniquake-content": "bin/content.js",
     "uniquake-master": "bin/webrtc-master.js",
     "uniquake-repak": "bin/repak.js",
-    "uniquake-rcon": "bin/rcon.js"
+    "uniquake-rcon": "bin/rcon.js",
+    "uniquake-server": "bin/server-cli.js"
   },
   "scripts": {
     "config": "node bin/generate-configs.js",
@@ -20,7 +21,8 @@
     "mock-client": "node lib/mock-game-client.js",
     "browser-mock": "npm run config && node mock-server.js",
     "browser-mock-all": "concurrently \"npm run master\" \"npm run browser-mock\"",
-    "start-browser-mocks": "npm run config && npm run browser-mock-all"
+    "start-browser-mocks": "npm run config && npm run browser-mock-all",
+    "server-cli": "node bin/server-cli.js"
   },
   "repository": {
     "type": "git",
