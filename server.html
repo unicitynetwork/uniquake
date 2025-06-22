@@ -297,9 +297,9 @@
           <div class="match-control" id="match-control" style="background-color: #252525; border-radius: 3px; padding: 10px; font-size: 14px;">
             <div id="match-status" style="font-weight: bold; color: #ff9800; margin-bottom: 8px;">Match not started</div>
             <div id="match-timer" style="color: #4fc3f7; margin-bottom: 5px;">⏱️ Time Remaining: --:--</div>
-            <div id="match-frags" style="color: #4fc3f7; margin-bottom: 5px;">🎯 Highest Score: 0 / 30</div>
+            <div id="match-frags" style="color: #4fc3f7; margin-bottom: 5px;">🎯 Highest Score: 0 / 15</div>
             <div style="font-size: 12px; color: #888; margin-top: 8px;">
-              Match ends after 1 minute or when any player reaches 30 frags
+              Match ends after 15 minutes or when any player reaches 15 frags
             </div>
           </div>
         </div>
@@ -2285,7 +2285,7 @@
     // Match control settings
     const MATCH_SETTINGS = {
       DURATION_MINUTES: 15, // 15 minutes per match
-      FRAG_LIMIT: 5, // 5 frags to win
+      FRAG_LIMIT: 15, // 15 frags to win
       CHECK_INTERVAL_MS: 3000 // Check every 3 seconds
     };
     
