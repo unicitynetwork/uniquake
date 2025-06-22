@@ -51,6 +51,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Configure master server in browser mocks**:
   - Via env var: `MASTER_SERVER_URL=ws://your-server-ip:27950 npm run browser-mock`
   - Via URL: `http://localhost:8080/client?master=ws://your-server-ip:27950`
+- **Server CLI**: `npm run server-cli` or `node bin/server-cli.js` (comprehensive server management tool)
 
 ### Asset Management
 - **Repackage assets**: `npm run repak` or `node bin/repak.js`
@@ -104,6 +105,8 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 6. **Automatic match restart cycle**: When matches end via timeout/score cap → 30s countdown → server restart → client auto-reconnect
 7. **Manual match end**: "End Match and Pay Rewards" button → complete server stop (no restart)
 8. **Game state tokens**: Servers send periodic state tokens for verification; inactive servers (>1min without tokens) are automatically terminated
+9. **Score requests**: Clients can request scores directly from master server; automatic score updates are pushed periodically
+10. **Match timer overlay**: Countdown timer data preserved from server page for client display
 
 ### Development Workflow
 - Branch naming: feature/*, bugfix/*, refactor/*
@@ -119,6 +122,7 @@ The project includes several binary commands accessible via npm:
 - `uniquake-master`: WebRTC master server binary  
 - `uniquake-repak`: Asset repackaging tool
 - `uniquake-rcon`: Remote console tool
+- `uniquake-server`: Server CLI tool for managing dedicated servers
 
 ### Submodule Management
 - The project uses nested submodules: `fresh_quakejs` contains the `ioq3` submodule

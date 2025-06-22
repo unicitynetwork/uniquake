@@ -14,6 +14,7 @@ const logger = require('winston');
 const optimist = require('optimist');
 const path = require('path');
 const fs = require('fs');
+const { TokenService } = require('../lib/token-service');
 
 // Set up logging
 logger.cli();
@@ -35,16 +36,11 @@ const serverState = {
   gameStateInterval: null,
   restartCycle: null,
   gameId: null,
-  gameState: {
-    gameId: `game-${Date.now()}`,
-    frame: 0,
-    timestamp: Date.now(),
-    players: {},
-    items: []
-  },
+  gameState: null, // Will be initialized in startGameStateTokens()
   playerScores: new Map(),
   heartbeatInterval: null,
-  updateStatsInterval: null
+  updateStatsInterval: null,
+  tokenService: null
 };
 
 // Latest player scores from RCON
@@ -200,21 +196,24 @@ function handleMasterServerMessage(message) {
       // Start heartbeats
       startHeartbeats();
       
-      // Start game state tokens if enabled
-      if (serverState.tokenEnabled) {
-        startGameStateTokens();
-      }
-      
       // Start dedicated server
       startRemoteServer();
+      // Note: Game state tokens will be started in handleGameServerStarted() 
+      // after we receive the gameId from the server
       break;
       
     case 'connection_request':
       handleConnectionRequest(message);
       break;
       
+    case 'proxy_connection':
+      handleProxyConnection(message);
+      break;
+      
     case 'proxy_data':
-      handleProxyData(message);
+      handleProxyData(message).catch(error => {
+        logger.error('Error handling proxy data:', error.message);
+      });
       break;
       
     case 'client_disconnected':
@@ -276,57 +275,142 @@ function startGameStateTokens() {
     clearInterval(serverState.gameStateInterval);
   }
   
-  // Create and broadcast tokens every 10 seconds
+  // Initialize game state to match server.html exactly
+  // Use the gameId that was already generated in startRemoteServer() and stored in serverState.gameId
+  serverState.gameState = {
+    gameId: serverState.gameId,
+    frame: 0,
+    timestamp: Date.now(),
+    players: {},
+    items: {}
+  };
+  
+  // Create initial token after 1 second
+  setTimeout(() => {
+    createGameStateToken(true);
+  }, 1000);
+  
+  // Set up periodic token broadcasts (every 10 seconds)
   serverState.gameStateInterval = setInterval(() => {
     createGameStateToken(true);
   }, 10000);
 }
 
 /**
- * Create game state token
+ * Create game state token using Unicity SDK (matching server.html exactly)
  */
 async function createGameStateToken(broadcast = true) {
-  // Increment frame counter
-  serverState.gameState.frame++;
-  serverState.gameState.timestamp = Date.now();
-  
-  // Update player list from connected clients
-  serverState.gameState.players = {};
-  for (const [clientId, client] of serverState.clients) {
-    if (client.pubkey) {
-      serverState.gameState.players[client.pubkey] = {
-        name: client.username,
-        score: client.score || 0,
-        health: 100,
-        armor: 0,
-        weapon: 5,
-        ammo: 10,
-        position: { x: 0, y: 0, z: 0 },
-        velocity: { x: 0, y: 0, z: 0 }
-      };
+  if (!serverState.tokenService) {
+    return null;
+  }
+
+  try {
+    // Only increment frame for periodic broadcasts, not for client requests
+    if (broadcast) {
+      serverState.gameState.frame++;
     }
-  }
-  
-  // Reset token every 10 frames to prevent growth
-  const shouldResetToken = serverState.gameState.frame % 10 === 0;
-  
-  if (shouldResetToken) {
-    logger.debug('Resetting game state token at frame', serverState.gameState.frame);
-    // Create fresh token (implementation would depend on token service)
-  }
-  
-  // Broadcast to clients if requested
-  if (broadcast && serverState.clients.size > 0) {
-    const tokenMessage = {
-      type: 'game:state:token',
-      gameId: serverState.gameId,
-      frame: serverState.gameState.frame,
-      timestamp: serverState.gameState.timestamp,
-      token: serverState.gameState // Simplified for now
-    };
+    serverState.gameState.timestamp = Date.now();
     
-    broadcastToClients(tokenMessage);
+    // Update players from connected clients (matching server.html logic)
+    serverState.gameState.players = {};
+    serverState.clients.forEach((client, clientId) => {
+      const playerKey = client.pubkey || clientId;
+      serverState.gameState.players[playerKey] = {
+        id: playerKey,
+        name: client.username || `Player-${clientId}`,
+        connected: client.connected,
+        pubkey: client.pubkey,
+        clientId: clientId,
+        joinTime: client.joinTime,
+        lastActive: Date.now()
+      };
+    });
+    
+    logger.debug(`Creating game state token for frame ${serverState.gameState.frame} with ${Object.keys(serverState.gameState.players).length} players`);
+  logger.info(`Game state for token - GameId: "${serverState.gameState.gameId}", Frame: ${serverState.gameState.frame}`);
+    
+    // Create or update the token (matching server.html logic)
+    // Reset token every 10 frames to prevent growth (when frame is divisible by 10)
+    let token = null;
+    const shouldResetToken = serverState.gameState.frame % 10 === 0;
+    
+    if (!serverState.tokenService.lastStateToken || shouldResetToken) {
+      if (shouldResetToken) {
+        logger.debug(`Resetting game state token at frame ${serverState.gameState.frame} (divisible by 10)`);
+      }
+      // Create fresh token (initial or reset)
+      token = await serverState.tokenService.createGameStateToken(serverState.gameState);
+      logger.debug(`Created ${shouldResetToken ? 'reset' : 'initial'} game state token for frame ${serverState.gameState.frame}`);
+    } else {
+      // Update existing token
+      try {
+        token = await serverState.tokenService.updateGameStateToken(
+          serverState.tokenService.lastStateToken,
+          serverState.gameState
+        );
+        logger.debug(`Updated game state token for frame ${serverState.gameState.frame}`);
+      } catch (updateError) {
+        // If update fails, create new token
+        logger.warn(`Token update failed, creating new token: ${updateError.message}`);
+        token = await serverState.tokenService.createGameStateToken(serverState.gameState);
+      }
+    }
+    
+    // Broadcast to all connected clients if requested (matching server.html)
+    if (broadcast && token) {
+      const tokenFlow = serverState.tokenService.TXF.exportFlow(token);
+      
+      const serverStateInfo = {
+        playerCount: serverState.clients.size,
+        itemCount: Object.keys(serverState.gameState.items).length,
+        timestamp: Date.now()
+      };
+      
+      const message = {
+        type: 'game:state:token',
+        tokenFlow: tokenFlow,
+        frame: serverState.gameState.frame,
+        serverInfo: serverStateInfo
+      };
+      
+      logger.debug(`Broadcasting Unicity token to ${serverState.clients.size} clients: frame ${serverState.gameState.frame}`);
+      logger.info(`[Token Broadcast] GameId: "${serverState.gameState.gameId}", Frame: ${serverState.gameState.frame}`);
+      broadcastToClients(message);
+    }
+    
+    return token;
+    
+  } catch (error) {
+    logger.error('Failed to create/update game state token:', error.message);
   }
+}
+
+
+/**
+ * Generate hash using the same method as the client for compatibility
+ * Matches the client's normalizeGameState() and TXF.getHashOf() approach
+ */
+function generateClientCompatibleHash(gameState) {
+  // If token service is available with our overrides, use it directly
+  if (serverState.tokenService && serverState.tokenService.hashGameState) {
+    return serverState.tokenService.hashGameState(gameState);
+  }
+  
+  // Otherwise use the same logic as our override
+  const minimalState = {
+    frame: parseInt(gameState?.frame || 0, 10),
+    gameId: String(gameState?.gameId || '')
+  };
+  
+  const serialized = JSON.stringify(minimalState);
+  
+  if (serverState.tokenService && serverState.tokenService.TXF) {
+    return serverState.tokenService.TXF.getHashOf(serialized);
+  }
+  
+  // Last resort fallback
+  const crypto = require('crypto');
+  return crypto.createHash('sha256').update(serialized).digest('hex');
 }
 
 /**
@@ -372,6 +456,15 @@ function handleGameServerStarted(message) {
     gameId: message.gameId,
     serverInfo: message.serverInfo
   };
+  
+  // Update server state with new game ID (matching server.html)
+  serverState.gameId = message.gameId;
+  
+  // NOW start game state tokens since we have the gameId
+  if (serverState.tokenEnabled && !serverState.gameStateInterval) {
+    logger.info('Starting game state tokens with gameId: ' + serverState.gameId);
+    startGameStateTokens();
+  }
   
   // Start periodic statistics updates
   startStatisticsUpdates();
@@ -644,15 +737,42 @@ function handleConnectionRequest(message) {
 }
 
 /**
+ * Handle proxy connection notification
+ */
+function handleProxyConnection(message) {
+  const { clientId, connectionId } = message;
+  logger.debug(`Proxy connection established for client ${clientId} with connection ${connectionId}`);
+  
+  // This message confirms that the proxy connection is active
+  // The client should already be in our clients map from connection_request
+  const client = serverState.clients.get(clientId);
+  if (client) {
+    client.connectionId = connectionId;
+    logger.info(`Confirmed proxy connection for client ${client.username}`);
+  }
+}
+
+/**
  * Handle proxy data from client
  */
-function handleProxyData(message) {
+async function handleProxyData(message) {
   const { clientId, data } = message;
-  const client = serverState.clients.get(clientId);
+  let client = serverState.clients.get(clientId);
   
   if (!client) {
-    logger.warn(`Received data from unknown client: ${clientId}`);
-    return;
+    logger.warn(`Received data from unknown client: ${clientId}, creating temporary entry`);
+    // Create a temporary client entry
+    client = {
+      id: clientId,
+      connectionId: 'unknown',
+      connected: true,
+      pubkey: null,
+      username: clientId,
+      entryTokenReceived: false,
+      score: 0
+    };
+    serverState.clients.set(clientId, client);
+    logger.info(`Created temporary client entry for: ${clientId}`);
   }
   
   // Handle different message types
@@ -684,17 +804,64 @@ function handleProxyData(message) {
       message: data.message
     }, clientId);
     
-  } else if (data.type === 'game_state_token_request') {
-    // Client requesting current game state token
-    createGameStateToken(false).then(() => {
-      sendToClient(clientId, {
-        type: 'game:state:token',
-        gameId: serverState.gameId,
-        frame: serverState.gameState.frame,
-        timestamp: serverState.gameState.timestamp,
-        token: serverState.gameState
-      });
+  } else if (data.type === 'game_state_token_request' || data.type === 'request:game:state:token') {
+    // Client requesting current game state token (matching server.html)
+    logger.debug(`Client ${clientId} requested game state token`);
+    
+    try {
+      // Create a fresh token if we don't have one, or use existing
+      if (!serverState.tokenService.lastStateToken) {
+        await createGameStateToken(false);
+      }
+      
+      if (serverState.tokenService.lastStateToken) {
+        const tokenFlow = serverState.tokenService.TXF.exportFlow(serverState.tokenService.lastStateToken);
+        
+        const serverStateInfo = {
+          playerCount: serverState.clients.size,
+          itemCount: Object.keys(serverState.gameState?.items || {}).length,
+          timestamp: Date.now()
+        };
+        
+        // Send game state token to the requesting client
+        sendToClient(clientId, {
+          type: 'game:state:token',
+          tokenFlow: tokenFlow,
+          frame: serverState.gameState?.frame || 0,
+          serverInfo: serverStateInfo
+        });
+        
+        logger.debug(`Sent game state token to client ${clientId}`);
+        logger.info(`[Token Send] Sent token to ${clientId} - GameId: "${serverState.gameState?.gameId || 'unknown'}", Frame: ${serverState.gameState?.frame || 0}`);
+      } else {
+        logger.warn(`No state token available for client ${clientId}`);
+      }
+    } catch (error) {
+      logger.error(`Failed to send token to client ${clientId}:`, error.message);
+    }
+    
+  } else if (data.type === 'game_state_hash') {
+    // Client sending game state hash for verification
+    logger.debug(`Received game state hash from ${client.username}: frame ${data.frame || 'unknown'}`);
+    
+  } else if (data.type === 'identity:update') {
+    // Client identity update (alternative format)
+    if (data.identity) {
+      client.pubkey = data.identity.pubkey;
+      client.username = data.identity.username;
+      logger.info(`Client ${clientId} identity updated: ${data.identity.username}`);
+    }
+    
+  } else if (data.type === 'ping') {
+    // Client ping - respond with pong
+    sendToClient(clientId, {
+      type: 'pong',
+      timestamp: Date.now()
     });
+    
+  } else {
+    // Unknown message type
+    logger.debug(`Unknown message type from client ${clientId}: ${data.type}`);
   }
 }
 
@@ -754,7 +921,9 @@ function displayStatus() {
   
   if (dedicatedServerInfo) {
     console.log(`  Game ID: ${dedicatedServerInfo.gameId}`);
-    console.log(`  Address: ${dedicatedServerInfo.serverInfo.host}:${dedicatedServerInfo.serverInfo.port}`);
+    const host = dedicatedServerInfo.serverInfo.host || 'unknown';
+    const port = dedicatedServerInfo.serverInfo.port || 'unknown';
+    console.log(`  Address: ${host}:${port}`);
   }
   
   console.log(`\\nConnected Clients: ${serverState.clients.size}`);
@@ -997,8 +1166,9 @@ async function shutdown() {
 async function main() {
   const config = parseArguments();
   
-  // Set current server name
+  // Set current server name and config
   currentServerName = config.serverName;
+  serverState.tokenEnabled = config.tokenEnabled;
   
   logger.info('Starting UniQuake Server CLI...');
   logger.info(`Server Name: ${config.serverName}`);
@@ -1006,6 +1176,146 @@ async function main() {
   logger.info(`Tokens: ${config.tokenEnabled ? 'Enabled' : 'Disabled'}`);
   
   try {
+    // Initialize token service if tokens are enabled
+    if (config.tokenEnabled) {
+      logger.info('Initializing Unicity token service...');
+      serverState.tokenService = new TokenService(null, `server-${currentServerName}`);
+      serverState.tokenService.debugMode = config.debug;
+      
+      const initialized = await serverState.tokenService.init();
+      if (initialized) {
+        logger.info('Token service initialized successfully');
+        
+        // Override BOTH hashGameState AND serializeGameState to match browser implementation exactly
+        // This ensures tokens created by server CLI are identical to browser server tokens
+        
+        // First override serializeGameState to use minimal state (ONLY frame and gameId)
+        serverState.tokenService.serializeGameState = function(gameState) {
+          // EXACTLY match the browser's normalizeGameState() approach
+          const minimalState = {
+            frame: parseInt(gameState?.frame || 0, 10),
+            gameId: String(gameState?.gameId || '')
+          };
+          
+          // Simple JSON.stringify - no sorting needed with only 2 fields in fixed order
+          const serialized = JSON.stringify(minimalState);
+          
+          // Log for debugging (matches browser's logging)
+          if (this.debugMode) {
+            logger.debug(`Serialized game state for hashing: ${serialized}`);
+          }
+          
+          return serialized;
+        };
+        
+        // Then override hashGameState to use TXF.getHashOf with string input
+        serverState.tokenService.hashGameState = function(gameState) {
+          // Use the overridden serializeGameState method
+          const serialized = this.serializeGameState(gameState);
+          
+          // Use TXF.getHashOf() with the serialized STRING to match the browser exactly
+          let hash;
+          if (this.TXF) {
+            // Pass the serialized JSON string, NOT an object
+            hash = this.TXF.getHashOf(serialized);
+            logger.info(`[TokenService] TXF.getHashOf(${serialized}) = ${hash}`);
+          } else {
+            // Fallback if TXF not available (should not happen)
+            const crypto = require('crypto');
+            hash = crypto.createHash('sha256').update(serialized).digest('hex');
+          }
+          
+          // Log for debugging (matches browser's logging)
+          if (this.debugMode) {
+            logger.debug(`Generated hash for frame ${gameState?.frame || 0}: ${hash}`);
+          }
+          
+          // Always log the input when creating tokens to help debug
+          logger.info(`[TokenService] Hashing state - Frame: ${parseInt(gameState?.frame || 0, 10)}, GameId: "${String(gameState?.gameId || '')}", Hash: ${hash}`);
+          
+          return hash;
+        };
+        
+        // ALSO override updateGameStateToken to include game_id in transaction message
+        // This matches what UniQuakeTokenService does in the browser
+        const originalUpdateGameStateToken = serverState.tokenService.updateGameStateToken.bind(serverState.tokenService);
+        serverState.tokenService.updateGameStateToken = async function(stateToken, newState) {
+          try {
+            // Check if we should reset the token to prevent growth
+            const currentFrame = newState.frame || 0;
+            if (currentFrame > 0 && currentFrame % this.resetFrameInterval === 0) {
+              console.log(`[TokenService] Resetting token at frame ${currentFrame} to prevent size growth`);
+              return await this.resetGameStateToken(newState);
+            }
+            
+            // Hash the new state
+            const stateHash = this.hashGameState(newState);
+            
+            // Record state hash for performance tracking
+            this.recordStateHash(currentFrame, stateHash);
+            
+            // Create a message with the new state hash - INCLUDING game_id like browser does!
+            const message = {
+              state_hash: stateHash,
+              timestamp: Date.now(),
+              frame: newState.frame || 0,
+              game_id: newState.gameId || '', // THIS IS THE KEY DIFFERENCE!
+              prev_hash: stateToken.tokenData?.state_hash
+            };
+            
+            // Use the SDK's transaction creation
+            console.log(`[TokenService] Creating transaction for token ${stateToken.tokenId}`);
+            
+            try {
+              // Create a transaction to self
+              const pubkeyAddr = this.TXF.generateRecipientPubkeyAddr(this.secret);
+              
+              // Generate data hash for the message
+              const messageData = JSON.stringify(message);
+              const dataHash = this.TXF.getHashOf(messageData);
+              
+              console.log(`[TokenService] Created data hash: ${dataHash.substring(0, 10)}...`);
+              
+              // Create transaction using SDK method with proper data hash
+              const tx = await this.TXF.createTx(
+                stateToken,
+                pubkeyAddr,
+                this.TXF.generateRandom256BitHex(), // salt
+                this.secret,
+                this.transport,
+                dataHash, // proper data hash
+                messageData // message data
+              );
+              
+              console.log(`[TokenService] Transaction created, now exporting token flow with transaction`);
+              
+              // Export the token flow with the transaction
+              const tokenFlow = this.TXF.exportFlow(stateToken, tx);
+              
+              // Import the token flow to get an updated token with the transaction applied
+              const updatedToken = this.TXF.importFlow(tokenFlow, this.secret, null, messageData);
+              
+              this.debug(`[TokenService] Successfully imported updated token`);
+              this.lastStateToken = updatedToken;
+              this.debug(`[TokenService] Updated game state token with new state at frame ${newState.frame || 0}`);
+              return updatedToken;
+            } catch (txError) {
+              console.error(`[TokenService] Transaction error: ${txError.message}`);
+              throw txError;
+            }
+          } catch (error) {
+            console.error(`[TokenService] Failed to update game state token:`, error.message);
+            throw error;
+          }
+        };
+        
+        logger.debug('Overrode TokenService serialization, hash, and update methods for browser compatibility');
+      } else {
+        logger.warn('Token service initialization failed, continuing without tokens');
+        serverState.tokenEnabled = false;
+      }
+    }
+    
     // Connect to master server
     await connectToMasterServer(config);
     
