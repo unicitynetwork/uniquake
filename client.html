@@ -888,7 +888,7 @@
         name: playerName,
         verbose: true,
         debug: true,
-        mintTokens: 5, // Will be overridden if we have saved tokens
+        mintTokens: 20, // Will be overridden if we have saved tokens
         onStatusUpdate: updateClientStatus,
         onChatMessage: displayChatMessage,
         onConnectionChange: handleConnectionChange,
@@ -2806,6 +2806,18 @@
           
           if (demoServer) {
             console.log('Connecting to DEMO_GAME server:', demoServer);
+            
+            // Set selectedServerId so score updates work properly
+            selectedServerId = demoServer.peerId;
+            
+            // Update visual selection in server list
+            document.querySelectorAll('.server-item').forEach(item => {
+              item.classList.remove('selected');
+            });
+            const demoServerElem = document.querySelector(`.server-item[data-server-id="${demoServer.peerId}"]`);
+            if (demoServerElem) {
+              demoServerElem.classList.add('selected');
+            }
             
             // Hide the play overlay
             playOverlay.classList.add('hidden');
