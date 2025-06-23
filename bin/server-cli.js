@@ -327,7 +327,7 @@ async function createGameStateToken(broadcast = true) {
     });
     
     logger.debug(`Creating game state token for frame ${serverState.gameState.frame} with ${Object.keys(serverState.gameState.players).length} players`);
-  logger.info(`Game state for token - GameId: "${serverState.gameState.gameId}", Frame: ${serverState.gameState.frame}`);
+  logger.debug(`Game state for token - GameId: "${serverState.gameState.gameId}", Frame: ${serverState.gameState.frame}`);
     
     // Create or update the token (matching server.html logic)
     // Reset token every 10 frames to prevent growth (when frame is divisible by 10)
@@ -374,7 +374,7 @@ async function createGameStateToken(broadcast = true) {
       };
       
       logger.debug(`Broadcasting Unicity token to ${serverState.clients.size} clients: frame ${serverState.gameState.frame}`);
-      logger.info(`[Token Broadcast] GameId: "${serverState.gameState.gameId}", Frame: ${serverState.gameState.frame}`);
+      logger.debug(`[Token Broadcast] GameId: "${serverState.gameState.gameId}", Frame: ${serverState.gameState.frame}`);
       broadcastToClients(message);
     }
     
@@ -832,7 +832,7 @@ async function handleProxyData(message) {
         });
         
         logger.debug(`Sent game state token to client ${clientId}`);
-        logger.info(`[Token Send] Sent token to ${clientId} - GameId: "${serverState.gameState?.gameId || 'unknown'}", Frame: ${serverState.gameState?.frame || 0}`);
+        logger.debug(`[Token Send] Sent token to ${clientId} - GameId: "${serverState.gameState?.gameId || 'unknown'}", Frame: ${serverState.gameState?.frame || 0}`);
       } else {
         logger.warn(`No state token available for client ${clientId}`);
       }
@@ -1218,7 +1218,7 @@ async function main() {
           if (this.TXF) {
             // Pass the serialized JSON string, NOT an object
             hash = this.TXF.getHashOf(serialized);
-            logger.info(`[TokenService] TXF.getHashOf(${serialized}) = ${hash}`);
+            logger.debug(`[TokenService] TXF.getHashOf(${serialized}) = ${hash}`);
           } else {
             // Fallback if TXF not available (should not happen)
             const crypto = require('crypto');
@@ -1231,7 +1231,7 @@ async function main() {
           }
           
           // Always log the input when creating tokens to help debug
-          logger.info(`[TokenService] Hashing state - Frame: ${parseInt(gameState?.frame || 0, 10)}, GameId: "${String(gameState?.gameId || '')}", Hash: ${hash}`);
+          logger.debug(`[TokenService] Hashing state - Frame: ${parseInt(gameState?.frame || 0, 10)}, GameId: "${String(gameState?.gameId || '')}", Hash: ${hash}`);
           
           return hash;
         };
@@ -1244,7 +1244,7 @@ async function main() {
             // Check if we should reset the token to prevent growth
             const currentFrame = newState.frame || 0;
             if (currentFrame > 0 && currentFrame % this.resetFrameInterval === 0) {
-              console.log(`[TokenService] Resetting token at frame ${currentFrame} to prevent size growth`);
+              logger.debug(`[TokenService] Resetting token at frame ${currentFrame} to prevent size growth`);
               return await this.resetGameStateToken(newState);
             }
             
@@ -1264,7 +1264,7 @@ async function main() {
             };
             
             // Use the SDK's transaction creation
-            console.log(`[TokenService] Creating transaction for token ${stateToken.tokenId}`);
+            logger.debug(`[TokenService] Creating transaction for token ${stateToken.tokenId}`);
             
             try {
               // Create a transaction to self
@@ -1274,7 +1274,7 @@ async function main() {
               const messageData = JSON.stringify(message);
               const dataHash = this.TXF.getHashOf(messageData);
               
-              console.log(`[TokenService] Created data hash: ${dataHash.substring(0, 10)}...`);
+              logger.debug(`[TokenService] Created data hash: ${dataHash.substring(0, 10)}...`);
               
               // Create transaction using SDK method with proper data hash
               const tx = await this.TXF.createTx(
@@ -1287,7 +1287,7 @@ async function main() {
                 messageData // message data
               );
               
-              console.log(`[TokenService] Transaction created, now exporting token flow with transaction`);
+              logger.debug(`[TokenService] Transaction created, now exporting token flow with transaction`);
               
               // Export the token flow with the transaction
               const tokenFlow = this.TXF.exportFlow(stateToken, tx);
@@ -1300,11 +1300,11 @@ async function main() {
               this.debug(`[TokenService] Updated game state token with new state at frame ${newState.frame || 0}`);
               return updatedToken;
             } catch (txError) {
-              console.error(`[TokenService] Transaction error: ${txError.message}`);
+              logger.error(`[TokenService] Transaction error: ${txError.message}`);
               throw txError;
             }
           } catch (error) {
-            console.error(`[TokenService] Failed to update game state token:`, error.message);
+            logger.error(`[TokenService] Failed to update game state token:`, error.message);
             throw error;
           }
         };

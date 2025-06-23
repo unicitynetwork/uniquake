@@ -638,8 +638,28 @@
                 if (typeof result === 'string') {
                     this.log('RESPONSE', result);
                 } else if (result) {
+                    // Check if this is a direct command response with raw output
+                    if (result.output) {
+                        this.log('RESPONSE', result.output);
+                        if (result.message && result.message !== 'Command executed successfully') {
+                            this.log('RESPONSE', result.message);
+                        }
+                        return;
+                    }
+                    
+                    // Handle structured responses
                     if (result.message) {
                         this.log('RESPONSE', result.message);
+                    }
+                    
+                    // Handle server status response
+                    if (result.gameId && result.state) {
+                        this.log('RESPONSE', `Server: ${result.name || result.gameId}`);
+                        this.log('RESPONSE', `Map: ${result.map}`);
+                        this.log('RESPONSE', `Players: ${result.currentPlayers}/${result.maxPlayers}`);
+                        this.log('RESPONSE', `Address: ${result.address}`);
+                        this.log('RESPONSE', `State: ${result.state}`);
+                        this.log('RESPONSE', `Uptime: ${result.uptime} seconds`);
                     }
                     
                     if (result.players && Array.isArray(result.players)) {
@@ -649,11 +669,11 @@
                         });
                     }
                     
-                    if (result.map) {
+                    if (result.map && !result.gameId) {
                         this.log('RESPONSE', `Current map: ${result.map}`);
                     }
                     
-                    if (result.success !== undefined) {
+                    if (result.success !== undefined && !result.output) {
                         this.log('RESPONSE', `Success: ${result.success}`);
                     }
                 }

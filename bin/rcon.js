@@ -206,6 +206,11 @@ async function main() {
       console.log(`Executing RCON command on server ${argv.server}: ${command}`);
       const result = await client.executeRCON(argv.server, command);
       
+      // Debug: log the raw result
+      if (argv.verbose) {
+        console.log('\nDEBUG - Raw result:', JSON.stringify(result, null, 2));
+      }
+      
       // Format and display result
       if (typeof result === 'string') {
         console.log('\nResult:');
