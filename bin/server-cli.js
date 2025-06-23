@@ -49,6 +49,20 @@ let latestPlayerScores = {
   lastUpdate: null
 };
 
+// Match control settings
+const MATCH_SETTINGS = {
+  DURATION_MINUTES: 15,  // 15 minutes per match
+  FRAG_LIMIT: 15        // 15 frags to win
+};
+
+// Match control state
+const matchControl = {
+  isActive: false,
+  startTime: null,
+  timeUpdateInterval: null,
+  fragCheckInterval: null
+};
+
 // CLI state
 let rl = null;
 let isExiting = false;
@@ -466,6 +480,9 @@ function handleGameServerStarted(message) {
     startGameStateTokens();
   }
   
+  // Start match control
+  startMatchControl();
+  
   // Start periodic statistics updates
   startStatisticsUpdates();
   
@@ -489,6 +506,9 @@ function handleGameServerStopped(message) {
     clearInterval(serverState.updateStatsInterval);
     serverState.updateStatsInterval = null;
   }
+  
+  // Stop match control
+  stopMatchControl();
   
   displayStatus();
 }
@@ -831,6 +851,27 @@ async function handleProxyData(message) {
           serverInfo: serverStateInfo
         });
         
+        // Also send match time info with the token
+        if (matchControl.isActive && !gameEnded) {
+          const remaining = getRemainingTime();
+          const timeText = formatRemainingTime(remaining);
+          
+          // Get highest score
+          let highestScore = 0;
+          if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+            highestScore = Math.max(...latestPlayerScores.players.map(p => p.score || 0));
+          }
+          
+          sendToClient(clientId, {
+            type: 'server:match:time',
+            remainingTime: remaining,
+            remainingText: timeText,
+            highestScore: highestScore,
+            fragLimit: MATCH_SETTINGS.FRAG_LIMIT,
+            message: `Time: ${timeText} | Score: ${highestScore}/${MATCH_SETTINGS.FRAG_LIMIT}`
+          });
+        }
+        
         logger.debug(`Sent game state token to client ${clientId}`);
         logger.debug(`[Token Send] Sent token to ${clientId} - GameId: "${serverState.gameState?.gameId || 'unknown'}", Frame: ${serverState.gameState?.frame || 0}`);
       } else {
@@ -850,6 +891,39 @@ async function handleProxyData(message) {
       client.pubkey = data.identity.pubkey;
       client.username = data.identity.username;
       logger.info(`Client ${clientId} identity updated: ${data.identity.username}`);
+    }
+    
+  } else if (data.type === 'score:request' || data.type === 'scores:request') {
+    // Client requesting current scores and match info
+    logger.debug(`Client ${clientId} requested scores`);
+    
+    // Send current player scores
+    if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+      sendToClient(clientId, {
+        type: 'score:response',
+        players: latestPlayerScores.players,
+        timestamp: latestPlayerScores.lastUpdate
+      });
+    }
+    
+    // Send match time info
+    if (matchControl.isActive && !gameEnded) {
+      const remaining = getRemainingTime();
+      const timeText = formatRemainingTime(remaining);
+      
+      let highestScore = 0;
+      if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+        highestScore = Math.max(...latestPlayerScores.players.map(p => p.score || 0));
+      }
+      
+      sendToClient(clientId, {
+        type: 'server:match:time',
+        remainingTime: remaining,
+        remainingText: timeText,
+        highestScore: highestScore,
+        fragLimit: MATCH_SETTINGS.FRAG_LIMIT,
+        message: `Time: ${timeText} | Score: ${highestScore}/${MATCH_SETTINGS.FRAG_LIMIT}`
+      });
     }
     
   } else if (data.type === 'ping') {
@@ -893,6 +967,179 @@ function broadcastToClients(message, excludeClientId = null) {
 }
 
 /**
+ * Start match control
+ */
+function startMatchControl() {
+  if (matchControl.isActive) {
+    logger.warn('Match control already active');
+    return;
+  }
+  
+  logger.info(`🎮 Starting match control: ${MATCH_SETTINGS.DURATION_MINUTES} minutes, ${MATCH_SETTINGS.FRAG_LIMIT} frag limit`);
+  
+  matchControl.isActive = true;
+  matchControl.startTime = Date.now();
+  gameEnded = false;
+  
+  // Start periodic time updates (every 5 seconds)
+  matchControl.timeUpdateInterval = setInterval(() => {
+    checkMatchEnd();
+    broadcastMatchTimeUpdate();
+  }, 5000);
+  
+  // Initial broadcast
+  broadcastMatchTimeUpdate();
+  
+  logger.info(`✅ Match control started - will end in ${MATCH_SETTINGS.DURATION_MINUTES} minutes or at ${MATCH_SETTINGS.FRAG_LIMIT} frags`);
+  
+  // Also update the display to show match timer
+  displayStatus();
+}
+
+/**
+ * Stop match control
+ */
+function stopMatchControl() {
+  if (!matchControl.isActive) {
+    return;
+  }
+  
+  logger.info('Stopping match control');
+  
+  if (matchControl.timeUpdateInterval) {
+    clearInterval(matchControl.timeUpdateInterval);
+    matchControl.timeUpdateInterval = null;
+  }
+  
+  matchControl.isActive = false;
+  matchControl.startTime = null;
+}
+
+/**
+ * Get remaining time in milliseconds
+ */
+function getRemainingTime() {
+  if (!matchControl.isActive || !matchControl.startTime) {
+    return 0;
+  }
+  
+  const elapsed = Date.now() - matchControl.startTime;
+  const duration = MATCH_SETTINGS.DURATION_MINUTES * 60 * 1000;
+  const remaining = Math.max(0, duration - elapsed);
+  
+  return remaining;
+}
+
+/**
+ * Format remaining time as MM:SS
+ */
+function formatRemainingTime(ms) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Broadcast match time update to all clients
+ */
+function broadcastMatchTimeUpdate() {
+  if (!matchControl.isActive || gameEnded) {
+    return;
+  }
+  
+  const remaining = getRemainingTime();
+  const timeText = formatRemainingTime(remaining);
+  
+  // Get highest score
+  let highestScore = 0;
+  if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+    highestScore = Math.max(...latestPlayerScores.players.map(p => p.score || 0));
+  }
+  
+  // Update server info with match time remaining
+  if (serverConnection && serverConnection.readyState === WebSocket.OPEN && serverState.registered) {
+    const updateMsg = {
+      type: 'update_server',
+      serverInfo: {
+        matchTimeRemaining: remaining,
+        matchTimeText: timeText,
+        highestScore: highestScore,
+        fragLimit: MATCH_SETTINGS.FRAG_LIMIT
+      }
+    };
+    serverConnection.send(JSON.stringify(updateMsg));
+  }
+  
+  // Broadcast countdown update to connected clients
+  const message = {
+    type: 'server:match:time',
+    remainingTime: remaining,
+    remainingText: timeText,
+    highestScore: highestScore,
+    fragLimit: MATCH_SETTINGS.FRAG_LIMIT,
+    message: `Time: ${timeText} | Score: ${highestScore}/${MATCH_SETTINGS.FRAG_LIMIT}`
+  };
+  
+  logger.info(`📢 Broadcasting match time: ${timeText}, highest score: ${highestScore}/${MATCH_SETTINGS.FRAG_LIMIT}`);
+  logger.debug('Match time message:', JSON.stringify(message));
+  broadcastToClients(message);
+}
+
+/**
+ * Check if match should end
+ */
+function checkMatchEnd() {
+  if (!matchControl.isActive || gameEnded) {
+    return;
+  }
+  
+  // Check time limit
+  const remaining = getRemainingTime();
+  if (remaining <= 0) {
+    logger.info('⏰ Match time limit reached!');
+    handleAutomaticGameOver('timelimit');
+    return;
+  }
+  
+  // Check frag limit
+  if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+    const highestScore = Math.max(...latestPlayerScores.players.map(p => p.score || 0));
+    if (highestScore >= MATCH_SETTINGS.FRAG_LIMIT) {
+      logger.info(`🎯 Frag limit reached! Player reached ${highestScore} frags`);
+      handleAutomaticGameOver('fraglimit');
+    }
+  }
+}
+
+/**
+ * Handle automatic game over (time or frag limit)
+ */
+async function handleAutomaticGameOver(reason) {
+  if (gameEnded) {
+    return;
+  }
+  
+  logger.info(`🏁 Automatic game over triggered: ${reason}`);
+  
+  // Stop match control
+  stopMatchControl();
+  
+  // Use existing game over logic
+  await handleGameOver();
+  
+  // Broadcast match end to clients
+  const endMessage = {
+    type: 'match:end',
+    reason: reason,
+    reasonText: reason === 'timelimit' ? 'Time Limit Reached' : 'Frag Limit Reached',
+    finalScores: latestPlayerScores.players
+  };
+  
+  broadcastToClients(endMessage);
+}
+
+/**
  * Send message to specific client
  */
 function sendToClient(clientId, message) {
@@ -924,6 +1171,23 @@ function displayStatus() {
     const host = dedicatedServerInfo.serverInfo.host || 'unknown';
     const port = dedicatedServerInfo.serverInfo.port || 'unknown';
     console.log(`  Address: ${host}:${port}`);
+  }
+  
+  // Display match control status
+  if (matchControl.isActive && !gameEnded) {
+    console.log('\nMatch Control:');
+    const remaining = getRemainingTime();
+    const timeText = formatRemainingTime(remaining);
+    console.log(`  Time Remaining: ${timeText}`);
+    
+    let highestScore = 0;
+    if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+      highestScore = Math.max(...latestPlayerScores.players.map(p => p.score || 0));
+    }
+    console.log(`  Highest Score: ${highestScore} / ${MATCH_SETTINGS.FRAG_LIMIT}`);
+  } else if (gameEnded) {
+    console.log('\nMatch Control:');
+    console.log('  Status: Match Ended');
   }
   
   console.log(`\\nConnected Clients: ${serverState.clients.size}`);
@@ -1147,6 +1411,9 @@ async function shutdown() {
   if (serverState.heartbeatInterval) clearInterval(serverState.heartbeatInterval);
   if (serverState.gameStateInterval) clearInterval(serverState.gameStateInterval);
   if (serverState.updateStatsInterval) clearInterval(serverState.updateStatsInterval);
+  
+  // Stop match control
+  stopMatchControl();
   
   // Close connections
   if (serverConnection) {
