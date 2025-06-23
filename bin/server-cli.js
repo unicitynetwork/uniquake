@@ -40,7 +40,9 @@ const serverState = {
   playerScores: new Map(),
   heartbeatInterval: null,
   updateStatsInterval: null,
-  tokenService: null
+  tokenService: null,
+  entryFee: 1, // Default entry fee
+  tokenEnabled: false
 };
 
 // Latest player scores from RCON
@@ -769,6 +771,22 @@ function handleProxyConnection(message) {
   if (client) {
     client.connectionId = connectionId;
     logger.info(`Confirmed proxy connection for client ${client.username}`);
+    
+    // Send welcome message with server identity and entry fee requirements
+    const welcomeMsg = {
+      type: 'welcome',
+      message: `Welcome to ${currentServerName}!`,
+      serverInfo: {
+        name: currentServerName,
+        tokenEnabled: serverState.tokenEnabled,
+        entryFee: serverState.entryFee,
+        gameId: serverState.gameId || dedicatedServerInfo?.gameId
+      },
+      serverIdentity: serverState.tokenService ? serverState.tokenService.getIdentity() : null
+    };
+    
+    sendToClient(clientId, welcomeMsg);
+    logger.debug(`Sent welcome message to client ${clientId} with entry fee: ${serverState.entryFee}`);
   }
 }
 
@@ -794,6 +812,22 @@ async function handleProxyData(message) {
     serverState.clients.set(clientId, client);
     logger.info(`Created temporary client entry for: ${clientId}`);
     displayStatus();
+    
+    // Send welcome message with server identity and entry fee requirements
+    const welcomeMsg = {
+      type: 'welcome',
+      message: `Welcome to ${currentServerName}!`,
+      serverInfo: {
+        name: currentServerName,
+        tokenEnabled: serverState.tokenEnabled,
+        entryFee: serverState.entryFee,
+        gameId: serverState.gameId || dedicatedServerInfo?.gameId
+      },
+      serverIdentity: serverState.tokenService ? serverState.tokenService.getIdentity() : null
+    };
+    
+    sendToClient(clientId, welcomeMsg);
+    logger.debug(`Sent welcome message to new client ${clientId} with entry fee: ${serverState.entryFee}`);
   }
   
   // Handle different message types
@@ -804,16 +838,94 @@ async function handleProxyData(message) {
     logger.info(`Client ${clientId} identity updated: ${data.username}`);
     displayStatus();
     
-  } else if (data.type === 'entry_token') {
-    // Entry token received
+    // Determine if client needs to pay entry fee
+    if (serverState.tokenEnabled && !client.entryTokenReceived) {
+      // Check if this is a rejoining client who already paid
+      let alreadyPaid = false;
+      for (const fee of serverState.collectedFees) {
+        if (fee.pubkey === client.pubkey) {
+          alreadyPaid = true;
+          client.entryTokenReceived = true;
+          break;
+        }
+      }
+      
+      if (!alreadyPaid) {
+        // Send payment requirement to client
+        const paymentReq = {
+          type: 'payment_requirement',
+          entryFee: serverState.entryFee,
+          gameId: serverState.gameId || dedicatedServerInfo?.gameId,
+          serverIdentity: serverState.tokenService ? serverState.tokenService.getIdentity() : null,
+          message: `Entry fee required: ${serverState.entryFee} token(s)`,
+          serverInfo: {
+            paymentRequired: true,
+            isRejoining: false,
+            entryFee: serverState.entryFee
+          }
+        };
+        
+        sendToClient(clientId, paymentReq);
+        logger.info(`Sent payment requirement to ${client.username}: ${serverState.entryFee} token(s)`);
+      } else {
+        // Client already paid, send confirmation
+        const paymentConfirm = {
+          type: 'payment_requirement',
+          message: 'Welcome back! Your entry fee was already paid.',
+          serverInfo: {
+            paymentRequired: false,
+            isRejoining: true,
+            entryFee: 0
+          }
+        };
+        
+        sendToClient(clientId, paymentConfirm);
+        logger.info(`Client ${client.username} rejoining - entry fee already paid`);
+      }
+    } else if (!serverState.tokenEnabled) {
+      // Tokens disabled, allow free entry
+      const freeEntry = {
+        type: 'payment_requirement',
+        message: 'No entry fee required - tokens are disabled',
+        serverInfo: {
+          paymentRequired: false,
+          isRejoining: false,
+          entryFee: 0
+        }
+      };
+      
+      sendToClient(clientId, freeEntry);
+      logger.debug(`Client ${client.username} - no payment required (tokens disabled)`);
+    }
+    
+  } else if (data.type === 'entry_token' || data.type === 'token:entry') {
+    // Entry token received (handle both message type formats)
     if (!client.entryTokenReceived) {
       logger.info(`Entry token received from ${client.username}`);
       client.entryTokenReceived = true;
       serverState.collectedFees.push({
         clientId: clientId,
         pubkey: client.pubkey,
-        token: data.token
+        token: data.token || data.tokenFlow // Support both token formats
       });
+      logger.info(`Total entry fees collected: ${serverState.collectedFees.length}`);
+      displayStatus();
+      
+      // Send confirmation to client
+      sendToClient(clientId, {
+        type: 'payment:confirmed',
+        message: 'Entry fee received. Welcome to the game!'
+      });
+      
+      // Broadcast chat message to all clients
+      const chatMsg = {
+        type: 'chat',
+        from: 'SERVER',
+        message: `${client.username || clientId} has paid the entry fee and joined the game!`,
+        timestamp: Date.now()
+      };
+      broadcastToClients(chatMsg);
+      logger.info(`[CHAT] SERVER: ${chatMsg.message}`);
     }
     
   } else if (data.type === 'chat') {
@@ -893,6 +1005,67 @@ async function handleProxyData(message) {
       client.pubkey = data.identity.pubkey;
       client.username = data.identity.username;
       logger.info(`Client ${clientId} identity updated: ${data.identity.username}`);
+      displayStatus();
+      
+      // Determine if client needs to pay entry fee (same logic as 'identity' type)
+      if (serverState.tokenEnabled && !client.entryTokenReceived) {
+        // Check if this is a rejoining client who already paid
+        let alreadyPaid = false;
+        for (const fee of serverState.collectedFees) {
+          if (fee.pubkey === client.pubkey) {
+            alreadyPaid = true;
+            client.entryTokenReceived = true;
+            break;
+          }
+        }
+        
+        if (!alreadyPaid) {
+          // Send payment requirement to client
+          const paymentReq = {
+            type: 'payment_requirement',
+            entryFee: serverState.entryFee,
+            gameId: serverState.gameId || dedicatedServerInfo?.gameId,
+            serverIdentity: serverState.tokenService ? serverState.tokenService.getIdentity() : null,
+            message: `Entry fee required: ${serverState.entryFee} token(s)`,
+            serverInfo: {
+              paymentRequired: true,
+              isRejoining: false,
+              entryFee: serverState.entryFee
+            }
+          };
+          
+          sendToClient(clientId, paymentReq);
+          logger.info(`Sent payment requirement to ${client.username}: ${serverState.entryFee} token(s)`);
+        } else {
+          // Client already paid, send confirmation
+          const paymentConfirm = {
+            type: 'payment_requirement',
+            message: 'Welcome back! Your entry fee was already paid.',
+            serverInfo: {
+              paymentRequired: false,
+              isRejoining: true,
+              entryFee: 0
+            }
+          };
+          
+          sendToClient(clientId, paymentConfirm);
+          logger.info(`Client ${client.username} rejoining - entry fee already paid`);
+        }
+      } else if (!serverState.tokenEnabled) {
+        // Tokens disabled, allow free entry
+        const freeEntry = {
+          type: 'payment_requirement',
+          message: 'No entry fee required - tokens are disabled',
+          serverInfo: {
+            paymentRequired: false,
+            isRejoining: false,
+            entryFee: 0
+          }
+        };
+        
+        sendToClient(clientId, freeEntry);
+        logger.debug(`Client ${client.username} - no payment required (tokens disabled)`);
+      }
     }
     
   } else if (data.type === 'score:request' || data.type === 'scores:request') {
@@ -1254,6 +1427,16 @@ async function handleGameOver() {
     // Mark game as ended
     gameEnded = true;
     
+    // Broadcast game over message
+    const gameOverMsg = {
+      type: 'chat',
+      from: 'SERVER',
+      message: 'Game Over! Calculating final scores...',
+      timestamp: Date.now()
+    };
+    broadcastToClients(gameOverMsg);
+    logger.info(`[CHAT] SERVER: ${gameOverMsg.message}`);
+    
     // Distribute rewards
     if (serverState.collectedFees.length > 0 && latestPlayerScores.players.length > 0) {
       logger.info('Distributing rewards to winners...');
@@ -1261,13 +1444,50 @@ async function handleGameOver() {
       // Sort players by score
       const sortedPlayers = [...latestPlayerScores.players].sort((a, b) => b.score - a.score);
       
-      // Simple winner determination (highest score)
-      const winner = sortedPlayers[0];
-      logger.info(`Winner: ${winner.name} with ${winner.score} frags`);
+      // Check for ties
+      const topScore = sortedPlayers[0].score;
+      const winners = sortedPlayers.filter(p => p.score === topScore);
+      const totalTokens = serverState.collectedFees.length * serverState.entryFee;
+      
+      if (winners.length === 1) {
+        // Single winner
+        const winner = winners[0];
+        logger.info(`Winner: ${winner.name} with ${winner.score} frags`);
+        
+        // Broadcast winner chat message
+        const winnerMsg = {
+          type: 'chat',
+          from: 'SERVER',
+          message: `🏆 ${winner.name} wins ${totalTokens} tokens!`,
+          timestamp: Date.now()
+        };
+        broadcastToClients(winnerMsg);
+        logger.info(`[CHAT] SERVER: ${winnerMsg.message}`);
+      } else {
+        // Multiple winners (tie)
+        const winnerNames = winners.map(w => w.name).join(', ');
+        logger.info(`Tied winners: ${winnerNames} with ${topScore} frags each`);
+        
+        // Broadcast tie message
+        const tieMsg = {
+          type: 'chat',
+          from: 'SERVER',
+          message: `🏆 Tied winners ${winnerNames} split ${totalTokens} tokens!`,
+          timestamp: Date.now()
+        };
+        broadcastToClients(tieMsg);
+        logger.info(`[CHAT] SERVER: ${tieMsg.message}`);
+      }
       
       // In a real implementation, this would use the token service
-      // to distribute collected fees to the winner
-      logger.info(`Would distribute ${serverState.collectedFees.length} entry fees to winner`);
+      // to distribute collected fees to the winner(s)
+      logger.info(`Would distribute ${totalTokens} tokens to ${winners.length} winner(s)`);
+    } else if (latestPlayerScores.players.length === 0) {
+      // No players, no rewards to distribute
+      logger.info('No players in game, no rewards to distribute');
+    } else {
+      // No entry fees collected
+      logger.info('No entry fees collected, no rewards to distribute');
     }
     
     // Stop the dedicated server
@@ -1446,6 +1666,7 @@ async function main() {
   // Set current server name and config
   currentServerName = config.serverName;
   serverState.tokenEnabled = config.tokenEnabled;
+  serverState.entryFee = config.entryFee;
   
   logger.info('Starting UniQuake Server CLI...');
   logger.info(`Server Name: ${config.serverName}`);
@@ -1461,7 +1682,9 @@ async function main() {
       
       const initialized = await serverState.tokenService.init();
       if (initialized) {
-        logger.info('Token service initialized successfully');
+        const identity = serverState.tokenService.getIdentity();
+        logger.info(`Token service initialized for ${identity.username} (${identity.pubkey.substring(0, 8)}...)`);
+        serverState.tokenEnabled = true;
         
         // Override BOTH hashGameState AND serializeGameState to match browser implementation exactly
         // This ensures tokens created by server CLI are identical to browser server tokens
