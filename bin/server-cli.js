@@ -1383,15 +1383,39 @@ async function handleAutomaticGameOver(reason) {
   // Use existing game over logic
   await handleGameOver();
   
-  // Broadcast match end to clients
+  // Determine winner from final scores
+  let winner = null;
+  if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+    // Sort by score descending
+    const sortedPlayers = [...latestPlayerScores.players].sort((a, b) => b.score - a.score);
+    winner = sortedPlayers[0];
+  }
+  
+  // Broadcast match end to clients with full results
   const endMessage = {
     type: 'match:end',
+    matchEndTime: Date.now(),
+    matchEndReason: reason,
     reason: reason,
     reasonText: reason === 'timelimit' ? 'Time Limit Reached' : 'Frag Limit Reached',
-    finalScores: latestPlayerScores.players
+    winner: winner,
+    finalScores: latestPlayerScores.players ? [...latestPlayerScores.players].sort((a, b) => b.score - a.score) : []
   };
   
+  logger.info(`📊 Final Scores:`);
+  if (endMessage.finalScores.length > 0) {
+    endMessage.finalScores.forEach((player, index) => {
+      logger.info(`   ${index + 1}. ${player.name}: ${player.score} frags`);
+    });
+  } else {
+    logger.info(`   No players in match`);
+  }
+  
   broadcastToClients(endMessage);
+  
+  // Give clients time to receive and display the results
+  logger.info('⏳ Waiting 5 seconds for clients to display results...');
+  await new Promise(resolve => setTimeout(resolve, 5000));
 }
 
 /**
@@ -1507,6 +1531,21 @@ async function handleGameOver() {
     // Mark game as ended
     gameEnded = true;
     
+    // Send one final score update with match ended status
+    const finalScoreUpdate = {
+      type: 'player_score_update',
+      players: latestPlayerScores.players || [],
+      countdown: {
+        totalSeconds: 0,
+        timeText: "0:00",
+        isActive: false
+      },
+      matchEnded: true,
+      timestamp: Date.now()
+    };
+    broadcastToClients(finalScoreUpdate);
+    logger.info('Sent final score update to all clients');
+    
     // Broadcast game over message
     const gameOverMsg = {
       type: 'chat',
@@ -1575,9 +1614,10 @@ async function handleGameOver() {
     
     // Terminate the server-cli process after match ends
     logger.info('Match completed. Shutting down server-cli...');
+    logger.info('⏳ Waiting 3 seconds before shutdown...');
     setTimeout(() => {
       shutdown();
-    }, 2000); // Give 2 seconds for final messages to be sent
+    }, 3000); // Give 3 seconds for final messages to be sent
     
   } catch (error) {
     logger.error('Error during game over:', error.message);
