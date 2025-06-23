@@ -1062,7 +1062,7 @@ function broadcastMatchTimeUpdate() {
     const updateMsg = {
       type: 'update_server',
       serverInfo: {
-        matchTimeRemaining: remaining,
+        matchTimeRemaining: Math.ceil(remaining / 1000), // Convert to seconds for client
         matchTimeText: timeText,
         highestScore: highestScore,
         fragLimit: MATCH_SETTINGS.FRAG_LIMIT
