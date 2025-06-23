@@ -605,6 +605,65 @@
     .tab-content.active {
       display: flex;
     }
+
+    /* Play button overlay styles */
+    .play-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: rgba(0, 0, 0, 0.8);
+      z-index: 20;
+      cursor: pointer;
+    }
+
+    .play-button {
+      background-color: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 150px;
+      height: 150px;
+      font-size: 48px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(76, 175, 80, 0.5);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .play-button:hover {
+      background-color: #45a049;
+      transform: scale(1.1);
+      box-shadow: 0 6px 20px rgba(76, 175, 80, 0.7);
+    }
+
+    .play-button:active {
+      transform: scale(0.95);
+    }
+
+    .play-button-icon {
+      font-size: 60px;
+      margin-left: 10px; /* Offset to center the triangle */
+    }
+
+    .play-button-text {
+      font-size: 20px;
+      margin-top: 5px;
+      font-weight: normal;
+    }
+
+    .play-overlay.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -668,6 +727,12 @@
       <div class="right-panels">
         <div class="game-container">
           <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map" allowfullscreen></iframe>
+          <div class="play-overlay" id="play-overlay">
+            <button class="play-button" id="play-button">
+              <span class="play-button-icon">▶</span>
+              <span class="play-button-text">PLAY</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1433,6 +1498,12 @@
       
       // Set the iframe source
       iframe.src = quakeClientUrl;
+      
+      // Hide the play overlay when connecting to any server
+      const playOverlay = document.getElementById('play-overlay');
+      if (playOverlay) {
+        playOverlay.classList.add('hidden');
+      }
       
       // Add initial server ID overlay
       addServerIdOverlay(serverId);
@@ -2613,6 +2684,94 @@
       } catch (error) {
         console.error('❌ Error requesting scores from master server:', error);
       }
+    }
+
+    // Play button functionality
+    function setupPlayButton() {
+      const playOverlay = document.getElementById('play-overlay');
+      const playButton = document.getElementById('play-button');
+      const iframe = document.getElementById('game-iframe');
+      
+      if (!playOverlay || !playButton || !iframe) {
+        console.error('Play button elements not found');
+        return;
+      }
+      
+      // Hide the play overlay when game is already loaded
+      if (iframe.src && iframe.src.includes('/quake')) {
+        playOverlay.classList.add('hidden');
+        return;
+      }
+      
+      // Handle play button click
+      playButton.addEventListener('click', async function() {
+        console.log('Play button clicked - searching for DEMO_GAME server...');
+        
+        // Show loading state
+        playButton.disabled = true;
+        playButton.querySelector('.play-button-text').textContent = 'LOADING...';
+        
+        try {
+          // Wait for server list to be populated
+          let retries = 0;
+          let demoServer = null;
+          
+          while (retries < 10 && !demoServer) {
+            // Check if client has server list
+            if (client && client.clientState && client.clientState.serverList) {
+              // Find DEMO_GAME server
+              demoServer = client.clientState.serverList.find(server => 
+                server.name === 'DEMO_GAME' && server.address && server.address !== 'Not specified'
+              );
+            }
+            
+            if (!demoServer) {
+              // Wait a bit and retry
+              await new Promise(resolve => setTimeout(resolve, 500));
+              retries++;
+            }
+          }
+          
+          if (demoServer) {
+            console.log('Found DEMO_GAME server:', demoServer);
+            
+            // Hide the play overlay
+            playOverlay.classList.add('hidden');
+            
+            // Connect to the DEMO_GAME server
+            connectQuakeToServer(demoServer.peerId);
+          } else {
+            console.error('DEMO_GAME server not found in server list');
+            alert('Demo server not available. Please check that DEMO_GAME server is running.');
+            
+            // Reset button state
+            playButton.disabled = false;
+            playButton.querySelector('.play-button-text').textContent = 'PLAY';
+          }
+          
+        } catch (error) {
+          console.error('Error connecting to DEMO_GAME:', error);
+          alert('Failed to connect to demo server. Please try again.');
+          
+          // Reset button state
+          playButton.disabled = false;
+          playButton.querySelector('.play-button-text').textContent = 'PLAY';
+        }
+      });
+      
+      // Also allow clicking anywhere on the overlay
+      playOverlay.addEventListener('click', function(e) {
+        if (e.target === playOverlay) {
+          playButton.click();
+        }
+      });
+    }
+    
+    // Initialize play button when page loads
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupPlayButton);
+    } else {
+      setupPlayButton();
     }
   </script>
 </body>
