@@ -1493,6 +1493,12 @@ async function handleGameOver() {
     // Stop the dedicated server
     await stopServer();
     
+    // Terminate the server-cli process after match ends
+    logger.info('Match completed. Shutting down server-cli...');
+    setTimeout(() => {
+      shutdown();
+    }, 2000); // Give 2 seconds for final messages to be sent
+    
   } catch (error) {
     logger.error('Error during game over:', error.message);
   }
