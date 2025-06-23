@@ -793,6 +793,7 @@ async function handleProxyData(message) {
     };
     serverState.clients.set(clientId, client);
     logger.info(`Created temporary client entry for: ${clientId}`);
+    displayStatus();
   }
   
   // Handle different message types
@@ -801,6 +802,7 @@ async function handleProxyData(message) {
     client.pubkey = data.pubkey;
     client.username = data.username;
     logger.info(`Client ${clientId} identity updated: ${data.username}`);
+    displayStatus();
     
   } else if (data.type === 'entry_token') {
     // Entry token received
@@ -948,8 +950,8 @@ function handleClientDisconnected(message) {
   
   if (client) {
     logger.info(`Client disconnected: ${client.username}`);
-    client.connected = false;
-    // Keep client in map for potential rejoin
+    // Remove the client from the map entirely
+    serverState.clients.delete(clientId);
   }
   
   displayStatus();
@@ -1190,7 +1192,15 @@ function displayStatus() {
     console.log('  Status: Match Ended');
   }
   
-  console.log(`\\nConnected Clients: ${serverState.clients.size}`);
+  // Count only connected clients
+  let connectedCount = 0;
+  for (const [clientId, client] of serverState.clients) {
+    if (client.connected) {
+      connectedCount++;
+    }
+  }
+  
+  console.log(`\\nConnected Clients: ${connectedCount}`);
   for (const [clientId, client] of serverState.clients) {
     if (client.connected) {
       console.log(`  - ${client.username} (${client.pubkey ? 'Authenticated' : 'Anonymous'})${client.entryTokenReceived ? ' [Paid]' : ''}`);
