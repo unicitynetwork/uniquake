@@ -2784,6 +2784,18 @@
         playButton.querySelector('.play-button-text').textContent = 'LOADING...';
         
         try {
+          // Auto-save player name before connecting (same as Connect button)
+          const playerNameInput = document.getElementById('player-name-input');
+          if (playerNameInput && playerNameInput.value.trim()) {
+            const newName = playerNameInput.value.trim();
+            if (validateAndSavePlayerName(newName)) {
+              // Update the client's name if client is initialized
+              if (client && client.updatePlayerName) {
+                client.updatePlayerName(newName);
+              }
+            }
+          }
+          
           // Find DEMO_GAME server (should already exist since button is enabled)
           const demoServer = client.clientState.serverList.find(server => 
             server.name === 'DEMO_GAME' && 
@@ -2801,7 +2813,11 @@
             // Stop the update interval
             clearInterval(updateInterval);
             
-            // Connect to the DEMO_GAME server
+            // Connect using the same protocol as Connect button
+            // First establish framework connection (handles tokens)
+            client.connectToServer(demoServer.peerId);
+            
+            // Then connect the Quake game iframe
             connectQuakeToServer(demoServer.peerId);
           } else {
             console.error('DEMO_GAME server no longer available');
