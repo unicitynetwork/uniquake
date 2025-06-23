@@ -1,0 +1,25 @@
+[Unit]
+Description=UniQuake Tournament Server (Continuous Loop)
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+Group=YOUR_GROUP
+WorkingDirectory=/path/to/uniquake
+ExecStart=/path/to/uniquake/bin/server-cli-loop.sh --master ws://YOUR_IP:27950 --name "Tournament Server"
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/uniquake-tournament.log
+StandardError=append:/var/log/uniquake-tournament.error.log
+
+# Environment variables
+Environment="NODE_ENV=production"
+Environment="LOG_LEVEL=info"
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
