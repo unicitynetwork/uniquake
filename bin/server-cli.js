@@ -62,7 +62,8 @@ const matchControl = {
   isActive: false,
   startTime: null,
   timeUpdateInterval: null,
-  fragCheckInterval: null
+  fragCheckInterval: null,
+  scoreUpdateInterval: null
 };
 
 // CLI state
@@ -488,6 +489,14 @@ function handleGameServerStarted(message) {
   // Start periodic statistics updates
   startStatisticsUpdates();
   
+  // Start player score and countdown updates even before match starts
+  // This ensures clients always see the overlay (with "No Match" when inactive)
+  if (!matchControl.scoreUpdateInterval) {
+    matchControl.scoreUpdateInterval = setInterval(() => {
+      sendPlayerScoresAndCountdown();
+    }, 1000);
+  }
+  
   displayStatus();
 }
 
@@ -507,6 +516,12 @@ function handleGameServerStopped(message) {
   if (serverState.updateStatsInterval) {
     clearInterval(serverState.updateStatsInterval);
     serverState.updateStatsInterval = null;
+  }
+  
+  // Clear score update interval
+  if (matchControl.scoreUpdateInterval) {
+    clearInterval(matchControl.scoreUpdateInterval);
+    matchControl.scoreUpdateInterval = null;
   }
   
   // Stop match control
@@ -1162,8 +1177,12 @@ function startMatchControl() {
     broadcastMatchTimeUpdate();
   }, 5000);
   
-  // Initial broadcast
+  // Player score and countdown updates are already running from handleGameServerStarted
+  // No need to start them again here
+  
+  // Initial broadcasts
   broadcastMatchTimeUpdate();
+  sendPlayerScoresAndCountdown();
   
   logger.info(`✅ Match control started - will end in ${MATCH_SETTINGS.DURATION_MINUTES} minutes or at ${MATCH_SETTINGS.FRAG_LIMIT} frags`);
   
@@ -1184,6 +1203,11 @@ function stopMatchControl() {
   if (matchControl.timeUpdateInterval) {
     clearInterval(matchControl.timeUpdateInterval);
     matchControl.timeUpdateInterval = null;
+  }
+  
+  if (matchControl.scoreUpdateInterval) {
+    clearInterval(matchControl.scoreUpdateInterval);
+    matchControl.scoreUpdateInterval = null;
   }
   
   matchControl.isActive = false;
@@ -1213,6 +1237,62 @@ function formatRemainingTime(ms) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Send player scores and countdown to all clients (matches server.html format)
+ */
+function sendPlayerScoresAndCountdown() {
+  // Always send updates, even when match is not active (for "No Match" state)
+  
+  // Prepare player scores array
+  const playerScores = [];
+  
+  // Get scores from latest RCON data
+  if (latestPlayerScores.players) {
+    for (const player of latestPlayerScores.players) {
+      playerScores.push({
+        name: player.name,
+        score: player.score,
+        ping: player.ping,
+        address: player.address
+      });
+    }
+  }
+  
+  // Prepare countdown data based on match state
+  let countdown;
+  if (matchControl.isActive && !gameEnded) {
+    // Match is active - send actual countdown
+    const remaining = getRemainingTime();
+    const totalSeconds = Math.ceil(remaining / 1000);
+    const timeText = formatRemainingTime(remaining);
+    
+    countdown = {
+      totalSeconds: totalSeconds,
+      timeText: timeText,
+      isActive: true
+    };
+  } else {
+    // No active match
+    countdown = {
+      totalSeconds: 0,
+      timeText: "0:00",
+      isActive: false
+    };
+  }
+  
+  // Send player_score_update message to each connected client
+  const updateMsg = {
+    type: 'player_score_update',
+    players: playerScores,
+    countdown: countdown
+  };
+  
+  // Send to all connected clients
+  broadcastToClients(updateMsg);
+  
+  logger.debug(`Sent player score update with countdown: ${countdown.timeText} (${playerScores.length} players)`);
 }
 
 /**
