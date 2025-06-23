@@ -646,8 +646,20 @@
       box-shadow: 0 6px 20px rgba(76, 175, 80, 0.7);
     }
 
-    .play-button:active {
+    .play-button:active:not(:disabled) {
       transform: scale(0.95);
+    }
+
+    .play-button:disabled {
+      background-color: #666;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .play-button:disabled:hover {
+      background-color: #666;
+      transform: none;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     }
 
     .play-button-icon {
@@ -2703,50 +2715,100 @@
         return;
       }
       
+      // Function to update play button state based on DEMO_GAME availability
+      function updatePlayButtonState() {
+        if (!client || !client.clientState || !client.clientState.serverList) {
+          // No server list yet, disable button
+          playButton.disabled = true;
+          playButton.querySelector('.play-button-text').textContent = 'NO SERVERS';
+          playButton.style.opacity = '0.5';
+          playButton.style.cursor = 'not-allowed';
+          return;
+        }
+        
+        // Find DEMO_GAME server
+        const demoServer = client.clientState.serverList.find(server => 
+          server.name === 'DEMO_GAME' && 
+          server.address && 
+          server.address !== 'Not specified' &&
+          server.dedicatedServerState === 'running' // Only enable for running servers
+        );
+        
+        if (demoServer) {
+          // DEMO_GAME is available and running
+          playButton.disabled = false;
+          playButton.querySelector('.play-button-text').textContent = 'PLAY';
+          playButton.style.opacity = '1';
+          playButton.style.cursor = 'pointer';
+        } else {
+          // DEMO_GAME not found or not running
+          playButton.disabled = true;
+          playButton.querySelector('.play-button-text').textContent = 'NO DEMO';
+          playButton.style.opacity = '0.5';
+          playButton.style.cursor = 'not-allowed';
+        }
+      }
+      
+      // Initial state update
+      updatePlayButtonState();
+      
+      // Listen for server list updates
+      if (client) {
+        client.on('serverList', () => {
+          updatePlayButtonState();
+        });
+      }
+      
+      // Set up periodic updates to check server availability
+      const updateInterval = setInterval(() => {
+        // Stop updating if game is loaded
+        if (iframe.src && iframe.src.includes('/quake')) {
+          clearInterval(updateInterval);
+          return;
+        }
+        updatePlayButtonState();
+      }, 1000); // Check every second
+      
       // Handle play button click
       playButton.addEventListener('click', async function() {
-        console.log('Play button clicked - searching for DEMO_GAME server...');
+        // Don't do anything if button is disabled
+        if (playButton.disabled) {
+          return;
+        }
+        
+        console.log('Play button clicked - connecting to DEMO_GAME server...');
         
         // Show loading state
+        const originalText = playButton.querySelector('.play-button-text').textContent;
         playButton.disabled = true;
         playButton.querySelector('.play-button-text').textContent = 'LOADING...';
         
         try {
-          // Wait for server list to be populated
-          let retries = 0;
-          let demoServer = null;
-          
-          while (retries < 10 && !demoServer) {
-            // Check if client has server list
-            if (client && client.clientState && client.clientState.serverList) {
-              // Find DEMO_GAME server
-              demoServer = client.clientState.serverList.find(server => 
-                server.name === 'DEMO_GAME' && server.address && server.address !== 'Not specified'
-              );
-            }
-            
-            if (!demoServer) {
-              // Wait a bit and retry
-              await new Promise(resolve => setTimeout(resolve, 500));
-              retries++;
-            }
-          }
+          // Find DEMO_GAME server (should already exist since button is enabled)
+          const demoServer = client.clientState.serverList.find(server => 
+            server.name === 'DEMO_GAME' && 
+            server.address && 
+            server.address !== 'Not specified' &&
+            server.dedicatedServerState === 'running'
+          );
           
           if (demoServer) {
-            console.log('Found DEMO_GAME server:', demoServer);
+            console.log('Connecting to DEMO_GAME server:', demoServer);
             
             // Hide the play overlay
             playOverlay.classList.add('hidden');
             
+            // Stop the update interval
+            clearInterval(updateInterval);
+            
             // Connect to the DEMO_GAME server
             connectQuakeToServer(demoServer.peerId);
           } else {
-            console.error('DEMO_GAME server not found in server list');
-            alert('Demo server not available. Please check that DEMO_GAME server is running.');
+            console.error('DEMO_GAME server no longer available');
+            alert('Demo server is no longer available. Please wait for it to come back online.');
             
-            // Reset button state
-            playButton.disabled = false;
-            playButton.querySelector('.play-button-text').textContent = 'PLAY';
+            // Reset button state - updatePlayButtonState will handle it
+            updatePlayButtonState();
           }
           
         } catch (error) {
@@ -2754,8 +2816,7 @@
           alert('Failed to connect to demo server. Please try again.');
           
           // Reset button state
-          playButton.disabled = false;
-          playButton.querySelector('.play-button-text').textContent = 'PLAY';
+          updatePlayButtonState();
         }
       });
       
