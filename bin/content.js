@@ -4,12 +4,14 @@ var crc32 = require('buffer-crc32');
 var express = require('express');
 var fs = require('fs');
 var http = require('http');
+var https = require('https');
 var logger = require('winston');
 var opt = require('optimist');
 var path = require('path');
 var send = require('send');
 var wrench = require('wrench');
 var zlib = require('zlib');
+var envConfig = require('../lib/config');
 
 var argv = require('optimist')
 	.describe('config', 'Location of the configuration file').default('config', './content-config.json')
@@ -138,7 +140,8 @@ function handleAsset(req, res, next) {
 function loadConfig(configPath) {
 	var config = {
 		root: path.join(__dirname, '..', 'fresh_quakejs', 'base'),
-		port: 9000
+		port: 9000,
+		httpsPort: null // Will default to port + 1 if not specified
 	};
 
 	try {
@@ -147,6 +150,11 @@ function loadConfig(configPath) {
 		_.extend(config, data);
 	} catch (e) {
 		logger.warn('failed to load config', e);
+	}
+
+	// Use environment config if available
+	if (envConfig.contentPort) {
+		config.port = envConfig.contentPort;
 	}
 
 	return config;
@@ -169,11 +177,37 @@ function loadConfig(configPath) {
 		currentManifestTimestamp = new Date();
 		currentManifest = manifest;
 
-		// start listening
+		// start HTTP server
 		var server = http.createServer(app);
 
 		server.listen(config.port, function () {
-			logger.info('content server is now listening on port', server.address().address, server.address().port);
+			logger.info('content server (HTTP) is now listening on', server.address().address + ':' + server.address().port);
 		});
+
+		// start HTTPS server if SSL certificates are available
+		if (envConfig.sslAvailable) {
+			try {
+				var httpsOptions = {
+					cert: fs.readFileSync(envConfig.sslCertPath),
+					key: fs.readFileSync(envConfig.sslKeyPath)
+				};
+				
+				var httpsServer = https.createServer(httpsOptions, app);
+				var httpsPort = config.httpsPort || (config.port + 1);
+				
+				httpsServer.listen(httpsPort, function () {
+					logger.info('content server (HTTPS) is now listening on', httpsServer.address().address + ':' + httpsServer.address().port);
+					logger.info('SSL certificates loaded from:', envConfig.sslCertPath);
+				});
+			} catch (err) {
+				logger.error('Failed to start HTTPS server:', err.message);
+				logger.info('Content server will continue with HTTP only');
+			}
+		} else {
+			logger.info('SSL not available - content server running HTTP only');
+			if (!fs.existsSync(envConfig.sslCertPath)) {
+				logger.info('To enable HTTPS, install SSL certificates at:', envConfig.sslCertPath);
+			}
+		}
 	});
 })();
