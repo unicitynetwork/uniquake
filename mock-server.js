@@ -271,7 +271,9 @@ app.get('/quake', function(req, res) {
     useWebRTC: false,  // Disable WebRTC, use plain WebSockets
     masterServer: masterServer,           // QuakeJS expects host:port (no protocol)
     // Pass any command line parameters directly to the template
-    cmdline: cmdline
+    cmdline: cmdline,
+    // Pass protocol info for the game to use
+    isSecure: isSecure && config.sslAvailable
   };
   
   // Convert the EJS template to HTML and send it with proper content type

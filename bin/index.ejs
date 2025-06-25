@@ -56,6 +56,21 @@
 				height: 100%;
 			}
 		</style>
+		<% if (typeof isSecure !== 'undefined' && isSecure) { %>
+		<script>
+			// Override XMLHttpRequest to fix mixed content errors
+			(function() {
+				var originalOpen = XMLHttpRequest.prototype.open;
+				XMLHttpRequest.prototype.open = function(method, url, async, user, pass) {
+					// Replace http:// with https:// for asset requests when on HTTPS
+					if (typeof url === 'string' && url.indexOf('http://') === 0 && url.indexOf('/assets/') > -1) {
+						url = url.replace('http://', 'https://');
+					}
+					return originalOpen.call(this, method, url, async, user, pass);
+				};
+			})();
+		</script>
+		<% } %>
 	</head>
 	<body>
 		<div id="viewport-frame"></div>
