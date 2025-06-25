@@ -1,5 +1,5 @@
 {
-  "content": "213.199.61.236:9000",
-  "masterServer": "213.199.61.236:27950",
+  "content": "uniquake-dev.dyndns.org:9000",
+  "masterServer": "uniquake-dev.dyndns.org:27950",
   "useWebRTC": false
 }

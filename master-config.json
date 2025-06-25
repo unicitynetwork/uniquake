@@ -9,8 +9,8 @@
     65535
   ],
   "turnRealm": "uniquake.com",
-  "publicIp": "213.199.61.236",
-  "publicHostname": "213.199.61.236",
+  "publicIp": "uniquake-dev.dyndns.org",
+  "publicHostname": "uniquake-dev.dyndns.org",
   "logLevel": "info",
   "logStunRequests": false,
   "turnLogLevel": "WARNING",

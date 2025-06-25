@@ -1,12 +1,33 @@
 const express = require('express');
 const path = require('path');
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const url = require('url');
 const config = require('./lib/config');
 
 const app = express();
-const port = config.mockPort;
+let httpsPort = config.httpsPort;
+let httpPort = config.httpPort;
+
+// Debug SSL configuration
+console.log('SSL Configuration Debug:');
+console.log('- SSL Cert Path:', config.sslCertPath);
+console.log('- SSL Key Path:', config.sslKeyPath);
+console.log('- SSL Available:', config.sslAvailable);
+console.log('- SSL Explicitly Disabled:', config.sslExplicitlyDisabled);
+console.log('- HTTPS Port:', httpsPort);
+console.log('- HTTP Port:', httpPort);
+
+// Determine which port to use based on SSL availability
+let port;
+if (config.sslAvailable) {
+  // When SSL is available, main server will be HTTPS on 443
+  port = httpsPort;
+} else {
+  // No SSL, use HTTP port 80 by default
+  port = httpPort;
+}
 
 // Add compression middleware (matching original content server)
 app.use(function (req, res, next) {
@@ -217,19 +238,74 @@ app.get('/ioq3ded.js', function(req, res) {
 });
 
 // Start server
-const server = http.createServer(app);
-server.listen(port, function() {
-  console.log('======================================================');
-  console.log('Mock server listening on port ' + port);
-  console.log('Client URL: http://localhost:' + port + '/client');
-  console.log('Server URL: http://localhost:' + port + '/server');
-  console.log('RCON Console: http://localhost:' + port + '/rcon');
-  console.log('');
-  console.log('Master server configuration:');
-  console.log(`- Default (from env): ${DEFAULT_MASTER_SERVER}`);
-  console.log('- Override via URL: append ?master=ws://host:port to the URLs');
-  console.log('Example: http://localhost:' + port + '/client?master=ws://example.com:27950');
-  console.log('Example: http://localhost:' + port + '/server?master=ws://example.com:27950');
-  console.log('Example: http://localhost:' + port + '/rcon?master=ws://example.com:27950');
-  console.log('======================================================');
-});
+if (config.sslAvailable) {
+  // Create HTTPS server with SSL certificates
+  const httpsOptions = {
+    cert: fs.readFileSync(config.sslCertPath),
+    key: fs.readFileSync(config.sslKeyPath)
+  };
+  
+  const httpsServer = https.createServer(httpsOptions, app);
+  httpsServer.listen(httpsPort, function() {
+    console.log('======================================================');
+    console.log('Mock server listening on HTTPS port ' + httpsPort);
+    console.log('Client URL: https://' + config.hostIp + (httpsPort !== 443 ? ':' + httpsPort : '') + '/client');
+    console.log('Server URL: https://' + config.hostIp + (httpsPort !== 443 ? ':' + httpsPort : '') + '/server');
+    console.log('RCON Console: https://' + config.hostIp + (httpsPort !== 443 ? ':' + httpsPort : '') + '/rcon');
+    console.log('Quake Game: https://' + config.hostIp + (httpsPort !== 443 ? ':' + httpsPort : '') + '/quake');
+    console.log('');
+    console.log('SSL Certificates loaded from:');
+    console.log('- Certificate: ' + config.sslCertPath);
+    console.log('- Private Key: ' + config.sslKeyPath);
+    console.log('');
+    console.log('Master server configuration:');
+    console.log(`- Default (from env): ${DEFAULT_MASTER_SERVER}`);
+    console.log('- Override via URL: append ?master=ws://host:port to the URLs');
+    console.log('Example: https://' + config.hostIp + '/client?master=ws://example.com:27950');
+    console.log('Example: https://' + config.hostIp + '/server?master=ws://example.com:27950');
+    console.log('Example: https://' + config.hostIp + '/rcon?master=ws://example.com:27950');
+    console.log('======================================================');
+  });
+  
+  // Create HTTP redirect server on port 80
+  const redirectApp = express();
+  redirectApp.use((req, res) => {
+    const httpsUrl = 'https://' + req.headers.host.split(':')[0] + 
+                     (httpsPort !== 443 ? ':' + httpsPort : '') + 
+                     req.originalUrl;
+    res.redirect(301, httpsUrl);
+  });
+  
+  const httpServer = http.createServer(redirectApp);
+  httpServer.listen(httpPort, function() {
+    console.log('HTTP redirect server listening on port ' + httpPort + ' -> redirecting to HTTPS');
+  });
+  
+} else {
+  // No SSL available, create standard HTTP server
+  const server = http.createServer(app);
+  server.listen(port, function() {
+    const baseUrl = 'http://' + config.hostIp + (port !== 80 ? ':' + port : '');
+    console.log('======================================================');
+    console.log('Mock server listening on HTTP port ' + port);
+    console.log('Client URL: ' + baseUrl + '/client');
+    console.log('Server URL: ' + baseUrl + '/server');
+    console.log('RCON Console: ' + baseUrl + '/rcon');
+    console.log('Quake Game: ' + baseUrl + '/quake');
+    console.log('');
+    console.log('SSL not enabled. To enable HTTPS:');
+    console.log('1. Install SSL certificates (e.g., using Let\'s Encrypt)');
+    console.log('2. Set SSL_CERT_PATH and SSL_KEY_PATH in .env file');
+    console.log('3. Or place certificates at default location:');
+    console.log('   - ' + config.sslCertPath);
+    console.log('   - ' + config.sslKeyPath);
+    console.log('');
+    console.log('Master server configuration:');
+    console.log(`- Default (from env): ${DEFAULT_MASTER_SERVER}`);
+    console.log('- Override via URL: append ?master=ws://host:port to the URLs');
+    console.log('Example: ' + baseUrl + '/client?master=ws://example.com:27950');
+    console.log('Example: ' + baseUrl + '/server?master=ws://example.com:27950');
+    console.log('Example: ' + baseUrl + '/rcon?master=ws://example.com:27950');
+    console.log('======================================================');
+  });
+}
