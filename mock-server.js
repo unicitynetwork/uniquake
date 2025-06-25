@@ -35,10 +35,15 @@ app.use(function (req, res, next) {
   next();
 });
 
+// Trust proxy headers when behind a reverse proxy
+app.set('trust proxy', true);
+
 // Get master server URL from environment variable or use default
 const DEFAULT_MASTER_SERVER = process.env.MASTER_SERVER_URL || config.masterServerWs;
+const DEFAULT_MASTER_SERVER_WSS = process.env.MASTER_SERVER_URL_WSS || config.masterServerWss;
 
 console.log(`Using default master server: ${DEFAULT_MASTER_SERVER}`);
+console.log(`Using secure master server: ${DEFAULT_MASTER_SERVER_WSS}`);
 console.log(`You can override this by setting the MASTER_SERVER_URL environment variable`);
 console.log(`Example: MASTER_SERVER_URL=ws://your-server-ip:27950 npm run browser-mock`);
 
@@ -53,8 +58,18 @@ app.use('/lib/client', express.static(path.join(__dirname, 'lib/client')));
 
 // Define routes for the application
 app.get('/', function(req, res) {
-  // Get the master server URL from query parameter or use default
-  const masterServer = req.query.master || DEFAULT_MASTER_SERVER;
+  // Determine if we're serving over HTTPS
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  
+  // Get the master server URL from query parameter or use default based on protocol
+  let masterServer;
+  if (req.query.master) {
+    masterServer = req.query.master;
+  } else if (isSecure && DEFAULT_MASTER_SERVER_WSS) {
+    masterServer = DEFAULT_MASTER_SERVER_WSS;
+  } else {
+    masterServer = DEFAULT_MASTER_SERVER;
+  }
   
   // Read the client.html file
   fs.readFile(path.join(__dirname, 'client.html'), 'utf8', function(err, data) {
@@ -63,10 +78,19 @@ app.get('/', function(req, res) {
     }
     
     // Replace the default master server URL with the provided one
-    const modifiedHtml = data.replace(
-      /masterServer: ['"]ws:\/\/localhost:27950['"]/g, 
+    // This matches the pattern in window.UNIQUAKE_CONFIG
+    let modifiedHtml = data.replace(
+      /masterServer:\s*['"]ws:\/\/localhost:27950['"]/g, 
       `masterServer: '${masterServer}'`
     );
+    
+    // Also update serverAddress if using HTTPS
+    if (isSecure && DEFAULT_MASTER_SERVER_WSS) {
+      modifiedHtml = modifiedHtml.replace(
+        /serverAddress:\s*['"]ws:\/\/localhost:27960['"]/g,
+        `serverAddress: 'wss://${config.hostIp}:28960'`
+      );
+    }
     
     // Send the modified HTML
     res.send(modifiedHtml);
@@ -75,8 +99,18 @@ app.get('/', function(req, res) {
 
 // Modified client route to support master server URL parameter
 app.get('/client', function(req, res) {
-  // Get the master server URL from query parameter or use default
-  const masterServer = req.query.master || DEFAULT_MASTER_SERVER;
+  // Determine if we're serving over HTTPS
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  
+  // Get the master server URL from query parameter or use default based on protocol
+  let masterServer;
+  if (req.query.master) {
+    masterServer = req.query.master;
+  } else if (isSecure && DEFAULT_MASTER_SERVER_WSS) {
+    masterServer = DEFAULT_MASTER_SERVER_WSS;
+  } else {
+    masterServer = DEFAULT_MASTER_SERVER;
+  }
   
   // Read the client.html file
   fs.readFile(path.join(__dirname, 'client.html'), 'utf8', function(err, data) {
@@ -97,8 +131,18 @@ app.get('/client', function(req, res) {
 
 // Modified server route to support master server URL parameter
 app.get('/server', function(req, res) {
-  // Get the master server URL from query parameter or use default
-  const masterServer = req.query.master || DEFAULT_MASTER_SERVER;
+  // Determine if we're serving over HTTPS
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  
+  // Get the master server URL from query parameter or use default based on protocol
+  let masterServer;
+  if (req.query.master) {
+    masterServer = req.query.master;
+  } else if (isSecure && DEFAULT_MASTER_SERVER_WSS) {
+    masterServer = DEFAULT_MASTER_SERVER_WSS;
+  } else {
+    masterServer = DEFAULT_MASTER_SERVER;
+  }
   
   // Read the server.html file
   fs.readFile(path.join(__dirname, 'server.html'), 'utf8', function(err, data) {
@@ -149,7 +193,29 @@ app.use('/build', express.static(path.join(__dirname, 'build')));
 
 // Add a route to serve the web.json configuration file
 app.get('/web.json', function(req, res) {
-  res.sendfile(path.join(__dirname, 'bin/web.json'));
+  // Determine if we're serving over HTTPS
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  
+  // Read the web.json file
+  fs.readFile(path.join(__dirname, 'bin/web.json'), 'utf8', function(err, data) {
+    if (err) {
+      return res.status(500).send('Error loading web.json');
+    }
+    
+    // Parse the JSON
+    let webConfig = JSON.parse(data);
+    
+    // Update content server port if using HTTPS
+    if (isSecure && config.sslAvailable) {
+      // Change port 9000 to 9001 for HTTPS
+      webConfig.content = webConfig.content.replace(':9000', ':9001');
+      // Update master server to use secure port
+      webConfig.masterServer = webConfig.masterServer.replace(':27950', ':27951');
+    }
+    
+    // Send the modified JSON
+    res.json(webConfig);
+  });
 });
 
 // Add a route to serve the index.ejs file
@@ -159,11 +225,21 @@ app.get('/index.ejs', function(req, res) {
 
 // Handle the root path for the Quake game
 app.get('/quake', function(req, res) {
+  // Determine if we're serving over HTTPS
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  
   // Extract cmdline parameter from query string
   const cmdline = req.query.cmdline || '';
   
-  // Get the master server URL from query parameter or use default
-  const rawMaster = req.query.master || DEFAULT_MASTER_SERVER;
+  // Get the master server URL from query parameter or use default based on protocol
+  let rawMaster;
+  if (req.query.master) {
+    rawMaster = req.query.master;
+  } else if (isSecure && DEFAULT_MASTER_SERVER_WSS) {
+    rawMaster = DEFAULT_MASTER_SERVER_WSS;
+  } else {
+    rawMaster = DEFAULT_MASTER_SERVER;
+  }
   
   // Convert from WebSocket URL format (ws://host:port) to Quake format (host:port)
   let masterServer = config.masterServerAddress;
@@ -182,9 +258,16 @@ app.get('/quake', function(req, res) {
   
   console.log(`Using master server ${masterServer} for Quake game`);
   
+  // Determine content server address based on protocol
+  let contentServer = config.contentServerAddress;
+  if (isSecure && config.sslAvailable) {
+    // Use HTTPS content server port (9001 instead of 9000)
+    contentServer = contentServer.replace(':9000', ':9001');
+  }
+  
   // Set up locals for template rendering
   res.locals = {
-    content: config.contentServerAddress,  // QuakeJS expects host:port (no protocol)
+    content: contentServer,  // QuakeJS expects host:port (no protocol)
     useWebRTC: false,  // Disable WebRTC, use plain WebSockets
     masterServer: masterServer,           // QuakeJS expects host:port (no protocol)
     // Pass any command line parameters directly to the template
@@ -208,8 +291,18 @@ app.get('/quake', function(req, res) {
 
 // RCON Console route
 app.get('/rcon', function(req, res) {
-  // Get the master server URL from query parameter or use default
-  const masterServer = req.query.master || DEFAULT_MASTER_SERVER;
+  // Determine if we're serving over HTTPS
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  
+  // Get the master server URL from query parameter or use default based on protocol
+  let masterServer;
+  if (req.query.master) {
+    masterServer = req.query.master;
+  } else if (isSecure && DEFAULT_MASTER_SERVER_WSS) {
+    masterServer = DEFAULT_MASTER_SERVER_WSS;
+  } else {
+    masterServer = DEFAULT_MASTER_SERVER;
+  }
   
   // Read the rcon.html file
   fs.readFile(path.join(__dirname, 'rcon.html'), 'utf8', function(err, data) {
@@ -259,11 +352,16 @@ if (config.sslAvailable) {
     console.log('- Private Key: ' + config.sslKeyPath);
     console.log('');
     console.log('Master server configuration:');
-    console.log(`- Default (from env): ${DEFAULT_MASTER_SERVER}`);
-    console.log('- Override via URL: append ?master=ws://host:port to the URLs');
-    console.log('Example: https://' + config.hostIp + '/client?master=ws://example.com:27950');
-    console.log('Example: https://' + config.hostIp + '/server?master=ws://example.com:27950');
-    console.log('Example: https://' + config.hostIp + '/rcon?master=ws://example.com:27950');
+    console.log(`- HTTP/WS: ${DEFAULT_MASTER_SERVER}`);
+    console.log(`- HTTPS/WSS: ${DEFAULT_MASTER_SERVER_WSS || 'Not available'}`);
+    console.log('- Override via URL: append ?master=wss://host:port to the URLs');
+    console.log('Example: https://' + config.hostIp + '/client?master=wss://example.com:27951');
+    console.log('Example: https://' + config.hostIp + '/server?master=wss://example.com:27951');
+    console.log('Example: https://' + config.hostIp + '/rcon?master=wss://example.com:27951');
+    console.log('');
+    console.log('Content server configuration:');
+    console.log(`- HTTP: ${config.contentServerAddress}`);
+    console.log(`- HTTPS: ${config.contentServerAddress.replace(':9000', ':9001')}`);
     console.log('======================================================');
   });
   
@@ -301,11 +399,14 @@ if (config.sslAvailable) {
     console.log('   - ' + config.sslKeyPath);
     console.log('');
     console.log('Master server configuration:');
-    console.log(`- Default (from env): ${DEFAULT_MASTER_SERVER}`);
+    console.log(`- HTTP/WS: ${DEFAULT_MASTER_SERVER}`);
     console.log('- Override via URL: append ?master=ws://host:port to the URLs');
     console.log('Example: ' + baseUrl + '/client?master=ws://example.com:27950');
     console.log('Example: ' + baseUrl + '/server?master=ws://example.com:27950');
     console.log('Example: ' + baseUrl + '/rcon?master=ws://example.com:27950');
+    console.log('');
+    console.log('Content server configuration:');
+    console.log(`- HTTP: ${config.contentServerAddress}`);
     console.log('======================================================');
   });
 }
