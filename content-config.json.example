@@ -1,0 +1,5 @@
+{
+  "port": 9000,
+  "baseUrl": "localhost",
+  "mapsUrl": "localhost:27950"
+}

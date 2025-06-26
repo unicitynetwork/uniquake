@@ -31,7 +31,8 @@ echo ""
 
 # Ensure submodules are initialized
 echo "=== Initializing Git submodules ==="
-git submodule update --init --recursive
+#git submodule update --init --recursive
+git submodule update --init
 echo "Main submodules initialized successfully."
 echo ""
 

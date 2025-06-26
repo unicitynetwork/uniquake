@@ -1,0 +1,5 @@
+{
+  "content": "localhost:9000",
+  "masterServer": "localhost:27950",
+  "useWebRTC": false
+}

@@ -1,22 +1,20 @@
 {
   "port": 27950,
   "host": "0.0.0.0",
-  
   "stunPort": 3478,
   "stunPortSecondary": 3479,
-  
   "turnPort": 3478,
-  "turnPortRange": [49152, 65535],
+  "turnPortRange": [
+    49152,
+    65535
+  ],
   "turnRealm": "uniquake.com",
-  
-  "publicIp": "127.0.0.1",
+  "publicIp": "localhost",
   "publicHostname": "localhost",
-  
   "logLevel": "info",
   "logStunRequests": false,
   "turnLogLevel": "WARNING",
-  
-  "pruneInterval": 350000,
+  "pruneInterval": 7200000,
   "credentialTTL": 86400,
   "credentialRotationInterval": 86400000
 }
