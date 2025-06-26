@@ -1116,12 +1116,7 @@
       
       addSafeEventListener('disconnect-button', 'click', () => {
         client.disconnect();
-        
-        // Reset Quake game iframe
-        const gameIframe = document.getElementById('game-iframe');
-        if (gameIframe) {
-          gameIframe.src = '/';
-        }
+        // Don't set iframe src here - let handleConnectionChange do it
       });
       
       
@@ -2038,7 +2033,11 @@
         game.stop();
         
         // Reset the Quake iframe
-        document.getElementById('game-iframe').src = '';
+        const iframe = document.getElementById('game-iframe');
+        // Clear any existing onload handler to prevent unwanted behavior
+        iframe.onload = null;
+        // Set to about:blank to show empty page
+        iframe.src = 'about:blank';
         
         // Refresh server list to remove disabled state
         client.requestServerList();
