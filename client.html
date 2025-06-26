@@ -748,7 +748,8 @@
       
       <div class="right-panels">
         <div class="game-container">
-          <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map" allowfullscreen></iframe>
+          <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map"></iframe>
+          <div class="keyboard-indicator" id="keyboard-indicator">Click game to enable keyboard & mouse controls</div>
           <div class="play-overlay" id="play-overlay">
             <button class="play-button" id="play-button">
               <span class="play-button-icon">▶</span>
@@ -1229,45 +1230,112 @@
       if (gameIframe) {
         // Enhanced click handler with multiple strategies to ensure keyboard focus
         gameIframe.addEventListener('click', function() {
+          restoreGameFocus();
+        });
+        
+        // Function to restore full game focus and input handling
+        function restoreGameFocus() {
+          console.log("Attempting to restore game focus...");
+          
           // Add active class for CSS specificity
           gameIframe.classList.add('active-iframe');
           
-          // Basic focus method
+          // First, ensure the iframe itself has focus
           gameIframe.focus();
           
-          // Advanced focus for Firefox and other browsers
+          // Try multiple strategies to restore input
           if (gameIframe.contentWindow) {
             try {
-              // Direct focus on content window
+              // Strategy 1: Focus the content window
               gameIframe.contentWindow.focus();
               
-              // Some browsers need a slight delay
-              setTimeout(function() {
-                gameIframe.focus();
-                try {
-                  gameIframe.contentWindow.focus();
-                } catch (e) {
-                }
-              }, 100);
+              // Strategy 2: Find and focus the canvas directly
+              const canvas = gameIframe.contentWindow.document.querySelector('canvas');
+              if (canvas) {
+                console.log("Found canvas, attempting to restore input...");
+                
+                // Focus the canvas
+                canvas.focus();
+                
+                // Simulate a user activation to trigger pointer lock
+                // Create mouse events at the center of the canvas
+                const rect = canvas.getBoundingClientRect();
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                
+                // Send mousedown and mouseup to simulate a click
+                const mouseDownEvent = new MouseEvent('mousedown', {
+                  view: gameIframe.contentWindow,
+                  bubbles: true,
+                  cancelable: true,
+                  clientX: centerX,
+                  clientY: centerY,
+                  button: 0
+                });
+                
+                const mouseUpEvent = new MouseEvent('mouseup', {
+                  view: gameIframe.contentWindow,
+                  bubbles: true,
+                  cancelable: true,
+                  clientX: centerX,
+                  clientY: centerY,
+                  button: 0
+                });
+                
+                const clickEvent = new MouseEvent('click', {
+                  view: gameIframe.contentWindow,
+                  bubbles: true,
+                  cancelable: true,
+                  clientX: centerX,
+                  clientY: centerY
+                });
+                
+                // Dispatch events
+                canvas.dispatchEvent(mouseDownEvent);
+                canvas.dispatchEvent(mouseUpEvent);
+                canvas.dispatchEvent(clickEvent);
+                
+                // Try to request pointer lock after user activation
+                setTimeout(function() {
+                  if (canvas.requestPointerLock) {
+                    canvas.requestPointerLock();
+                  }
+                }, 50);
+              }
+              
+              // Strategy 3: Send a message to the iframe to refocus
+              // QuakeJS might listen for postMessage events
+              gameIframe.contentWindow.postMessage({ type: 'focus' }, '*');
+              
             } catch (e) {
-              console.log("Could not focus content window directly:", e);
+              console.error("Error restoring game focus:", e);
             }
           }
           
-          // Force the browser to acknowledge the iframe is active
-          // This helps in cases where the browser doesn't properly assign focus
-          if (document.activeElement) {
-            document.activeElement.blur();
-          }
-          gameIframe.focus();
-          
-        });
+          // Final fallback: blur and refocus
+          setTimeout(function() {
+            if (document.activeElement !== gameIframe) {
+              if (document.activeElement) {
+                document.activeElement.blur();
+              }
+              gameIframe.focus();
+            }
+          }, 100);
+        }
+        
+        // Add click handler to game container to restore focus
+        const gameContainer = document.querySelector('.game-container');
+        if (gameContainer) {
+          gameContainer.addEventListener('click', function(e) {
+            // Only restore focus if clicking on the container itself, not the iframe
+            if (e.target === gameContainer) {
+              restoreGameFocus();
+            }
+          });
+        }
         
         // Get the keyboard indicator element
         const keyboardIndicator = document.getElementById('keyboard-indicator');
-        
-        // Get the game container
-        const gameContainer = document.querySelector('.game-container');
         
         // Show clear visual indicator when iframe has focus
         gameIframe.addEventListener('focus', function() {
@@ -1302,15 +1370,62 @@
             gameContainer.style.boxShadow = 'none';
           }
           
-          // Show the keyboard indicator
+          // Show the keyboard indicator with enhanced message
           if (keyboardIndicator) {
             keyboardIndicator.classList.remove('hidden');
+            // Update text to be more helpful
+            keyboardIndicator.textContent = 'Click game to enable keyboard & mouse controls';
+          }
+          
+          // Create a temporary click overlay to ensure proper refocus
+          const clickOverlay = document.createElement('div');
+          clickOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1000;
+            cursor: pointer;
+            background: transparent;
+          `;
+          clickOverlay.onclick = function() {
+            // Remove the overlay
+            if (gameContainer && gameContainer.contains(clickOverlay)) {
+              gameContainer.removeChild(clickOverlay);
+            }
+            // Let the click through to the iframe
+            restoreGameFocus();
+          };
+          if (gameContainer) {
+            gameContainer.appendChild(clickOverlay);
           }
           
           
         });
       } else {
         console.warn("Game iframe element not found");
+      }
+      
+      // Add handler for when left panel loses focus and user wants to return to game
+      const leftPanel = document.querySelector('.left-panel');
+      if (leftPanel) {
+        // Track if we just clicked in the left panel
+        let leftPanelClicked = false;
+        
+        leftPanel.addEventListener('mousedown', function() {
+          leftPanelClicked = true;
+          // Reset flag after a short delay
+          setTimeout(() => { leftPanelClicked = false; }, 1000);
+        });
+        
+        // When clicking back on iframe after clicking left panel, ensure proper focus
+        gameIframe.addEventListener('mousedown', function(e) {
+          if (leftPanelClicked) {
+            e.preventDefault(); // Prevent default to ensure our focus logic runs
+            restoreGameFocus();
+          }
+        });
       }
       
       // Release focus when Escape key is pressed
