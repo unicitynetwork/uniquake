@@ -8,3 +8,6 @@ baseq3/
 logs/
 
 *.log
+
+# Environment variables
+.env
