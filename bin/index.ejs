@@ -69,6 +69,25 @@
 					return originalOpen.call(this, method, url, async, user, pass);
 				};
 			})();
+			
+			// Override WebSocket to fix mixed content errors for game server connections
+			(function() {
+				var OriginalWebSocket = window.WebSocket;
+				window.WebSocket = function(url, protocols) {
+					// Replace ws:// with wss:// when on HTTPS
+					if (typeof url === 'string' && url.indexOf('ws://') === 0) {
+						url = url.replace('ws://', 'wss://');
+						console.log('Converted WebSocket URL from ws:// to wss://:', url);
+					}
+					return new OriginalWebSocket(url, protocols);
+				};
+				// Copy static properties and methods
+				window.WebSocket.prototype = OriginalWebSocket.prototype;
+				window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+				window.WebSocket.OPEN = OriginalWebSocket.OPEN;
+				window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+				window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+			})();
 		</script>
 		<% } %>
 	</head>
