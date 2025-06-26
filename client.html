@@ -2043,10 +2043,21 @@
         const playOverlay = document.getElementById('play-overlay');
         if (playOverlay) {
           playOverlay.classList.remove('hidden');
+          
+          // Restart periodic checking for DEMO_GAME availability
+          if (window.startPlayButtonPeriodicCheck) {
+            window.startPlayButtonPeriodicCheck();
+          }
         }
         
         // Refresh server list to remove disabled state
         client.requestServerList();
+        
+        // Also trigger immediate play button state update
+        const playButton = document.getElementById('play-button');
+        if (playButton && window.updatePlayButtonState) {
+          window.updatePlayButtonState();
+        }
       }
     }
     
@@ -2799,15 +2810,33 @@
         });
       }
       
-      // Set up periodic updates to check server availability
-      const updateInterval = setInterval(() => {
-        // Stop updating if game is loaded
-        if (iframe.src && iframe.src.includes('/quake')) {
+      // Store interval ID globally so we can manage it
+      let updateInterval;
+      
+      // Function to start periodic checking
+      function startPeriodicChecking() {
+        // Clear any existing interval
+        if (updateInterval) {
           clearInterval(updateInterval);
-          return;
         }
-        updatePlayButtonState();
-      }, 1000); // Check every second
+        
+        // Set up periodic updates to check server availability
+        updateInterval = setInterval(() => {
+          // Stop updating if game is loaded
+          if (iframe.src && iframe.src.includes('/quake')) {
+            clearInterval(updateInterval);
+            return;
+          }
+          updatePlayButtonState();
+        }, 1000); // Check every second
+      }
+      
+      // Start checking
+      startPeriodicChecking();
+      
+      // Store the functions globally so we can call them when play overlay is shown
+      window.startPlayButtonPeriodicCheck = startPeriodicChecking;
+      window.updatePlayButtonState = updatePlayButtonState;
       
       // Handle play button click
       playButton.addEventListener('click', async function() {
