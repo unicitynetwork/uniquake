@@ -749,7 +749,7 @@
       <div class="right-panels">
         <div class="game-container">
           <iframe id="game-iframe" class="game-iframe" tabindex="0" title="Click to enable keyboard controls" allow="autoplay; fullscreen; gamepad; keyboard-map"></iframe>
-          <div class="keyboard-indicator" id="keyboard-indicator">Click game to enable keyboard & mouse controls</div>
+          <div class="keyboard-indicator hidden" id="keyboard-indicator">Click game to enable keyboard & mouse controls</div>
           <div class="play-overlay" id="play-overlay">
             <button class="play-button" id="play-button">
               <span class="play-button-icon">▶</span>
@@ -1235,6 +1235,12 @@
         
         // Function to restore full game focus and input handling
         function restoreGameFocus() {
+          // Check if game is actually loaded
+          if (!gameIframe.src || gameIframe.src === 'about:blank' || !gameIframe.src.includes('/quake')) {
+            console.log("No game loaded, skipping focus restoration");
+            return;
+          }
+          
           console.log("Attempting to restore game focus...");
           
           // Add active class for CSS specificity
@@ -1370,35 +1376,43 @@
             gameContainer.style.boxShadow = 'none';
           }
           
-          // Show the keyboard indicator with enhanced message
-          if (keyboardIndicator) {
-            keyboardIndicator.classList.remove('hidden');
-            // Update text to be more helpful
-            keyboardIndicator.textContent = 'Click game to enable keyboard & mouse controls';
-          }
-          
-          // Create a temporary click overlay to ensure proper refocus
-          const clickOverlay = document.createElement('div');
-          clickOverlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 1000;
-            cursor: pointer;
-            background: transparent;
-          `;
-          clickOverlay.onclick = function() {
-            // Remove the overlay
-            if (gameContainer && gameContainer.contains(clickOverlay)) {
-              gameContainer.removeChild(clickOverlay);
+          // Only show keyboard indicator and overlay if game is running
+          if (gameIframe.src && gameIframe.src !== 'about:blank' && gameIframe.src.includes('/quake')) {
+            // Show the keyboard indicator with enhanced message
+            if (keyboardIndicator) {
+              keyboardIndicator.classList.remove('hidden');
+              // Update text to be more helpful
+              keyboardIndicator.textContent = 'Click game to enable keyboard & mouse controls';
             }
-            // Let the click through to the iframe
-            restoreGameFocus();
-          };
-          if (gameContainer) {
-            gameContainer.appendChild(clickOverlay);
+            
+            // Create a temporary click overlay to ensure proper refocus
+            const clickOverlay = document.createElement('div');
+            clickOverlay.style.cssText = `
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              z-index: 1000;
+              cursor: pointer;
+              background: transparent;
+            `;
+            clickOverlay.onclick = function() {
+              // Remove the overlay
+              if (gameContainer && gameContainer.contains(clickOverlay)) {
+                gameContainer.removeChild(clickOverlay);
+              }
+              // Let the click through to the iframe
+              restoreGameFocus();
+            };
+            if (gameContainer) {
+              gameContainer.appendChild(clickOverlay);
+            }
+          } else {
+            // Hide keyboard indicator when no game is loaded
+            if (keyboardIndicator) {
+              keyboardIndicator.classList.add('hidden');
+            }
           }
           
           
@@ -1414,9 +1428,12 @@
         let leftPanelClicked = false;
         
         leftPanel.addEventListener('mousedown', function() {
-          leftPanelClicked = true;
-          // Reset flag after a short delay
-          setTimeout(() => { leftPanelClicked = false; }, 1000);
+          // Only track clicks when game is running
+          if (gameIframe.src && gameIframe.src !== 'about:blank' && gameIframe.src.includes('/quake')) {
+            leftPanelClicked = true;
+            // Reset flag after a short delay
+            setTimeout(() => { leftPanelClicked = false; }, 1000);
+          }
         });
         
         // When clicking back on iframe after clicking left panel, ensure proper focus
