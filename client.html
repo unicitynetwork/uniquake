@@ -2039,6 +2039,12 @@
         // Set to about:blank to show empty page
         iframe.src = 'about:blank';
         
+        // Show the play overlay again
+        const playOverlay = document.getElementById('play-overlay');
+        if (playOverlay) {
+          playOverlay.classList.remove('hidden');
+        }
+        
         // Refresh server list to remove disabled state
         client.requestServerList();
       }
