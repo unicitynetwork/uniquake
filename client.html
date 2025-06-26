@@ -275,6 +275,15 @@
       background-color: rgba(255, 152, 0, 0.25);
     }
     
+    .server-item.disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    
+    .server-item.disabled:hover {
+      background-color: inherit;
+    }
+    
     .server-status {
       font-size: 0.8rem;
       font-weight: bold;
@@ -702,11 +711,12 @@
         </div>
         
         <h2>Game Servers</h2>
+        <div style="font-size: 12px; color: #aaa; margin-bottom: 10px;">Click a server to connect</div>
         <div id="servers-container" class="server-list"></div>
         
         <div class="button-row">
           <button id="refresh-button">Refresh Servers</button>
-          <button id="connect-button" disabled>Connect</button>
+          <button id="connect-button" disabled style="display: none;">Connect</button>
           <button id="disconnect-button" disabled>Disconnect</button>
         </div>
         
@@ -1879,6 +1889,11 @@
           serverElem.classList.add('selected');
         }
         
+        // Disable all servers when connected
+        if (client.clientState.connected) {
+          serverElem.classList.add('disabled');
+        }
+        
         // Check for malformed server metadata
         const isMalformed = !server.address || server.address === 'Not specified' || server.address.includes('Not');
         if (isMalformed) {
@@ -1924,6 +1939,11 @@
         `;
         
         serverElem.addEventListener('click', () => {
+          // Don't allow clicking if already connected
+          if (client.clientState.connected) {
+            return;
+          }
+          
           // Deselect previous selection
           document.querySelectorAll('.server-item.selected').forEach(item => {
             item.classList.remove('selected');
@@ -1933,29 +1953,38 @@
           serverElem.classList.add('selected');
           selectedServerId = server.peerId;
           
-          // Disable connect button if server is malformed, not running, or client is already connected
-          const connectButton = document.getElementById('connect-button');
-          if (connectButton) {
-            const canConnect = !client.clientState.connected && !isMalformed && dedicatedState === 'running';
-            connectButton.disabled = !canConnect;
-            
-            if (isMalformed) {
-              connectButton.title = 'Cannot connect: Server has malformed metadata';
-            } else if (dedicatedState === 'not_running') {
-              connectButton.title = 'Cannot connect: Dedicated server is not running';
-            } else if (dedicatedState === 'starting') {
-              connectButton.title = 'Cannot connect: Dedicated server is still starting';
-            } else if (dedicatedState === 'game_over') {
-              if (timerData.restartCountdown > 0) {
-                connectButton.title = `Cannot connect: Game is over, next match starts in ${timerData.restartCountdown} seconds`;
-              } else {
-                connectButton.title = 'Cannot connect: Game is over, waiting for restart';
+          // Check if we can connect to this server
+          const canConnect = !client.clientState.connected && !isMalformed && dedicatedState === 'running';
+          
+          if (canConnect) {
+            // Connect directly when clicking on a running server
+            client.connectToServer(selectedServerId);
+          } else {
+            // Show why we can't connect
+            const connectButton = document.getElementById('connect-button');
+            if (connectButton) {
+              connectButton.disabled = true;
+              
+              if (isMalformed) {
+                connectButton.title = 'Cannot connect: Server has malformed metadata';
+                alert('Cannot connect: Server has malformed metadata');
+              } else if (dedicatedState === 'not_running') {
+                connectButton.title = 'Cannot connect: Dedicated server is not running';
+                alert('Cannot connect: Dedicated server is not running');
+              } else if (dedicatedState === 'starting') {
+                connectButton.title = 'Cannot connect: Dedicated server is still starting';
+                alert('Cannot connect: Dedicated server is still starting');
+              } else if (dedicatedState === 'game_over') {
+                if (timerData.restartCountdown > 0) {
+                  connectButton.title = `Cannot connect: Game is over, next match starts in ${timerData.restartCountdown} seconds`;
+                  alert(`Cannot connect: Game is over, next match starts in ${timerData.restartCountdown} seconds`);
+                } else {
+                  connectButton.title = 'Cannot connect: Game is over, waiting for restart';
+                  alert('Cannot connect: Game is over, waiting for restart');
+                }
               }
-            } else {
-              connectButton.title = '';
             }
           }
-          
         });
         
         container.appendChild(serverElem);
@@ -1991,6 +2020,9 @@
         if (selectedServerId) {
           connectQuakeToServer(selectedServerId);
         }
+        
+        // Refresh server list to show disabled state
+        client.requestServerList();
       } else {
         connectButton.disabled = false;
         disconnectButton.disabled = true;
@@ -2007,6 +2039,9 @@
         
         // Reset the Quake iframe
         document.getElementById('game-iframe').src = '';
+        
+        // Refresh server list to remove disabled state
+        client.requestServerList();
       }
     }
     
