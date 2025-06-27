@@ -550,8 +550,8 @@ function startStatisticsUpdates() {
 /**
  * Update player statistics via RCON
  */
-async function updatePlayerStatistics() {
-  if (gameEnded || (serverState.restartCycle && serverState.restartCycle.active)) {
+async function updatePlayerStatistics(forceUpdate = false) {
+  if (!forceUpdate && (gameEnded || (serverState.restartCycle && serverState.restartCycle.active))) {
     return;
   }
   
@@ -562,9 +562,13 @@ async function updatePlayerStatistics() {
   
   try {
     // Get player status
+    logger.info('Getting player status via RCON...');
     const statusResponse = await sendRCONCommand('status');
+    logger.info(`RCON status raw response: ${statusResponse ? statusResponse.substring(0, 200) + '...' : 'null'}`);
     if (statusResponse) {
       const parsedStatus = parsePlayerStatusFromRCON(statusResponse);
+      logger.info(`RCON status parsed: ${parsedStatus.players.length} players found`);
+      logger.info(`Parsed players: ${JSON.stringify(parsedStatus.players)}`);
       
       // Update latest scores
       latestPlayerScores.players = parsedStatus.players;
@@ -583,6 +587,8 @@ async function updatePlayerStatistics() {
       
       // Display updated stats
       displayPlayerStats(parsedStatus);
+    } else {
+      logger.warn('No response from RCON status command');
     }
     
     // Get server info
@@ -674,35 +680,47 @@ function handleRCONResponse(message) {
  * Parse player status from RCON output
  */
 function parsePlayerStatusFromRCON(rconOutput) {
-  const lines = rconOutput.split('\\n');
+  // Try different line separators
+  let lines = rconOutput.split('\\n');
+  if (lines.length === 1) {
+    // Try regular newline if escaped newline didn't work
+    lines = rconOutput.split('\n');
+  }
+  
+  logger.debug(`RCON output has ${lines.length} lines`);
+  
   const players = [];
   let map = '';
   
   for (const line of lines) {
+    logger.debug(`Parsing RCON line: ${line}`);
     // Extract map name
     if (line.includes('map:')) {
-      const mapMatch = line.match(/map:\\s*(\\S+)/);
+      const mapMatch = line.match(/map:\s*(\S+)/);
       if (mapMatch) {
         map = mapMatch[1];
       }
     }
     
     // Parse player lines (fixed-width format)
-    const playerMatch = line.match(/^\\s*(\\d+)\\s+(\\-?\\d+)\\s+(\\d+|CNCT|ZMBI)\\s+(.+?)\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+|bot)/);
+    const playerMatch = line.match(/^\s*(\d+)\s+(-?\d+)\s+(\d+|CNCT|ZMBI)\s+(.+?)\s+(\d+\.\d+\.\d+\.\d+:\d+|bot)/);
     if (playerMatch) {
       const [, slot, score, ping, name, address] = playerMatch;
       
       // Clean name (remove color codes)
-      const cleanName = name.replace(/\\^\\d/g, '').trim();
+      const cleanName = name.replace(/\^\d/g, '').trim();
       
-      players.push({
+      const player = {
         slot: parseInt(slot),
         name: cleanName,
         score: parseInt(score),
         ping: ping === 'CNCT' || ping === 'ZMBI' ? ping : parseInt(ping),
         address: address,
         isBot: address === 'bot' || parseInt(ping) === 999
-      });
+      };
+      
+      logger.debug(`Parsed player: ${JSON.stringify(player)}`);
+      players.push(player);
     }
   }
   
@@ -1380,8 +1398,8 @@ async function handleAutomaticGameOver(reason) {
   // Stop match control
   stopMatchControl();
   
-  // Use existing game over logic
-  await handleGameOver();
+  // Use existing game over logic but skip match:end message (we'll send it below)
+  await handleGameOver(true);
   
   // Determine winner from final scores
   let winner = null;
@@ -1520,13 +1538,51 @@ function displayPlayerStats(parsedStatus) {
 
 /**
  * Handle game over
+ * @param {boolean} skipMatchEndMsg - Skip sending match:end message (used by handleAutomaticGameOver)
  */
-async function handleGameOver() {
-  logger.info('Manual game over initiated');
+async function handleGameOver(skipMatchEndMsg = false) {
+  logger.info('Game over initiated');
   
   try {
-    // Get fresh scores
-    await updatePlayerStatistics();
+    // Store current scores before attempting update
+    const previousScores = latestPlayerScores.players ? [...latestPlayerScores.players] : [];
+    
+    // Try to get fresh scores (force update even if game was already marked as ended)
+    try {
+      // Add a small delay to ensure the game server has updated scores
+      logger.info('Waiting 1 second for game server to update final scores...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      await updatePlayerStatistics(true);
+      logger.info(`Updated player scores: ${latestPlayerScores.players?.length || 0} players`);
+      
+      // If no players found from RCON, try to build from connected clients
+      if (!latestPlayerScores.players || latestPlayerScores.players.length === 0) {
+        logger.warn('No players found from RCON, building from connected clients...');
+        const connectedClients = [];
+        for (const [clientId, client] of serverState.clients) {
+          if (client.connected && client.username) {
+            connectedClients.push({
+              name: client.username,
+              score: client.score || 0,
+              ping: 0,
+              slot: connectedClients.length
+            });
+          }
+        }
+        if (connectedClients.length > 0) {
+          logger.info(`Built scores from ${connectedClients.length} connected clients`);
+          latestPlayerScores.players = connectedClients;
+          latestPlayerScores.lastUpdate = Date.now();
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to get fresh scores, using previous scores:', error.message);
+      // Restore previous scores if update failed
+      if (previousScores.length > 0) {
+        latestPlayerScores.players = previousScores;
+      }
+    }
     
     // Mark game as ended
     gameEnded = true;
@@ -1555,6 +1611,63 @@ async function handleGameOver() {
     };
     broadcastToClients(gameOverMsg);
     logger.info(`[CHAT] SERVER: ${gameOverMsg.message}`);
+    
+    // Send match:end message if not called from handleAutomaticGameOver
+    if (!skipMatchEndMsg) {
+      logger.info(`Preparing match:end message. Player count: ${latestPlayerScores.players?.length || 0}`);
+      
+      // Ensure we have some player data to show
+      let finalScores = latestPlayerScores.players || [];
+      
+      // If still no scores, create placeholder data from connected clients
+      if (finalScores.length === 0) {
+        logger.warn('No player scores available, creating placeholder data from connected clients');
+        for (const [clientId, client] of serverState.clients) {
+          if (client.connected && client.username && client.username !== clientId) {
+            finalScores.push({
+              name: client.username,
+              score: 0,
+              ping: 0,
+              slot: finalScores.length
+            });
+          }
+        }
+        logger.info(`Created ${finalScores.length} placeholder entries`);
+      }
+      
+      const matchEndMsg = {
+        type: 'match:end',
+        winner: finalScores.length > 0 ? 
+          finalScores.reduce((prev, current) => 
+            (prev.score > current.score) ? prev : current
+          ) : null,
+        finalScores: finalScores,
+        matchEndReason: 'manual',
+        reasonText: 'Match ended manually',
+        matchEndTime: Date.now()
+      };
+      
+      logger.info(`Sending match:end with ${matchEndMsg.finalScores.length} players`);
+      if (matchEndMsg.finalScores.length > 0) {
+        matchEndMsg.finalScores.forEach((player, index) => {
+          logger.info(`  ${index + 1}. ${player.name}: ${player.score} frags`);
+        });
+      }
+      
+      logger.info(`Broadcasting match:end message to ${serverState.clients.size} clients`);
+      logger.info(`Match:end message structure: ${JSON.stringify(matchEndMsg, null, 2)}`);
+      
+      let sentCount = 0;
+      for (const [clientId, client] of serverState.clients) {
+        if (client.connected) {
+          logger.info(`Sending match:end to client ${clientId} (${client.username})`);
+          sendToClient(clientId, matchEndMsg);
+          sentCount++;
+        }
+      }
+      
+      logger.info(`Sent match:end message to ${sentCount} connected clients`);
+    }
     
     // Distribute rewards
     if (serverState.collectedFees.length > 0 && latestPlayerScores.players.length > 0) {
@@ -1607,6 +1720,16 @@ async function handleGameOver() {
     } else {
       // No entry fees collected
       logger.info('No entry fees collected, no rewards to distribute');
+    }
+    
+    // Debug: Log the final scores being sent
+    logger.info(`Final scores for match:end message:`);
+    if (latestPlayerScores.players && latestPlayerScores.players.length > 0) {
+      latestPlayerScores.players.forEach((player, index) => {
+        logger.info(`  ${index + 1}. ${player.name}: ${player.score} frags`);
+      });
+    } else {
+      logger.info('  No player scores available!');
     }
     
     // Stop the dedicated server
@@ -1711,6 +1834,7 @@ function setupCLI() {
         break;
         
       case 'endmatch':
+        logger.info('Manual endmatch command received');
         await handleGameOver();
         break;
         
