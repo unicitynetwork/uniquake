@@ -2,10 +2,48 @@
 
 ## Summary
 
-**Total unique tasks:** 30
+**Total unique tasks:** 38 (+ 3 prerequisites)
 **Execution waves:** 6 waves with maximum parallelism
 **Three streams:** Server (S), Client (C), Infrastructure/Security (I)
 **Key principle:** All 12 security mitigations (S1-S12 from architecture doc) are embedded in the task plan with explicit cross-references.
+**Communication model:** Hybrid DM + WS — invoice IDs and admission tokens via encrypted DMs, game protocol via WebSocket. See "DM vs. WebSocket Communication Model" section below.
+
+---
+
+## Prerequisites (Must Complete Before Wave 1)
+
+### P1: Verify sphere-sdk ws dependency compatibility
+Run `npm install @unicitylabs/sphere-sdk@^0.6.14 --dry-run` to check for ws version conflicts. If sphere-sdk requires ws@8+:
+- Option A: sphere-sdk uses its own ws (hoisted separately) — verify no `instanceof` cross-boundary issues
+- Option B: Upgrade main project ws, confirm fresh_quakejs remains isolated in its own node_modules
+- Option C: sphere-sdk Node.js transport accepts an injected ws instance — pass the existing one
+This is a **gating risk** for the entire plan.
+
+### P2: Verify sphere-sdk browser bundle exists
+Check `node_modules/@unicitylabs/sphere-sdk/package.json` for `browser`, `exports`, or `dist/` entries. If no browser bundle:
+- Add a bundling task to Wave 1 (esbuild/rollup to create `sphere-connect-browser.js`)
+- Or use the SDK's `connect/browser` subpath export with a `<script type="module">` tag
+
+### P3: Identify "game over" event in signaling service
+Grep for the exact code path where match-end is detected. Map it to a specific message type or state change (likely `server:state:update` with `game_over` state in `handleServerStateChange()`). This mapping is required by T21.
+
+---
+
+## Operational Modes
+
+The system supports two modes based on mnemonic availability:
+
+| Mode | Mnemonic | PaymentManager | Admission Gate | Join Flow |
+|------|----------|----------------|----------------|-----------|
+| **Sphere mode** | Present | Active (initialized) | Enforced for Sphere clients | Invoice-based entry fee |
+| **Legacy mode** | Absent | `null` (not instantiated) | Bypassed | Free join (existing behavior) |
+
+The admission gate in T21 MUST be bypassed when:
+- No `session`/`admissionToken` query params are present on the WS connection
+- PaymentManager is null (legacy mode)
+- The connecting session is not a Sphere-enabled session
+
+This ensures 100% backwards compatibility for non-Sphere clients.
 
 ---
 
@@ -275,6 +313,107 @@ All tasks can execute simultaneously. Estimated: 10 parallel tasks.
 
 ---
 
+## Additional Tasks (from architect review)
+
+These tasks address gaps identified during plan review.
+
+| ID | Title | Files | Wave | Depends On | Complexity |
+|----|-------|-------|------|-----------|------------|
+| **T31** | Lobby phase + delayed server spawn | `lib/payment-manager.js`, `lib/session-escrow.js` | 3 | T02,T17 | Medium |
+| **T32** | Payment timeout handler (60s polling) | `lib/payment-manager.js` | 3 | T17 | Small |
+| **T33** | Spectator server-side enforcement | `lib/game-server-manager.js` | 4 | T22 | Small |
+| **T34** | Update specs docs to match plan | `docs/sphere-integration-specs.md` | 6 | All | Small |
+| **T35** | Expand T26 to cover browser mocks + server-cli | `lib/client/browser-server.js`, `lib/client/browser-mock-client.js`, `lib/client/browser-mock-server.js`, `bin/server-cli.js`, `lib/mock-game-client.js`, `lib/mock-server-client.js` | 5 | T21,T22 | Large |
+| **T36** | DM delivery fallback + acknowledgment | `lib/payment-manager.js` | 3 | T17 | Medium |
+| **T37** | Integration test checkpoint (Wave 4→5 gate) | Test scripts | 4.5 | T21,T22 | Medium |
+| **T38** | Failed-to-cancelled state transition + refund path | `lib/session-escrow.js`, `lib/payout-retry-queue.js` | 3 | T02,T12 | Small |
+
+### Task Details
+
+**T31: Lobby Phase + Delayed Server Spawn (S11)**
+- Session enters `lobby` state before `playing`
+- Collect entry fees during lobby; don't spawn ioq3ded until minimum 2 human players have paid
+- Lobby timeout: 2 minutes. If minimum not reached, `cancelInvoice({ autoReturn: true })` for all, send `match_cancelled` DMs
+- State machine update: `open → lobby → playing → paying_out → paid_out | cancelled`
+- Game server spawned on `lobby → playing` transition only
+
+**T32: Payment Timeout Handler**
+- In `handleJoinRequest()`: after sending `entry_invoice` DM, start a 60-second timeout for that player
+- Poll `getInvoiceStatus()` every 10 seconds
+- If not COVERED within 60s: remove player from pending, send timeout DM, cancel the player's individual invoice
+
+**T33: Spectator Server-Side Enforcement**
+- When spawning ioq3ded in `game-server-manager.js`, add server config cvars to prevent spectator team-switching
+- Add `+set g_allowSpecSwitch 0` or equivalent to the server launch args
+- If no native cvar exists: track spectator connections in signaling service and reject `connect_to_server` relay requests for team-change packets
+
+**T34: Update Specs Docs**
+- Add `admissionToken` to `join_confirmed` DM fields in message type table
+- Fix permissions: remove `payments` from bridge `autoConnect()` example
+- Fix state machine: add `lobby`, `paying_out`, `failed` states
+- Clarify hybrid DM/WS model (see below)
+
+**T35: Expand Token Removal to Browser Mocks + Server CLI**
+- `browser-server.js`: 40+ `tokenService` references — remove all token-related code paths
+- `browser-mock-client.js`: 30+ references — remove token init, minting, verification flows
+- `browser-mock-server.js`: 30+ references — remove token tracking, state verification
+- `server-cli.js`: 25+ references — remove entire token-creation workflow (lines 320-425, 818-892, 930-1992). Replace with Sphere status display if applicable.
+- `mock-game-client.js`, `mock-server-client.js`: remove token flows
+- This is the LARGEST cleanup task — must be done carefully to preserve non-token game functionality
+
+**T36: DM Delivery Fallback + Acknowledgment**
+- Problem: Nostr DMs are unreliable. If the DM containing the invoice ID fails to deliver, the player is stuck.
+- Solution: After sending an invoice DM, start a 30-second timer. If no `payment_notification` DM arrives, resend the invoice DM. Max 3 attempts.
+- If all DM attempts fail: fall back to sending invoice ID via encrypted WS message over WSS (only on TLS connections). Log a warning about S7 deviation.
+- Add DM acknowledgment: client sends `uniquake:dm_ack` DM after receiving any `uniquake:*` DM from server. Server tracks which DMs were acknowledged.
+
+**T37: Integration Test Checkpoint (Wave 4 → Wave 5 Gate)**
+- Before Wave 5 (deletion), verify all 9 scenarios pass:
+  1. Legacy connections (no query params) connect and play normally
+  2. Sphere connections with valid admission tokens connect successfully
+  3. Expired/invalid/used tokens are rejected (code 4001)
+  4. Server registration and heartbeat cycle works unchanged
+  5. Game server start/stop triggers PaymentManager hooks
+  6. All 17 existing message types in signaling switch still function
+  7. Cross-protocol relay via `siblingService` works
+  8. Quake binary protocol passthrough unaffected
+  9. Spectator role enforcement prevents team-switching
+- Block Wave 5 if any scenario fails
+
+**T38: Failed-to-Cancelled State Transition**
+- Add `failed → cancelled` transition to SessionEscrow state machine
+- When payout retry queue exhausts all retries → transition to `cancelled` → trigger `cancelInvoice({ autoReturn: true })` for entry fee invoices → refund players automatically
+- This ensures players are never permanently stuck with their fees held
+
+---
+
+## DM vs. WebSocket Communication Model (Clarification)
+
+The design uses a **hybrid model** with clear channel assignments:
+
+| Message | Channel | Rationale |
+|---------|---------|-----------|
+| `join_request` | **WebSocket** | Player is already connected via WS for server list. WS is simpler for initial contact. Server forwards to PaymentManager internally. |
+| `entry_invoice` | **Sphere DM** | Invoice ID is sensitive (S7). NIP-17 encryption. Server sends via `sphere.communications.sendDM()`. |
+| `payment_notification` | **Sphere DM** | Payment confirmation tied to wallet identity. NIP-17 authenticated sender. |
+| `join_confirmed` + admissionToken | **Sphere DM** | Admission token is a bearer secret (S1). Must be encrypted. NIP-17 delivery. |
+| `match_result` | **Sphere DM** | Tied to wallet notifications. |
+| `match_cancelled` | **Sphere DM** | Triggers auto-return awareness in wallet. |
+| Game protocol (movement, shooting) | **WebSocket** | Latency-critical, native Quake. |
+| Server list, game joining (Quake) | **WebSocket** | Existing real-time infrastructure. |
+
+**Key rule:** Anything containing invoice IDs or admission tokens goes via DM. Everything else stays on WebSocket.
+
+**Client flow:**
+1. Client sends `join_session` via **WebSocket** (no secrets, just nametag + sessionId + role)
+2. Server creates invoice, sends `entry_invoice` via **DM** (encrypted, authenticated)
+3. Client pays via Sphere wallet (`payInvoice` intent)
+4. Client sends `payment_notification` via **DM** (authenticated sender)
+5. Server verifies, sends `join_confirmed` + admissionToken via **DM**
+6. Client connects to game via **WebSocket** with `?admissionToken=xxx` (bearer token, single-use)
+
+---
+
 ## Files Summary
 
 ### Created (10 new files)
@@ -323,7 +462,7 @@ All tasks can execute simultaneously. Estimated: 10 parallel tasks.
 |------|-------|-------------|------------|
 | 1 | T01-T10 | 10 | T08 (sphere-game-bridge, Large) |
 | 2 | T11-T16 | 6 | T11 (PayoutEngine, Large), T15 (client join flow, Large) |
-| 3 | T17-T20 | 4 | T17 (PaymentManager, Large) |
-| 4 | T21-T22 | 2 | T21 (SignalingService refactor, Large) |
+| 3 | T17-T20, T31, T32 | 6 | T17 (PaymentManager, Large) |
+| 4 | T21-T22, T33 | 3 | T21 (SignalingService refactor, Large) |
 | 5 | T23-T26 | 4 | T26 (remove old client code, Large) |
-| 6 | T27-T30 | 4 | None |
+| 6 | T27-T30, T34 | 5 | None |
