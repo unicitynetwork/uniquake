@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Total unique tasks:** 38 (+ 3 prerequisites)
+**Total unique tasks:** 38 (+ 4 prerequisites)
 **Execution waves:** 6 waves with maximum parallelism
 **Three streams:** Server (S), Client (C), Infrastructure/Security (I)
 **Key principle:** All 12 security mitigations (S1-S12 from architecture doc) are embedded in the task plan with explicit cross-references.
@@ -12,20 +12,29 @@
 
 ## Prerequisites (Must Complete Before Wave 1)
 
-### P1: Verify sphere-sdk ws dependency compatibility
-Run `npm install @unicitylabs/sphere-sdk@^0.6.14 --dry-run` to check for ws version conflicts. If sphere-sdk requires ws@8+:
-- Option A: sphere-sdk uses its own ws (hoisted separately) — verify no `instanceof` cross-boundary issues
-- Option B: Upgrade main project ws, confirm fresh_quakejs remains isolated in its own node_modules
-- Option C: sphere-sdk Node.js transport accepts an injected ws instance — pass the existing one
-This is a **gating risk** for the entire plan.
+### P1: Resolve sphere-sdk ws dependency conflict
+**STATUS: CONFIRMED BLOCKER.** sphere-sdk declares `ws` as optional peer dependency with `ws>=8.0.0`. Project pins `ws~7.2.0`. npm will silently use ws@7 for sphere-sdk, causing runtime failures.
 
-### P2: Verify sphere-sdk browser bundle exists
-Check `node_modules/@unicitylabs/sphere-sdk/package.json` for `browser`, `exports`, or `dist/` entries. If no browser bundle:
-- Add a bundling task to Wave 1 (esbuild/rollup to create `sphere-connect-browser.js`)
-- Or use the SDK's `connect/browser` subpath export with a `<script type="module">` tag
+**Resolution strategy (pick one during prereq):**
+- **Option A (preferred):** Add npm `overrides` in package.json to force sphere-sdk to use its own nested ws@8: `"overrides": { "@unicitylabs/sphere-sdk": { "ws": "^8.0.0" } }`. This keeps ws@7 for the main project and ws@8 isolated inside sphere-sdk's node_modules.
+- **Option B:** Upgrade main project ws to `^8.0.0`. Test that all existing WebSocket code (master-server, signaling-service) works with ws@8 API. fresh_quakejs keeps its own ws@0.4.x in submodule node_modules (isolated).
+- **Option C:** sphere-sdk only uses ws for Nostr relay connections (client-side WebSocket). Verify if ws@7's client API is compatible with sphere-sdk's usage. If yes, accept the mismatch with a documented risk.
+
+### P2: Build sphere-sdk browser bundle
+**STATUS: CONFIRMED BLOCKER.** sphere-sdk's `dist/` does not exist in the source checkout — it must be built with `npx tsup`. The built output is ESM with internal imports — it cannot be loaded via a plain `<script>` tag. The UniQuake project has **no bundler**.
+
+**Resolution:**
+1. Add `esbuild` as a devDependency
+2. Create `scripts/build-sphere-bridge.sh` that bundles `@unicitylabs/sphere-sdk/connect/browser` into a single IIFE file: `public/sphere-connect-bundle.js`
+3. Add `npm run build:sphere-bridge` script to package.json
+4. T08 (`sphere-game-bridge.js`) imports from the bundled file, not from ESM modules
+5. T09 (`index.ejs`) loads `<script src="/public/sphere-connect-bundle.js">` then `<script src="/lib/client/sphere-game-bridge.js">`
 
 ### P3: Identify "game over" event in signaling service
 Grep for the exact code path where match-end is detected. Map it to a specific message type or state change (likely `server:state:update` with `game_over` state in `handleServerStateChange()`). This mapping is required by T21.
+
+### P4: Verify sphere-sdk CommunicationsModule API
+**STATUS: CONFIRMED ISSUE.** The actual DM listener method is `sphere.communications.onDirectMessage(handler)`, NOT `onDM()`. All plan references to `onDM` must use `onDirectMessage`. Handler signature: `(message: DirectMessage) => void`, returns unsubscribe function.
 
 ---
 
@@ -110,6 +119,8 @@ All tasks can execute simultaneously. Estimated: 10 parallel tasks.
 - All commented out with documentation
 
 **T08: Create sphere-game-bridge.js** (`lib/client/sphere-game-bridge.js`)
+- **IMPORTANT:** This file is a plain IIFE (matching existing client JS pattern), NOT an ESM module. It reads from the pre-bundled `window.SphereConnect` global (loaded by the bundle from P2).
+- The bundle (`public/sphere-connect-bundle.js`) provides `window.SphereConnect = { autoConnect, ... }` as a global. T08 consumes it: `const { autoConnect } = window.SphereConnect;`
 - `autoConnect()` with `walletUrl` and minimal permissions `['identity', 'balance', 'invoices']` (S12)
 - PostMessage origin enforcement via `walletUrl` (S9)
 - Server nametag pinning: stores pinned nametag, rejects DMs from unknown senders (S8)
@@ -119,6 +130,7 @@ All tasks can execute simultaneously. Estimated: 10 parallel tasks.
 - Auto-init when `?sphere=true` in URL
 - Fallback: if autoConnect fails, set `connected=false`, game plays without payments
 - Exposed as `window.SPHERE_WALLET`
+- "Connect Wallet" retry support: expose `init()` for manual re-trigger from UI button
 
 **T09: Modify index.ejs**
 - Conditional `<script>` tag for sphere-game-bridge.js when `sphere` template var is true
@@ -186,7 +198,7 @@ All tasks can execute simultaneously. Estimated: 10 parallel tasks.
 ### Task Details
 
 **T17: Create PaymentManager** (`lib/payment-manager.js`) — Central orchestrator
-- `init()`: load mnemonic (T03), init Sphere SDK with accounting + communications, resolve default payout nametag (fail-fast), start periodic `receive()` every 30s, set up DM listener
+- `init()`: load mnemonic (T03), validate entry fee is integer string (BigInt-safe), init Sphere SDK with accounting + communications, resolve default payout nametag (fail-fast), start periodic `receive()` every 30s, set up DM listener via `sphere.communications.onDirectMessage()` (NOT `onDM` — see P4)
 - `handleIncomingDM()`: route `uniquake:*` messages to handlers
 - `handleJoinRequest()`: rate limit check (T05, S11), deduplication check (S5), spectators get free admission token, players get invoice
 - `handlePaymentNotification()`: verify invoice status, generate admission token (T04, S1), send `join_confirmed` DM with token
@@ -208,12 +220,14 @@ All tasks can execute simultaneously. Estimated: 10 parallel tasks.
 
 ### Task Details
 
-**T21: Refactor signaling-service.js** — Heaviest change
+**T21: Refactor signaling-service.js** — Heaviest change, highest risk
 - **Remove:** `startTokenMonitoring()`, `stopTokenMonitoring()`, `checkInactiveGameServers()`, `terminateInactiveServer()`, `handleGameStateToken()`, `handleUnicityTokenTransaction()`, token-related message cases
 - **Add:** `setPaymentManager(pm)` method
-- **Add admission gate (S1):** Extract `session` and `admissionToken` from WS connection URL query params. Call `paymentManager.validateAdmissionToken()`. Reject if invalid. Set client nametag from token (S2 — never trust self-asserted nametag).
-- **Add session hooks:** On `startGameServer` → `paymentManager.createSession()`. On `stopGameServer` → `paymentManager.cancelSession()`. On game over → `paymentManager.distributeWinnings()`.
+- **CRITICAL: Fix WS connection handler signature.** Current code at line 184: `this.wsServer.on('connection', (ws) => {` — must change to `(ws, req) => {` to access the HTTP upgrade request. Same for `this.wssServer.on('connection', ...)`. Parse query params from `req.url` using `new URL(req.url, 'http://localhost').searchParams`. This is required for admission token extraction and affects ALL connections.
+- **Add admission gate (S1):** Extract `session` and `admissionToken` from parsed query params. If params present AND PaymentManager is active: call `paymentManager.validateAdmissionToken()`. Reject if invalid (close WS with code 4001). Set client nametag from token (S2 — never trust self-asserted nametag). If params NOT present: bypass gate (legacy mode / non-Sphere session).
+- **Add session hooks:** On `startGameServer` → `paymentManager.createSession()`. On `stopGameServer` → `paymentManager.cancelSession()`. On game over (mapped via P3 to specific state change event) → `paymentManager.distributeWinnings()`.
 - **Role tracking:** Store `role` from admission token on client record. Spectators get restricted access.
+- **Verify heartbeat-based pruning** still handles zombie server processes after token monitoring removal. Server-registry heartbeat pruning at 2-hour interval covers this — document the confirmation.
 
 **T22: Refactor game-server-manager.js**
 - Remove `updateServerActivity()` method (was for token-based activity tracking)
@@ -342,10 +356,12 @@ These tasks address gaps identified during plan review.
 - Poll `getInvoiceStatus()` every 10 seconds
 - If not COVERED within 60s: remove player from pending, send timeout DM, cancel the player's individual invoice
 
-**T33: Spectator Server-Side Enforcement**
-- When spawning ioq3ded in `game-server-manager.js`, add server config cvars to prevent spectator team-switching
-- Add `+set g_allowSpecSwitch 0` or equivalent to the server launch args
-- If no native cvar exists: track spectator connections in signaling service and reject `connect_to_server` relay requests for team-change packets
+**T33: Spectator Server-Side Enforcement** (re-rated Medium)
+- `g_allowSpecSwitch` does NOT exist in standard ioq3. Do NOT use it.
+- **Primary approach:** Use RCON commands from the signaling service to force-spectate players. When a spectator-flagged client connects to the game server, send RCON `forceteam <player> spectator` after connection.
+- **Secondary approach:** Use `g_teamForceBalance` and server-side game type settings to limit team assignment.
+- **Fallback (minimum viable):** Winner eligibility filter (T11) already prevents spectators from winning prizes. Accept that spectators MAY be able to play but cannot win. Document this as a known limitation.
+- Complexity re-rated from Small to **Medium** due to RCON integration complexity.
 
 **T34: Update Specs Docs**
 - Add `admissionToken` to `join_confirmed` DM fields in message type table
