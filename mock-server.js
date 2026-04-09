@@ -56,6 +56,9 @@ app.use(express.static(__dirname));
 // Serve client files from lib/client
 app.use('/lib/client', express.static(path.join(__dirname, 'lib/client')));
 
+// Serve public directory for Sphere bundle and other assets
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
 // Define routes for the application
 app.get('/', function(req, res) {
   // Determine if we're serving over HTTPS
@@ -80,10 +83,10 @@ app.get('/', function(req, res) {
     // Replace the default master server URL with the provided one
     // This matches the pattern in window.UNIQUAKE_CONFIG
     let modifiedHtml = data.replace(
-      /masterServer:\s*['"]ws:\/\/localhost:27950['"]/g, 
+      /masterServer:\s*['"]ws:\/\/localhost:27950['"]/g,
       `masterServer: '${masterServer}'`
     );
-    
+
     // Also update serverAddress if using HTTPS
     if (isSecure && DEFAULT_MASTER_SERVER_WSS) {
       modifiedHtml = modifiedHtml.replace(
@@ -91,7 +94,28 @@ app.get('/', function(req, res) {
         `serverAddress: 'wss://${config.hostIp}:28960'`
       );
     }
-    
+
+    // Inject Sphere config when ?sphere=true
+    var isSphere = req.query.sphere === 'true';
+    if (isSphere) {
+      var walletUrl = req.query.walletUrl || process.env.UNIQUAKE_WALLET_URL || 'https://sphere.unicity.network';
+      var serverNametag = process.env.UNIQUAKE_SERVER_NAMETAG || '';
+      var sphereOrigin = process.env.UNIQUAKE_WALLET_URL || 'https://sphere.unicity.network';
+      var sphereConfigScript = '<script>\n' +
+        '    window.UNIQUAKE_CONFIG = Object.assign(window.UNIQUAKE_CONFIG || {}, {\n' +
+        '      sphereMode: true,\n' +
+        '      walletUrl: \'' + walletUrl + '\',\n' +
+        '      serverNametag: \'' + serverNametag + '\',\n' +
+        '      sphereOrigin: \'' + sphereOrigin + '\'\n' +
+        '    });\n' +
+        '    </script>';
+      // Inject Sphere config script and bridge scripts before closing </body>
+      var sphereScripts = sphereConfigScript + '\n' +
+        '  <script src="/public/sphere-connect-bundle.js"><\/script>\n' +
+        '  <script src="/lib/client/sphere-game-bridge.js"><\/script>\n';
+      modifiedHtml = modifiedHtml.replace('</body>', sphereScripts + '</body>');
+    }
+
     // Send the modified HTML
     res.send(modifiedHtml);
   });
@@ -119,11 +143,31 @@ app.get('/client', function(req, res) {
     }
     
     // Replace the default master server URL with the provided one
-    const modifiedHtml = data.replace(
-      /masterServer: ['"]ws:\/\/localhost:27950['"]/g, 
+    var modifiedHtml = data.replace(
+      /masterServer: ['"]ws:\/\/localhost:27950['"]/g,
       `masterServer: '${masterServer}'`
     );
-    
+
+    // Inject Sphere config when ?sphere=true
+    var isSphere = req.query.sphere === 'true';
+    if (isSphere) {
+      var walletUrl = req.query.walletUrl || process.env.UNIQUAKE_WALLET_URL || 'https://sphere.unicity.network';
+      var serverNametag = process.env.UNIQUAKE_SERVER_NAMETAG || '';
+      var sphereOrigin = process.env.UNIQUAKE_WALLET_URL || 'https://sphere.unicity.network';
+      var sphereConfigScript = '<script>\n' +
+        '    window.UNIQUAKE_CONFIG = Object.assign(window.UNIQUAKE_CONFIG || {}, {\n' +
+        '      sphereMode: true,\n' +
+        '      walletUrl: \'' + walletUrl + '\',\n' +
+        '      serverNametag: \'' + serverNametag + '\',\n' +
+        '      sphereOrigin: \'' + sphereOrigin + '\'\n' +
+        '    });\n' +
+        '    </script>';
+      var sphereScripts = sphereConfigScript + '\n' +
+        '  <script src="/public/sphere-connect-bundle.js"><\/script>\n' +
+        '  <script src="/lib/client/sphere-game-bridge.js"><\/script>\n';
+      modifiedHtml = modifiedHtml.replace('</body>', sphereScripts + '</body>');
+    }
+
     // Send the modified HTML
     res.send(modifiedHtml);
   });
@@ -265,6 +309,12 @@ app.get('/quake', function(req, res) {
     contentServer = contentServer.replace(':9000', ':9001');
   }
   
+  // Detect Sphere mode from query parameter
+  var isSphere = req.query.sphere === 'true';
+  var walletUrl = req.query.walletUrl || process.env.UNIQUAKE_WALLET_URL || 'https://sphere.unicity.network';
+  var serverNametag = process.env.UNIQUAKE_SERVER_NAMETAG || '';
+  var sphereOrigin = process.env.UNIQUAKE_WALLET_URL || 'https://sphere.unicity.network';
+
   // Set up locals for template rendering
   res.locals = {
     content: contentServer,  // QuakeJS expects host:port (no protocol)
@@ -273,7 +323,12 @@ app.get('/quake', function(req, res) {
     // Pass any command line parameters directly to the template
     cmdline: cmdline,
     // Pass protocol info for the game to use
-    isSecure: isSecure && config.sslAvailable
+    isSecure: isSecure && config.sslAvailable,
+    // Sphere wallet integration
+    sphere: isSphere,
+    walletUrl: walletUrl,
+    serverNametag: serverNametag,
+    sphereOrigin: sphereOrigin
   };
   
   // Convert the EJS template to HTML and send it with proper content type

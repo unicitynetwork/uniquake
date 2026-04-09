@@ -36,11 +36,15 @@ COPY server.cfg ./
 COPY client.html server.html rcon.html ./
 COPY build/ ./build/
 
+# Copy public assets and scripts
+COPY public/ ./public/
+COPY scripts/ ./scripts/
+
 # Copy fresh_quakejs submodule with its node_modules
 COPY fresh_quakejs/ ./fresh_quakejs/
 
-# Create directories for data and logs
-RUN mkdir -p /data /app/logs
+# Create directories for data, logs, and secrets
+RUN mkdir -p /data /app/logs /run/secrets
 
 # Ports:
 #   80    — ssl-manager HTTP reverse proxy (EXPOSE'd by base image)

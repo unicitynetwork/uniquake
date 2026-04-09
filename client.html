@@ -685,12 +685,146 @@
     .play-overlay.hidden {
       display: none;
     }
+
+    /* Sphere wallet integration styles */
+    .sphere-wallet-info {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.7rem;
+      color: #e0e0e0;
+      margin-right: 15px;
+    }
+
+    .sphere-wallet-info.visible {
+      display: flex;
+    }
+
+    .sphere-nametag {
+      color: #81c784;
+      font-weight: bold;
+    }
+
+    .sphere-balance {
+      color: #ffeb3b;
+    }
+
+    .sphere-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #4caf50;
+      display: inline-block;
+    }
+
+    .sphere-notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: rgba(30, 30, 30, 0.95);
+      border: 1px solid #4fc3f7;
+      border-radius: 6px;
+      padding: 12px 20px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      z-index: 10000;
+      max-width: 400px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      animation: sphereSlideIn 0.3s ease-out;
+    }
+
+    .sphere-notification.error {
+      border-color: #f44336;
+    }
+
+    .sphere-notification.success {
+      border-color: #4caf50;
+    }
+
+    @keyframes sphereSlideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .spectator-button {
+      background-color: #7e57c2;
+      border: none;
+      border-radius: 3px;
+      padding: 3px 8px;
+      color: white;
+      font-family: 'Courier New', monospace;
+      font-size: 0.65rem;
+      cursor: pointer;
+      margin-left: 6px;
+      transition: background-color 0.2s;
+    }
+
+    .spectator-button:hover {
+      background-color: #5e35b1;
+    }
+
+    .spectator-button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+
+    .sphere-match-result {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(20, 20, 20, 0.95);
+      border: 2px solid #ffeb3b;
+      border-radius: 10px;
+      padding: 30px 40px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      z-index: 10001;
+      text-align: center;
+      min-width: 300px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+    }
+
+    .sphere-match-result h2 {
+      color: #ffeb3b;
+      margin-top: 0;
+    }
+
+    .sphere-match-result .winner {
+      color: #4caf50;
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+
+    .sphere-match-result .prize {
+      color: #4fc3f7;
+      font-size: 1rem;
+      margin-top: 10px;
+    }
+
+    .sphere-match-result .close-btn {
+      margin-top: 20px;
+      background-color: #4fc3f7;
+      border: none;
+      border-radius: 5px;
+      padding: 8px 20px;
+      color: #1e1e1e;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <div class="player-info" id="player-info">
+        <div class="sphere-wallet-info" id="sphere-wallet-info">
+          <span class="sphere-status-dot"></span>
+          <span class="sphere-nametag" id="sphere-nametag"></span>
+          <span class="sphere-balance" id="sphere-balance"></span>
+        </div>
         <button id="clear-identity-button" class="clear-button">Clear</button>
         <input type="text" id="player-name-input" class="player-name-input" placeholder="Enter your player name..." maxlength="16">
         <span class="player-address" id="player-address">Generating address...
@@ -792,7 +926,236 @@
     // Client-side timer tracking for smooth countdown updates
     let serverTimers = {}; // Store timer data for each server
     let localTimerInterval = null; // Interval for updating local timers
-    
+
+    // ── Sphere Wallet Integration ──
+
+    // Pending Sphere join session (waiting for confirmation from server)
+    var pendingSphereJoin = null;
+    // Flag to bypass the Sphere payment gate (set when join_confirmed received)
+    var sphereJoinConfirmed = false;
+
+    /**
+     * Check if Sphere wallet is connected and active
+     * @returns {boolean}
+     */
+    function isSphereMode() {
+      return !!(window.SPHERE_WALLET && window.SPHERE_WALLET.connected);
+    }
+
+    /**
+     * Show a notification toast for Sphere-related events
+     * @param {string} message - Notification message
+     * @param {string} [type] - 'info' | 'success' | 'error'
+     * @param {number} [duration] - Duration in ms (default 4000)
+     */
+    function showSphereNotification(message, type, duration) {
+      type = type || 'info';
+      duration = duration || 4000;
+      // Remove any existing notification
+      var existing = document.querySelector('.sphere-notification');
+      if (existing) {
+        existing.remove();
+      }
+      var notif = document.createElement('div');
+      notif.className = 'sphere-notification' + (type !== 'info' ? ' ' + type : '');
+      notif.textContent = message;
+      document.body.appendChild(notif);
+      setTimeout(function() {
+        if (notif.parentNode) {
+          notif.remove();
+        }
+      }, duration);
+    }
+
+    /**
+     * Display match result overlay (Sphere mode)
+     * @param {Object} msg - Match result message from server
+     */
+    function showMatchResult(msg) {
+      // Remove any existing result overlay
+      var existing = document.querySelector('.sphere-match-result');
+      if (existing) {
+        existing.remove();
+      }
+      var overlay = document.createElement('div');
+      overlay.className = 'sphere-match-result';
+      var winnerText = msg.winner || 'Unknown';
+      var prizeText = msg.prizePool ? (msg.prizePool + ' UCT') : 'No prize';
+      var statusText = msg.payoutStatus === 'confirmed' ? 'Payout confirmed' :
+                       msg.payoutStatus === 'failed' ? 'Payout failed' :
+                       msg.payoutStatus === 'no_prize' ? 'No prize pool' : (msg.payoutStatus || '');
+      overlay.innerHTML = '<h2>Match Over</h2>' +
+        '<div class="winner">Winner: ' + winnerText +
+        (msg.isBot ? ' (Bot)' : '') + '</div>' +
+        '<div class="prize">Prize Pool: ' + prizeText + '</div>' +
+        (statusText ? '<div style="color: #aaa; margin-top: 8px;">' + statusText + '</div>' : '') +
+        '<button class="close-btn" onclick="this.parentNode.remove()">OK</button>';
+      document.body.appendChild(overlay);
+    }
+
+    /**
+     * Update the Sphere wallet display in the header
+     */
+    function updateSphereWalletDisplay() {
+      var walletInfo = document.getElementById('sphere-wallet-info');
+      var nametagElem = document.getElementById('sphere-nametag');
+      var balanceElem = document.getElementById('sphere-balance');
+      var playerNameInput = document.getElementById('player-name-input');
+
+      if (!walletInfo) return;
+
+      if (isSphereMode()) {
+        walletInfo.classList.add('visible');
+        var identity = window.SPHERE_WALLET.identity;
+        if (identity && nametagElem) {
+          nametagElem.textContent = identity.nametag || identity.directAddress || 'Connected';
+        }
+        // Make player name read-only and set to nametag
+        if (playerNameInput && identity && identity.nametag) {
+          playerNameInput.value = identity.nametag;
+          playerNameInput.disabled = true;
+          playerNameInput.title = 'Player name is set by Sphere wallet';
+          currentPlayerName = identity.nametag;
+        }
+        // Fetch and display balance
+        window.SPHERE_WALLET.getBalance().then(function(assets) {
+          if (balanceElem && assets) {
+            // Try to find UCT balance
+            var uctBalance = '0';
+            if (Array.isArray(assets)) {
+              for (var i = 0; i < assets.length; i++) {
+                if (assets[i] && assets[i].coin === 'UCT') {
+                  uctBalance = assets[i].amount || assets[i].balance || '0';
+                  break;
+                }
+              }
+            }
+            balanceElem.textContent = uctBalance + ' UCT';
+          }
+        }).catch(function() {
+          if (balanceElem) {
+            balanceElem.textContent = '? UCT';
+          }
+        });
+      } else {
+        walletInfo.classList.remove('visible');
+        // Restore player name input if not connected to a game
+        if (playerNameInput && !client || !client.clientState.connected) {
+          playerNameInput.disabled = false;
+          playerNameInput.title = '';
+        }
+      }
+    }
+
+    /**
+     * Handle incoming Sphere-related signaling messages
+     * Called from BrowserMockClient's handleSignalingMessage for unhandled types
+     * @param {Object} msg - The message object
+     */
+    function handleSphereMessage(msg) {
+      if (!msg || !msg.type) return;
+
+      switch (msg.type) {
+        case 'payment_required':
+          // Server wants entry fee - in the new architecture the invoice
+          // comes via DM. This is a fallback for the WS hybrid path.
+          showSphereNotification('Entry fee: ' + (msg.amount || '10') + ' UCT. Check your Sphere wallet.', 'info', 6000);
+          break;
+
+        case 'entry_invoice':
+          // Invoice arrived (may come via WS in hybrid mode)
+          if (isSphereMode()) {
+            showSphereNotification('Paying entry fee...', 'info');
+            window.SPHERE_WALLET.payInvoice(msg.invoiceId)
+              .then(function() {
+                if (client) {
+                  client.sendToMaster({
+                    type: 'payment_sent',
+                    sessionId: msg.sessionId,
+                    invoiceId: msg.invoiceId
+                  });
+                }
+                showSphereNotification('Payment sent! Waiting for confirmation...', 'success');
+              })
+              .catch(function(err) {
+                showSphereNotification('Payment failed: ' + (err.message || err), 'error');
+                pendingSphereJoin = null;
+              });
+          }
+          break;
+
+        case 'join_confirmed':
+          // Payment confirmed (or spectator/free join)
+          if (msg.admissionToken && isSphereMode()) {
+            window.SPHERE_WALLET.setAdmissionToken(msg.admissionToken, msg.sessionId);
+          }
+          showSphereNotification('Joining game session...', 'success');
+          // NOW connect to the game server
+          if (msg.sessionId) {
+            connectQuakeToServerInternal(msg.sessionId);
+          } else if (pendingSphereJoin) {
+            connectQuakeToServerInternal(pendingSphereJoin);
+          }
+          pendingSphereJoin = null;
+          break;
+
+        case 'match_result':
+          showMatchResult(msg);
+          break;
+
+        case 'match_cancelled':
+          showSphereNotification('Match cancelled: ' + (msg.reason || 'Unknown reason') + '. Fees being returned.', 'error', 8000);
+          pendingSphereJoin = null;
+          break;
+
+        default:
+          // Not a Sphere message, ignore
+          break;
+      }
+    }
+
+    /**
+     * Internal connect function - bypasses the Sphere payment gate
+     * This is called after join_confirmed is received
+     * @param {string} serverId - Server peer ID
+     */
+    function connectQuakeToServerInternal(serverId) {
+      // Store the selected server for the connection
+      selectedServerId = serverId;
+      // Set bypass flag so connectQuakeToServer won't re-enter the payment gate
+      sphereJoinConfirmed = true;
+
+      // Auto-save player name before connecting
+      var playerNameInput = document.getElementById('player-name-input');
+      if (playerNameInput && playerNameInput.value.trim()) {
+        var newName = playerNameInput.value.trim();
+        if (validateAndSavePlayerName) {
+          validateAndSavePlayerName(newName);
+        }
+        if (client && client.updatePlayerName) {
+          client.updatePlayerName(newName);
+        }
+      }
+
+      // Connect the framework client
+      if (client) {
+        client.connectToServer(serverId);
+      }
+    }
+
+    // Poll Sphere wallet display every 30 seconds when connected
+    setInterval(function() {
+      if (isSphereMode()) {
+        updateSphereWalletDisplay();
+      }
+    }, 30000);
+
+    // Initial Sphere wallet display update when bridge loads
+    // Use a short delay to allow sphere-game-bridge.js to initialize
+    setTimeout(function() {
+      updateSphereWalletDisplay();
+    }, 2000);
+
     // Get player name from localStorage or generate default
     function getPlayerName() {
       const savedName = localStorage.getItem('uniquake_player_name');
@@ -938,9 +1301,23 @@
       
       await client.init();
       await integration.init(game);
-      
+
       // Store reference to game integration for syncing
       client.gameIntegration = integration;
+
+      // Hook Sphere message handler into the signaling message pipeline
+      // This patches the client's handler to also process Sphere-specific messages
+      var originalHandleSignaling = client.handleSignalingMessage.bind(client);
+      client.handleSignalingMessage = function(message) {
+        originalHandleSignaling(message);
+        // Forward unhandled message types to the Sphere handler
+        if (typeof handleSphereMessage === 'function') {
+          handleSphereMessage(message);
+        }
+      };
+
+      // Update Sphere wallet display after client init
+      updateSphereWalletDisplay();
       
       
       // Set up UI event handlers
@@ -1487,7 +1864,26 @@
     }
     
     // Connect Quake to the selected server
-    function connectQuakeToServer(serverId) {
+    function connectQuakeToServer(serverId, role) {
+      // Sphere payment gate: if wallet is connected and not already confirmed, send join_session first
+      if (isSphereMode() && !sphereJoinConfirmed) {
+        var joinRole = role || 'player';
+        pendingSphereJoin = serverId;
+        if (client) {
+          client.sendToMaster({
+            type: 'join_session',
+            nametag: window.SPHERE_WALLET.identity.nametag,
+            sessionId: serverId,
+            role: joinRole
+          });
+        }
+        showSphereNotification('Requesting to join session as ' + joinRole + '...', 'info');
+        // Don't connect yet - wait for join_confirmed with admission token
+        return;
+      }
+      // Reset the bypass flag after use
+      sphereJoinConfirmed = false;
+      // Legacy mode (or post-confirmation): connect directly (existing behavior)
       const iframe = document.getElementById('game-iframe');
       if (!iframe) {
         console.error('Game iframe not found, cannot connect to server');
@@ -2056,15 +2452,34 @@
           additionalInfo = `<div class="server-info" style="color: #4fc3f7;">⏱️ Match Time: ${timeText}</div>`;
         }
         
+        // Add spectator button HTML in Sphere mode
+        var spectatorButtonHtml = '';
+        if (isSphereMode() && !isMalformed && dedicatedState === 'running') {
+          spectatorButtonHtml = '<button class="spectator-button" data-spectate-server="' + server.peerId + '">Spectate</button>';
+        }
+
         serverElem.innerHTML = `
-          <div class="server-name">${serverName}</div>
+          <div class="server-name">${serverName}${spectatorButtonHtml}</div>
           <div class="server-info">Map: ${server.map} | Players: ${server.players}/${server.maxPlayers}</div>
           <div class="server-status ${stateClass}">Status: ${stateText}</div>
           ${additionalInfo}
           <div class="server-info">ID: ${server.peerId}</div>
           <div class="server-info" style="display:none;">Address: ${server.address || 'Not specified'}</div>
         `;
-        
+
+        // Attach spectator button click handler (Sphere mode only)
+        var spectateBtn = serverElem.querySelector('.spectator-button');
+        if (spectateBtn) {
+          spectateBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent server item click
+            var sid = this.getAttribute('data-spectate-server');
+            if (sid && !client.clientState.connected) {
+              selectedServerId = sid;
+              connectQuakeToServer(sid, 'spectator');
+            }
+          });
+        }
+
         serverElem.addEventListener('click', () => {
           // Don't allow clicking if already connected
           if (client.clientState.connected) {
@@ -2155,12 +2570,16 @@
         disconnectButton.disabled = true;
         chatInput.disabled = true;
         sendButton.disabled = true;
-        playerNameInput.disabled = false; // Re-enable name editing when disconnected
+        playerNameInput.disabled = isSphereMode(); // Re-enable name editing when disconnected (unless Sphere wallet controls it)
         clearButton.disabled = false; // Re-enable clear when disconnected
         connectionStatus.className = 'status-indicator status-disconnected';
         connectionText.textContent = 'Disconnected';
         document.getElementById('ping-display').textContent = '';
-        
+
+        // Reset Sphere join state
+        pendingSphereJoin = null;
+        sphereJoinConfirmed = false;
+
         // Stop the game
         game.stop();
         

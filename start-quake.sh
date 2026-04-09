@@ -53,6 +53,14 @@ app_parse_args() {
         --content-port)    require_arg "$1" "${2:-}"; CONTENT_PORT="$2";          return 2 ;;
         --web-port)        require_arg "$1" "${2:-}"; WEB_PORT="$2";              return 2 ;;
         --game-base-port)  require_arg "$1" "${2:-}"; GAME_SERVER_BASE_PORT="$2"; return 2 ;;
+        --mnemonic)        require_arg "$1" "${2:-}"; UNIQUAKE_MNEMONIC="$2";           return 2 ;;
+        --mnemonic-file)   require_arg "$1" "${2:-}"; UNIQUAKE_MNEMONIC_FILE="$2";      return 2 ;;
+        --network)         require_arg "$1" "${2:-}"; UNIQUAKE_NETWORK="$2";            return 2 ;;
+        --wallet-url)      require_arg "$1" "${2:-}"; UNIQUAKE_WALLET_URL="$2";         return 2 ;;
+        --entry-fee)       require_arg "$1" "${2:-}"; UNIQUAKE_ENTRY_FEE="$2";          return 2 ;;
+        --payout-nametag)  require_arg "$1" "${2:-}"; UNIQUAKE_DEFAULT_PAYOUT_NAMETAG="$2"; return 2 ;;
+        --server-nametag)  require_arg "$1" "${2:-}"; UNIQUAKE_SERVER_NAMETAG="$2";     return 2 ;;
+        --nostr-relays)    require_arg "$1" "${2:-}"; UNIQUAKE_NOSTR_RELAYS="$2";       return 2 ;;
         *)                 return 0 ;;
     esac
 }
@@ -62,6 +70,9 @@ app_validate() {
     validate_port "CONTENT_PORT" "$CONTENT_PORT"
     validate_port "WEB_PORT" "$WEB_PORT"
     validate_port "GAME_SERVER_BASE_PORT" "$GAME_SERVER_BASE_PORT"
+    if [ -n "${UNIQUAKE_NETWORK:-}" ] && [ "$UNIQUAKE_NETWORK" != "testnet" ] && [ "$UNIQUAKE_NETWORK" != "mainnet" ]; then
+        echo "ERROR: --network must be 'testnet' or 'mainnet'" >&2; exit 1
+    fi
 }
 
 app_env_args() {
@@ -69,6 +80,14 @@ app_env_args() {
     echo "-e CONTENT_PORT=$CONTENT_PORT"
     echo "-e WEB_PORT=$WEB_PORT"
     echo "-e GAME_SERVER_BASE_PORT=$GAME_SERVER_BASE_PORT"
+    [ -n "${UNIQUAKE_MNEMONIC:-}" ] && echo "-e UNIQUAKE_MNEMONIC=$UNIQUAKE_MNEMONIC"
+    [ -n "${UNIQUAKE_NETWORK:-}" ] && echo "-e UNIQUAKE_NETWORK=$UNIQUAKE_NETWORK"
+    [ -n "${UNIQUAKE_DEFAULT_PAYOUT_NAMETAG:-}" ] && echo "-e UNIQUAKE_DEFAULT_PAYOUT_NAMETAG=$UNIQUAKE_DEFAULT_PAYOUT_NAMETAG"
+    [ -n "${UNIQUAKE_ENTRY_FEE:-}" ] && echo "-e UNIQUAKE_ENTRY_FEE=$UNIQUAKE_ENTRY_FEE"
+    [ -n "${UNIQUAKE_ENTRY_COIN:-}" ] && echo "-e UNIQUAKE_ENTRY_COIN=$UNIQUAKE_ENTRY_COIN"
+    [ -n "${UNIQUAKE_WALLET_URL:-}" ] && echo "-e UNIQUAKE_WALLET_URL=$UNIQUAKE_WALLET_URL"
+    [ -n "${UNIQUAKE_NOSTR_RELAYS:-}" ] && echo "-e UNIQUAKE_NOSTR_RELAYS=$UNIQUAKE_NOSTR_RELAYS"
+    [ -n "${UNIQUAKE_SERVER_NAMETAG:-}" ] && echo "-e UNIQUAKE_SERVER_NAMETAG=$UNIQUAKE_SERVER_NAMETAG"
 }
 
 app_port_args() {
@@ -95,6 +114,12 @@ app_docker_args() {
     echo "-p 3478:3478/udp"
     echo "-p 3478:3478/tcp"
 
+    # Mount mnemonic file as a Docker secret if --mnemonic-file was provided
+    if [ -n "${UNIQUAKE_MNEMONIC_FILE:-}" ] && [ -f "${UNIQUAKE_MNEMONIC_FILE}" ]; then
+        echo "-v $(realpath "${UNIQUAKE_MNEMONIC_FILE}"):/run/secrets/uniquake_mnemonic:ro"
+        echo "-e UNIQUAKE_MNEMONIC_FILE=/run/secrets/uniquake_mnemonic"
+    fi
+
     # Auto-populate HAProxy extra ports for UniQuake protocols.
     # Plain ports use "http" mode (Host header routing).
     # TLS ports use "tcp" mode (SNI passthrough — app handles TLS itself).
@@ -109,6 +134,9 @@ app_print_config() {
     echo "  Content:    port $CONTENT_PORT"
     echo "  Web:        port $WEB_PORT"
     echo "  Game ports: $GAME_SERVER_BASE_PORT-$((GAME_SERVER_BASE_PORT + 9))"
+    if [ -n "${UNIQUAKE_MNEMONIC:-}" ] || [ -n "${UNIQUAKE_MNEMONIC_FILE:-}" ]; then
+        echo "  Sphere:     ${UNIQUAKE_NETWORK:-testnet}, fee=${UNIQUAKE_ENTRY_FEE:-10} ${UNIQUAKE_ENTRY_COIN:-UCT}"
+    fi
 }
 
 app_help() {
@@ -118,6 +146,16 @@ UniQuake Configuration:
   --content-port <port>    Content server port (default: 9000)
   --web-port <port>        Web server port (default: 8080)
   --game-base-port <port>  First game server port (default: 27961)
+
+Sphere SDK Configuration:
+  --mnemonic <words>       Server wallet mnemonic (12 or 24 words, quoted)
+  --mnemonic-file <path>   Path to file containing mnemonic (preferred over --mnemonic)
+  --network <net>          Sphere network: 'testnet' or 'mainnet' (default: testnet)
+  --wallet-url <url>       Sphere wallet gateway URL
+  --entry-fee <amount>     Entry fee per player (default: 10)
+  --payout-nametag <tag>   Default payout nametag for unclaimed rewards
+  --server-nametag <tag>   Server's Sphere nametag identity
+  --nostr-relays <urls>    Comma-separated Nostr relay URLs for DM transport
 APPHELP
 }
 
@@ -494,6 +532,12 @@ app_summary() {
         echo "  Game:    http://localhost:$WEB_PORT/quake"
         echo "  Master:  ws://localhost:$MASTER_PORT"
         echo "  Content: http://localhost:$CONTENT_PORT"
+    fi
+    echo ""
+    if [ -n "${UNIQUAKE_MNEMONIC:-}" ] || [ -n "${UNIQUAKE_MNEMONIC_FILE:-}" ]; then
+        echo "  Sphere:  enabled (${UNIQUAKE_NETWORK:-testnet})"
+    else
+        echo "  Sphere:  disabled (no mnemonic — legacy mode)"
     fi
     echo ""
     echo "  Server CLI: docker exec -it \"$CONTAINER_NAME\" node bin/server-cli.js"
