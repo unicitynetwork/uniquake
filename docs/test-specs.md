@@ -702,6 +702,52 @@ tests/
     time-helpers.js                # Time advancement utilities
 ```
 
+---
+
+## 5. Tests Added from Phase 8 Review
+
+Tests identified as missing during adversarial review of the spec.
+
+### SignalingService Score Mapping (SS-*)
+
+| ID | Description | Expected | Mitigation |
+|----|-------------|----------|------------|
+| SS-01 | `getGameScores` returns empty when no gameServerManager | `[]` | — |
+| SS-02 | `getGameScores` maps human clientId to nametag via `_nametagToClient` | Score `name` = nametag (not Quake name) | S6 |
+| SS-03 | `getGameScores` identifies bots (no clientId in playerCache) | `isBot: true`, name = Quake name | S6 |
+| SS-04 | `getGameScores` identifies bots (clientId not in humanClientIds) | `isBot: true` | S6 |
+| SS-05 | `getGameScores` with non-matching serverPeerId | `[]` | — |
+
+### Score-to-Nametag Integration (IT-10 to IT-12)
+
+| ID | Description | Expected | Mitigation |
+|----|-------------|----------|------------|
+| IT-10 | Human "@alice" connects, Quake reports "Player_0" with matching clientId. `getGameScores()` → `name: '@alice'`. `distributeWinnings()` → "@alice" wins. | Payout to @alice | S6 (critical path) |
+| IT-11 | Missing clientId in playerCache: player falls back to Quake name, is NOT in confirmedPlayers, excluded from winner | Bot or no winner | S6 |
+| IT-12 | No `_nametagToClient` map (legacy mode): all players use Quake names | Fallback behavior, no crash | — |
+
+### WS join_session Identity Binding (ST-S2-03 to ST-S2-05)
+
+| ID | Description | Expected | Mitigation |
+|----|-------------|----------|------------|
+| ST-S2-03 | Client without verified nametag sends `join_session` when PaymentManager active | Error message returned, NOT forwarded to PaymentManager | S2 |
+| ST-S2-04 | Client with verified nametag sends `join_session` | `_handleJoinRequest` called with verified nametag (not message.nametag) | S2 |
+| ST-S2-05 | No PaymentManager (legacy mode): `join_session` has no rejection | No error, passthrough | — |
+
+### Mnemonic Env Var Survival (PM-55)
+
+| ID | Description | Expected | Mitigation |
+|----|-------------|----------|------------|
+| PM-55 | Set UNIQUAKE_MNEMONIC. Mock Sphere.init() to throw. Call pm.init(). | Throws. `process.env.UNIQUAKE_MNEMONIC` still defined. | S3 |
+
+### Invoice Race Prevention at PaymentManager Level (PM-56)
+
+| ID | Description | Expected | Mitigation |
+|----|-------------|----------|------------|
+| PM-56 | Call `_handleJoinRequest` for same player without awaiting. Verify `invoiceCreating=true` synchronously. Second call returns `invoice_pending`. | Only one invoice created | S5 |
+
+---
+
 ### Total Test Count
 
 | Category | Count |
@@ -712,9 +758,10 @@ tests/
 | SecretLoader (SL-*) | 17 |
 | PayoutEngine (PE-*) | 22 |
 | PayoutRetryQueue (PQ-*) | 20 |
-| PaymentManager (PM-*) | 54 |
+| PaymentManager (PM-*) | 56 |
 | SphereGameBridge (SB-*) | 34 |
-| Integration Tests (IT-*) | 9 |
-| Security Tests (ST-*) | 22 |
+| SignalingService (SS-*) | 5 |
+| Integration Tests (IT-*) | 12 |
+| Security Tests (ST-*) | 25 |
 | Edge Cases (EC-*) | 18 |
-| **Total** | **275** |
+| **Total** | **288** |
