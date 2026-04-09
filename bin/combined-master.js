@@ -13,6 +13,7 @@ const optimist = require("optimist");
 // Import our components
 const MasterServer = require("../lib/master-server");
 const QuakeMasterAdapter = require("../lib/quake/master-adapter");
+const envConfig = require("../lib/config");
 
 // Parse command line arguments
 const argv = optimist
@@ -22,6 +23,12 @@ const argv = optimist
   .describe("port", "Port to listen on")
   .describe("public-ip", "Public IP address for STUN/TURN")
   .describe("quake-port", "Port for QuakeJS master server")
+  .describe("mnemonic", "Server wallet mnemonic")
+  .describe("network", "Sphere network (testnet/mainnet)")
+  .describe("wallet-url", "Sphere wallet URL")
+  .describe("default-payout-nametag", "Default payout nametag")
+  .describe("entry-fee", "Entry fee in UCT")
+  .describe("server-nametag", "Server nametag")
   .boolean("help").describe("help", "Show this help")
   .alias("h", "help")
   .argv;
@@ -47,7 +54,15 @@ let quakeMaster = null;
 async function start() {
   try {
     logger.info("Starting combined master server with Unicity support...");
-    
+
+    // Pass Sphere CLI args to environment variables before MasterServer init
+    if (argv.mnemonic) process.env.UNIQUAKE_MNEMONIC = argv.mnemonic;
+    if (argv.network) process.env.UNIQUAKE_NETWORK = argv.network;
+    if (argv["wallet-url"]) process.env.UNIQUAKE_WALLET_URL = argv["wallet-url"];
+    if (argv["default-payout-nametag"]) process.env.UNIQUAKE_DEFAULT_PAYOUT_NAMETAG = argv["default-payout-nametag"];
+    if (argv["entry-fee"]) process.env.UNIQUAKE_ENTRY_FEE = argv["entry-fee"];
+    if (argv["server-nametag"]) process.env.UNIQUAKE_SERVER_NAMETAG = argv["server-nametag"];
+
     // Start WebRTC master server
     masterServer = new MasterServer(configPath);
     
@@ -73,7 +88,18 @@ async function start() {
     
     logger.info(`Combined master server running on port ${masterServer.config.port}`);
     logger.info(`QuakeJS master adapter running on port ${quakePort}`);
-    logger.info(`Unicity Framework integration enabled (using same WebSocket endpoint)`);
+
+    // Log Sphere payment system status
+    if (masterServer.paymentManager) {
+      logger.info("Sphere payment system: enabled");
+    } else {
+      logger.info("Sphere payment system: disabled (no mnemonic configured)");
+    }
+
+    // Production TLS warning (S7)
+    if (process.env.NODE_ENV === "production" && !envConfig.sslAvailable) {
+      logger.warn("WARNING: Running in production without TLS. WebSocket connections are unencrypted.");
+    }
     
     // Handle graceful shutdown
     process.on("SIGINT", async () => {
