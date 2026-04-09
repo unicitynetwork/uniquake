@@ -113,6 +113,14 @@
 			return args;
 		}
 
+		<% if (typeof sphere !== 'undefined' && sphere) { %>
+		window.UNIQUAKE_CONFIG = window.UNIQUAKE_CONFIG || {};
+		window.UNIQUAKE_CONFIG.sphereMode = true;
+		window.UNIQUAKE_CONFIG.walletUrl = '<%= typeof walletUrl !== "undefined" ? walletUrl : "" %>';
+		window.UNIQUAKE_CONFIG.serverNametag = '<%= typeof serverNametag !== "undefined" ? serverNametag : "" %>';
+		window.UNIQUAKE_CONFIG.sphereOrigin = '<%= typeof sphereOrigin !== "undefined" ? sphereOrigin : "" %>';
+		<% } %>
+
 		window.onload = function () {
 			function resizeViewport() {
 				if (!ioq3.canvas) {
@@ -145,6 +153,10 @@
 	<% if (useWebRTC) { %>
 	<!-- WebRTC adapter loader -->
 	<script type="text/javascript" src="/webrtc-loader.js"></script>
+	<% } %>
+	<% if (typeof sphere !== 'undefined' && sphere) { %>
+	<script type="text/javascript" src="/public/sphere-connect-bundle.js"></script>
+	<script type="text/javascript" src="/lib/client/sphere-game-bridge.js"></script>
 	<% } %>
 	<script type="text/javascript" src="/ioquake3.js"></script>
 </html>

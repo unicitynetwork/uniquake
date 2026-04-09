@@ -111,6 +111,30 @@ generate_config() {
     export GAME_SERVER_IP="${GAME_SERVER_IP:-${HOST_IP}}"
     export GAME_SERVER_BASE_PORT="${GAME_SERVER_BASE_PORT:-27961}"
 
+    # Sphere SDK configuration
+    export UNIQUAKE_NETWORK="${UNIQUAKE_NETWORK:-testnet}"
+    export UNIQUAKE_DEFAULT_PAYOUT_NAMETAG="${UNIQUAKE_DEFAULT_PAYOUT_NAMETAG:-babaika10}"
+    export UNIQUAKE_ENTRY_FEE="${UNIQUAKE_ENTRY_FEE:-10}"
+    export UNIQUAKE_ENTRY_COIN="${UNIQUAKE_ENTRY_COIN:-UCT}"
+    export UNIQUAKE_WALLET_URL="${UNIQUAKE_WALLET_URL:-https://sphere.unicity.network}"
+    export UNIQUAKE_NOSTR_RELAYS="${UNIQUAKE_NOSTR_RELAYS:-wss://nostr-relay.testnet.unicity.network}"
+
+    # Mnemonic source detection (S3 — never log the mnemonic itself!)
+    if [ -f "/run/secrets/uniquake_mnemonic" ] && [ -z "${UNIQUAKE_MNEMONIC_FILE:-}" ]; then
+        export UNIQUAKE_MNEMONIC_FILE="/run/secrets/uniquake_mnemonic"
+    fi
+    if [ -n "${UNIQUAKE_MNEMONIC_FILE:-}" ]; then
+        if [ -f "${UNIQUAKE_MNEMONIC_FILE}" ]; then
+            echo "[entrypoint] Sphere wallet: mnemonic loaded from file"
+        else
+            echo "[entrypoint] WARNING: UNIQUAKE_MNEMONIC_FILE set but not found: ${UNIQUAKE_MNEMONIC_FILE}"
+        fi
+    elif [ -n "${UNIQUAKE_MNEMONIC:-}" ]; then
+        echo "[entrypoint] Sphere wallet: mnemonic from env (consider UNIQUAKE_MNEMONIC_FILE for security)"
+    else
+        echo "[entrypoint] WARNING: No Sphere mnemonic — payment features disabled"
+    fi
+
     # When SSL certs are available (from ssl-manager), let the app create its own
     # TLS listeners on the "+1" ports (27951, 9001, 443) — same as bare-metal.
     # HAProxy does TLS passthrough (SNI routing) to these ports.
@@ -164,6 +188,9 @@ start_services() {
     echo "[entrypoint]   Web:     port ${WEB_PORT:-8080}"
     if [ -n "${SSL_DOMAIN:-}" ]; then
         echo "[entrypoint]   SSL:     ${SSL_DOMAIN}"
+    fi
+    if [ -n "${UNIQUAKE_MNEMONIC:-}" ] || [ -n "${UNIQUAKE_MNEMONIC_FILE:-}" ]; then
+        echo "[entrypoint]   Sphere:  network=${UNIQUAKE_NETWORK}, fee=${UNIQUAKE_ENTRY_FEE} ${UNIQUAKE_ENTRY_COIN}"
     fi
 }
 
