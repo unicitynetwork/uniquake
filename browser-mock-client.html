@@ -325,10 +325,8 @@
   </div>
 
   <!-- Load scripts -->
-  <script src="lib/client/uniquake-token-service.js"></script>
   <script src="lib/client/browser-mock-game.js"></script>
   <script src="lib/client/browser-mock-client.js"></script>
-  <script src="lib/client/game-integration.js"></script>
   
   <script>
     // Load WebRTC adapter directly, bypassing the auto-connect behavior
@@ -347,8 +345,8 @@
     };
     document.head.appendChild(script);
     
-    // Main client, game, and integration instances
-    let client, game, integration;
+    // Main client and game instances
+    let client, game;
     let selectedServerId = null;
     
     // Initialize client
@@ -383,21 +381,9 @@
         }
       });
       
-      // Create game integration
-      integration = new GameIntegration({
-        client: client,
-        debug: true,
-        onGameStateUpdate: updateGameState,
-        onTokenEvent: handleTokenEvent
-      });
-      
       // Initialize all components
       await game.init();
       await client.init();
-      await integration.init(game);
-      
-      // Store reference to game integration for syncing
-      client.gameIntegration = integration;
       
       console.log('Client system initialized');
       

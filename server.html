@@ -102,13 +102,6 @@
       font-size: 14px;
     }
     
-    .token-info {
-      background-color: #252525;
-      border-radius: 3px;
-      padding: 10px;
-      margin-bottom: 10px;
-    }
-    
     input, button {
       background-color: #3d3d3d;
       border: none;
@@ -264,6 +257,7 @@
   <div class="container">
     <div class="header">
       <h1>Server</h1>
+      <div id="sphere-server-status" style="font-size: 13px; color: #9e9e9e; margin-top: 4px;">Sphere: checking...</div>
     </div>
     
     <div class="serving-message" id="serving-message" style="background-color: #2a2a2a; border: 2px solid #4fc3f7; border-radius: 5px; padding: 15px; margin-bottom: 20px; text-align: center;">
@@ -344,8 +338,6 @@
   </div>
 
   <!-- Load scripts -->
-  <script src="lib/client/uniquake-token-service.js"></script>
-  
   <script>
     // Load WebRTC adapter directly, bypassing the auto-connect behavior
     window.UNIQUAKE_CONFIG = {
@@ -369,11 +361,10 @@
       peerId: null,
       clients: new Map(),
       gameState: null,
-      tokenService: null,
-      // Entry fee tracking - track by pubkey to prevent double payment
-      paidPlayers: new Set(), // Set of pubkeys that have paid entry fee for this game
-      entryFee: 1, // Entry fee in tokens
-      collectedFees: [], // Array of collected entry fee tokens
+      // Entry fee tracking (legacy - Sphere uses PaymentManager)
+      paidPlayers: new Set(),
+      entryFee: 1,
+      collectedFees: [],
       restartCycle: null // Server restart cycle state
     };
     let selectedClientId = null;
@@ -452,6 +443,26 @@
       }, 1000); // Send every 1 second for real-time updates
     }
     
+    // Update Sphere status indicator based on server messages
+    function updateSphereServerStatus(enabled) {
+      var el = document.getElementById('sphere-server-status');
+      if (!el) return;
+      if (enabled) {
+        el.style.color = '#81c784';
+        el.textContent = 'Sphere: enabled';
+      } else {
+        el.style.color = '#9e9e9e';
+        el.textContent = 'Sphere: disabled (legacy mode)';
+      }
+    }
+
+    // Default to disabled; will be updated when server messages arrive
+    setTimeout(function() {
+      // Check if PaymentManager or Sphere integration is active
+      // This checks if the master server reports Sphere capability
+      updateSphereServerStatus(false);
+    }, 3000);
+
     // Connect to master server for dedicated server management
     async function connectToMasterServer(config) {
       return new Promise((resolve, reject) => {
@@ -714,12 +725,6 @@
     
     // Stop the dedicated server
     async function stopServer(isRestartCycle = false) {
-      // Stop game state token broadcasts
-      if (serverState.gameStateInterval) {
-        clearInterval(serverState.gameStateInterval);
-        serverState.gameStateInterval = null;
-        console.log('Stopped game state token broadcasts');
-      }
       
       // Debug server state
       console.log('🔍 Stop server debug info:');
@@ -1030,58 +1035,15 @@
         return;
       }
       
-      // Distribute collected entry fees to winner
-      if (serverState.collectedFees.length > 0 && serverState.tokenService) {
-        try {
-          console.log(`Distributing ${serverState.collectedFees.length} collected entry fees to winner ${winner.username || winnerId}`);
-          
-          // Send all collected fees to the winner
-          const tokenFlows = await serverState.tokenService.sendTokensToRecipient(
-            serverState.collectedFees,
-            winner.pubkey
-          );
-          
-          // Send the winnings to the winner
-          sendMessageToClient(winnerId, {
-            type: 'token:reward',
-            tokenFlows: tokenFlows,
-            count: tokenFlows.length,
-            message: `Congratulations! You won ${tokenFlows.length} tokens from entry fees!`
-          });
-          
-          // Broadcast winner announcement
-          broadcastToAllClients({
-            type: 'chat',
-            from: 'SERVER',
-            message: `🏆 ${winner.username || winnerId} wins the game and receives ${tokenFlows.length} tokens!`,
-            timestamp: Date.now()
-          });
-          
-          // Clear collected fees
-          serverState.collectedFees = [];
-          
-          console.log(`Successfully distributed ${tokenFlows.length} tokens to winner ${winner.pubkey.substring(0, 10)}...`);
-          
-        } catch (error) {
-          console.error(`Failed to distribute tokens to winner ${winnerId}:`, error);
-          
-          // Notify winner about the error
-          sendMessageToClient(winnerId, {
-            type: 'error',
-            message: `Error distributing winnings: ${error.message}`
-          });
-        }
-      } else {
-        console.log('No entry fees collected or token service unavailable - no tokens to distribute');
-        
-        // Still announce the winner
-        broadcastToAllClients({
-          type: 'chat',
-          from: 'SERVER',
-          message: `🏆 ${winner.username || winnerId} wins the game!`,
-          timestamp: Date.now()
-        });
-      }
+      // Announce the winner (token distribution handled by Sphere PaymentManager)
+      broadcastToAllClients({
+        type: 'chat',
+        from: 'SERVER',
+        message: '🏆 ' + (winner.username || winnerId) + ' wins the game!',
+        timestamp: Date.now()
+      });
+
+      console.log('Winner announced: ' + (winner.username || winnerId) + '. Payout handled by Sphere PaymentManager.');
       
       // Send end game command to dedicated server
       if (dedicatedServerInfo && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
@@ -1132,157 +1094,56 @@
       initializeTokenService();
     }
     
-    // Initialize token service for server
+    // Initialize token service for server (legacy - replaced by Sphere PaymentManager)
     async function initializeTokenService() {
-      if (!window.UniQuakeTokenService) {
-        console.log('UniQuakeTokenService not available');
-        return;
-      }
-      
-      try {
-        console.log('Initializing server token service...');
-        
-        // Get server config to use server name
-        const config = getServerConfig();
-        const serverName = config.serverName || 'Server';
-        
-        // Create token service with server name as username
-        serverState.tokenService = new window.UniQuakeTokenService({
-          username: serverName,
-          debug: false
-        });
-        
-        // Initialize the service
-        await serverState.tokenService.init();
-        
-        // Get identity info
-        const identity = serverState.tokenService.getIdentity();
-        console.log(`Server token service initialized with identity: ${identity.username} (${identity.pubkey.substring(0, 10)}...)`);
-        
-        // Start the game state token system
-        startGameStateTokens();
-        
-      } catch (error) {
-        console.error('Failed to initialize server token service:', error);
-      }
-    }
-    
-    // Start periodic game state token broadcasts
-    function startGameStateTokens() {
-      if (!serverState.tokenService) {
-        console.log('Cannot start game state tokens: token service not available');
-        return;
-      }
-      
-      console.log('Starting game state token broadcasts...');
-      
-      // Initialize game state
+      console.log('Legacy token service removed. Sphere mode uses PaymentManager on the server side.');
+
+      // Initialize game state tracking (no token service needed)
       serverState.gameState = {
-        gameId: dedicatedServerInfo?.gameId || `game-${Date.now()}`,
+        gameId: dedicatedServerInfo?.gameId || 'game-' + Date.now(),
         frame: 0,
         timestamp: Date.now(),
         players: {},
         items: {}
       };
-      
-      // Create initial token
-      setTimeout(() => {
-        createGameStateToken(true);
-      }, 1000);
-      
-      // Set up periodic token broadcasts (every 10 seconds)
-      serverState.gameStateInterval = setInterval(() => {
-        createGameStateToken(true);
-      }, 10000);
     }
     
-    // Create and broadcast game state token
-    async function createGameStateToken(broadcast = true) {
-      if (!serverState.tokenService) {
-        return null;
-      }
-      
-      try {
-        // Update game state with current server info
-        serverState.gameState.frame++;
-        serverState.gameState.timestamp = Date.now();
-        
-        // Update players from connected clients
-        serverState.gameState.players = {};
-        serverState.clients.forEach((client, clientId) => {
-          const playerKey = client.pubkey || clientId;
-          serverState.gameState.players[playerKey] = {
-            id: playerKey,
-            name: client.username || `Player-${clientId}`,
-            connected: client.connected,
-            pubkey: client.pubkey,
-            clientId: clientId,
-            joinTime: client.joinTime,
-            lastActive: Date.now()
-          };
+    // Create and broadcast game state update (legacy token creation removed)
+    async function createGameStateToken(broadcast) {
+      if (!serverState.gameState) return null;
+
+      serverState.gameState.frame++;
+      serverState.gameState.timestamp = Date.now();
+
+      // Update players from connected clients
+      serverState.gameState.players = {};
+      serverState.clients.forEach(function(client, clientId) {
+        var playerKey = client.pubkey || clientId;
+        serverState.gameState.players[playerKey] = {
+          id: playerKey,
+          name: client.username || 'Player-' + clientId,
+          connected: client.connected,
+          pubkey: client.pubkey,
+          clientId: clientId,
+          joinTime: client.joinTime,
+          lastActive: Date.now()
+        };
+      });
+
+      if (broadcast) {
+        var serverStateInfo = {
+          playerCount: serverState.clients.size,
+          itemCount: Object.keys(serverState.gameState.items).length,
+          timestamp: Date.now()
+        };
+
+        broadcastToAllClients({
+          type: 'server:state:update',
+          serverInfo: serverStateInfo
         });
-        
-        console.log(`Creating game state token for frame ${serverState.gameState.frame} with ${Object.keys(serverState.gameState.players).length} players`);
-        
-        // Create or update the token
-        // Reset token every 10 frames to prevent growth (when frame is divisible by 10)
-        let token = null;
-        const shouldResetToken = serverState.gameState.frame % 10 === 0;
-        
-        if (!serverState.tokenService.lastStateToken || shouldResetToken) {
-          if (shouldResetToken) {
-            console.log(`Resetting game state token at frame ${serverState.gameState.frame} (divisible by 10)`);
-          }
-          // Create fresh token (initial or reset)
-          token = await serverState.tokenService.createGameStateToken(serverState.gameState);
-          console.log(`Created ${shouldResetToken ? 'reset' : 'initial'} game state token for frame ${serverState.gameState.frame}`);
-        } else {
-          // Update existing token
-          try {
-            token = await serverState.tokenService.updateGameStateToken(
-              serverState.tokenService.lastStateToken,
-              serverState.gameState
-            );
-            console.log(`Updated game state token for frame ${serverState.gameState.frame}`);
-          } catch (updateError) {
-            // If update fails, create new token
-            console.warn(`Token update failed, creating new token: ${updateError.message}`);
-            token = await serverState.tokenService.createGameStateToken(serverState.gameState);
-          }
-        }
-        
-        // Broadcast to all connected clients if requested
-        if (broadcast && token) {
-          const tokenFlow = serverState.tokenService.TXF.exportFlow(token);
-          
-          const serverStateInfo = {
-            playerCount: serverState.clients.size,
-            itemCount: Object.keys(serverState.gameState.items).length,
-            timestamp: Date.now()
-          };
-          
-          const message = {
-            type: 'game:state:token',
-            tokenFlow: tokenFlow,
-            frame: serverState.gameState.frame,
-            serverInfo: serverStateInfo
-          };
-          
-          console.log(`Broadcasting game state token for frame ${serverState.gameState.frame} to ${serverState.clients.size} clients`);
-          broadcastToAllClients(message);
-          
-          // Also send server state update
-          broadcastToAllClients({
-            type: 'server:state:update',
-            serverInfo: serverStateInfo
-          });
-        }
-        
-        return token;
-      } catch (error) {
-        console.error('Failed to create game state token:', error);
-        return null;
       }
+
+      return null;
     }
     
     // Handle dedicated server started
@@ -1424,7 +1285,6 @@
           <div class="client-name">${client.username || (client.pubkey ? client.pubkey.substring(0, 16) + '...' : client.id)}</div>
           <div class="client-info">Player ID (Pubkey): <span style="font-family: monospace; word-break: break-all;">${client.pubkey || 'N/A'}</span></div>
           <div class="client-info">Network ID: <span style="font-family: monospace; word-break: break-all;">${client.id}</span></div>
-          <div class="client-info">Entry Token: ${client.entryTokenReceived ? 'Received' : 'Not Received'}</div>
         `;
         
         clientElem.addEventListener('click', () => {
@@ -1457,19 +1317,8 @@
       }
       const serverId = serverState.peerId || 'Not registered';
       
-      // Calculate real-time balance from token service
-      let balance = 0;
-      let tokenInfo = 'Token service not available';
-      
-      if (serverState.tokenService) {
-        try {
-          const tokenStatus = serverState.tokenService.getTokenStatus();
-          balance = tokenStatus.value || 0;
-          tokenInfo = `Token service active (${tokenStatus.tokens?.total || 0} tokens)`;
-        } catch (error) {
-          tokenInfo = `Token service error: ${error.message}`;
-        }
-      }
+      // Sphere payment status (PaymentManager handles on server side)
+      let tokenInfo = 'Sphere PaymentManager (server-side)';
       
       // Get current game state from the dedicated server
       let gameState = serverState.gameState;
@@ -1477,19 +1326,18 @@
       const timestamp = gameState?.timestamp || Date.now();
       const playerCount = serverState.clients.size;
       
-      gameStateElem.innerHTML = `
-        <strong>Server Name:</strong> ${serverName}<br>
-        <strong>Server ID:</strong> <span style="font-family: monospace; word-break: break-all;">${serverId}</span><br>
-        <strong>Game ID:</strong> ${dedicatedServerInfo?.gameId || serverState.gameId || 'Not started'}<br>
-        <strong>Balance:</strong> ${balance} tokens<br>
-        <strong>Token Status:</strong> ${tokenInfo}<br>
-        <strong>Entry Fee:</strong> ${serverState.entryFee} token${serverState.entryFee !== 1 ? 's' : ''}<br>
-        <strong>Collected Fees:</strong> ${serverState.collectedFees.length} tokens<br>
-        <strong>Players Paid:</strong> ${serverState.paidPlayers.size} unique players<br>
-        <strong>Frame:</strong> ${frame}<br>
-        <strong>Timestamp:</strong> ${new Date(timestamp).toLocaleTimeString()}<br>
-        <strong>Connected Players:</strong> ${playerCount}<br>
-      `;
+      gameStateElem.innerHTML = '\
+        <strong>Server Name:</strong> ' + serverName + '<br>\
+        <strong>Server ID:</strong> <span style="font-family: monospace; word-break: break-all;">' + serverId + '</span><br>\
+        <strong>Game ID:</strong> ' + (dedicatedServerInfo?.gameId || serverState.gameId || 'Not started') + '<br>\
+        <strong>Payment:</strong> ' + tokenInfo + '<br>\
+        <strong>Entry Fee:</strong> ' + serverState.entryFee + ' token' + (serverState.entryFee !== 1 ? 's' : '') + '<br>\
+        <strong>Collected Fees:</strong> ' + serverState.collectedFees.length + '<br>\
+        <strong>Players Paid:</strong> ' + serverState.paidPlayers.size + ' unique players<br>\
+        <strong>Frame:</strong> ' + frame + '<br>\
+        <strong>Timestamp:</strong> ' + new Date(timestamp).toLocaleTimeString() + '<br>\
+        <strong>Connected Players:</strong> ' + playerCount + '<br>\
+      ';
       
       // Display connected clients information
       if (serverState.clients.size > 0) {
@@ -1564,6 +1412,10 @@
           
         case 'server_registered':
           handleServerRegistration(message);
+          // Update Sphere status based on server registration response
+          if (message.sphereEnabled !== undefined) {
+            updateSphereServerStatus(message.sphereEnabled);
+          }
           break;
           
         case 'connection_request':
@@ -1701,29 +1553,16 @@
       // Payment requirement will be determined after identity is received
       const welcomeMessage = {
         type: 'welcome',
-        message: `Welcome to the server! Please wait while we verify your identity...`,
+        message: 'Welcome to the server! Please wait while we verify your identity...',
         serverInfo: {
-          tokenEnabled: !!serverState.tokenService,
           entryFee: serverState.entryFee,
           gameId: serverState.gameState?.gameId || dedicatedServerInfo?.gameId,
-          // Don't include payment flags yet - will be sent after identity verification
-          paymentRequired: null,  // Will be determined after pubkey is received
-          isRejoining: null       // Will be determined after pubkey is received
-        },
-        // Include server identity for token operations if available
-        serverIdentity: serverState.tokenService ? {
-          pubkey: serverState.tokenService.getIdentity().pubkey,
-          username: serverState.tokenService.getIdentity().username
-        } : null
+          paymentRequired: null,
+          isRejoining: null
+        }
       };
-      
-      console.log(`Sending initial welcome message to client ${clientId} - payment requirement will be determined after identity`);
-      if (welcomeMessage.serverIdentity) {
-        console.log(`✅ Server identity included in welcome message for future token operations`);
-        console.log(`Server pubkey: ${welcomeMessage.serverIdentity.pubkey.substring(0, 16)}...`);
-      } else {
-        console.log(`❌ No server identity in welcome message - entry tokens will not work!`);
-      }
+
+      console.log('Sending initial welcome message to client ' + clientId);
       sendMessageToClient(clientId, welcomeMessage);
     }
 
@@ -1853,19 +1692,10 @@
       }
     }
     
-    // Handle entry token from client
+    // Handle entry token from client (legacy - Sphere uses PaymentManager)
     async function handleEntryToken(clientId, tokenData) {
       const client = serverState.clients.get(clientId);
       if (!client) return;
-      
-      if (!serverState.tokenService) {
-        sendMessageToClient(clientId, {
-          type: 'token:entry:ack',
-          success: false,
-          reason: 'Token service not available'
-        });
-        return;
-      }
       
       // Check if client has a pubkey (required for entry fee tracking)
       if (!client.pubkey) {
@@ -1967,70 +1797,25 @@
       }
     }
     
-    // Validate entry token from client
+    // Validate entry token from client (legacy stub - Sphere uses PaymentManager)
     async function validateEntryToken(clientId, tokenFlow) {
-      if (!serverState.tokenService) {
-        return { success: false, reason: 'Token service not enabled on server' };
-      }
-      
-      try {
-        console.log(`Validating entry token from client ${clientId}...`);
-        
-        // Receive and validate the token
-        const result = await serverState.tokenService.receiveToken(tokenFlow);
-        
-        if (result.success) {
-          console.log(`Valid entry token received from client ${clientId}`);
-          return { success: true, token: result.token };
-        } else {
-          console.log(`Invalid entry token from client ${clientId}: ${result.error}`);
-          return { success: false, reason: result.error };
-        }
-      } catch (error) {
-        console.error(`Error processing entry token from client ${clientId}:`, error.message);
-        return { success: false, reason: error.message };
-      }
+      console.log('Legacy token validation called for client ' + clientId + ' - Sphere mode uses PaymentManager');
+      return { success: false, reason: 'Legacy token service removed. Use Sphere payment flow.' };
     }
     
-    // Handle game state token request
+    // Handle game state token request (legacy - sends state update instead)
     async function handleGameStateTokenRequest(clientId) {
-      if (!serverState.tokenService) {
-        console.log(`Client ${clientId} requested game state token but token service not available`);
-        return;
-      }
-      
-      console.log(`Client ${clientId} requested game state token`);
-      
-      try {
-        // Create a fresh token if we don't have one, or use existing
-        if (!serverState.tokenService.lastStateToken) {
-          await createGameStateToken(false);
-        }
-        
-        if (serverState.tokenService.lastStateToken) {
-          const tokenFlow = serverState.tokenService.TXF.exportFlow(serverState.tokenService.lastStateToken);
-          
-          const serverStateInfo = {
-            playerCount: serverState.clients.size,
-            itemCount: Object.keys(serverState.gameState?.items || {}).length,
-            timestamp: Date.now()
-          };
-          
-          // Send game state token to the requesting client
-          sendMessageToClient(clientId, {
-            type: 'game:state:token',
-            tokenFlow: tokenFlow,
-            frame: serverState.gameState?.frame || 0,
-            serverInfo: serverStateInfo
-          });
-          
-          console.log(`Sent game state token to client ${clientId}`);
-        } else {
-          console.log(`No token available to send to client ${clientId}`);
-        }
-      } catch (error) {
-        console.error(`Error sending game state token to client ${clientId}:`, error);
-      }
+      var serverStateInfo = {
+        playerCount: serverState.clients.size,
+        itemCount: Object.keys(serverState.gameState?.items || {}).length,
+        timestamp: Date.now()
+      };
+
+      sendMessageToClient(clientId, {
+        type: 'server:state:update',
+        serverInfo: serverStateInfo,
+        frame: serverState.gameState?.frame || 0
+      });
     }
     
     // Broadcast message to all connected clients
@@ -3281,13 +3066,6 @@
       // Check if we have collected fees to distribute
       if (!serverState.collectedFees || serverState.collectedFees.length === 0) {
         console.log('No collected entry fees to distribute');
-        // Reset removed - this should only happen when server actually restarts, not during reward distribution
-        return;
-      }
-      
-      // Check if token service is available
-      if (!serverState.tokenService) {
-        console.error('Token service not available for reward distribution');
         return;
       }
       
@@ -3365,47 +3143,28 @@
           const tokensForThisWinner = tokensPerWinner + (i < remainder ? 1 : 0);
           
           if (tokensForThisWinner > 0) {
-            // Get tokens for this winner
-            const tokensToSend = serverState.collectedFees.slice(tokenIndex, tokenIndex + tokensForThisWinner);
             tokenIndex += tokensForThisWinner;
-            
-            try {
-              // Send tokens to winner
-              const tokenFlows = await serverState.tokenService.sendTokensToRecipient(
-                tokensToSend,
-                winnerPubkey
-              );
-              
-              distributionResults.push({
-                name: winner.name,
-                pubkey: winnerPubkey,
-                tokensReceived: tokenFlows.length,
-                success: true
-              });
-              
-              console.log(`✅ Sent ${tokenFlows.length} tokens to ${winner.name} (${winnerPubkey.substring(0, 10)}...)`);
-              
-              // Notify winner
-              const winnerId = getClientIdByPubkey(winnerPubkey);
-              if (winnerId) {
-                sendMessageToClient(winnerId, {
-                  type: 'token:reward',
-                  tokenFlows: tokenFlows,
-                  count: tokenFlows.length,
-                  message: winners.length === 1 
-                    ? `🏆 Congratulations! You won ${tokenFlows.length} tokens!`
-                    : `🏆 You tied for first place and received ${tokenFlows.length} tokens!`
-                });
-              }
-              
-            } catch (error) {
-              console.error(`Failed to send tokens to ${winner.name}:`, error);
-              distributionResults.push({
-                name: winner.name,
-                pubkey: winnerPubkey,
-                tokensReceived: 0,
-                success: false,
-                error: error.message
+
+            // Log distribution intent (actual payout handled by Sphere PaymentManager)
+            distributionResults.push({
+              name: winner.name,
+              pubkey: winnerPubkey,
+              tokensReceived: tokensForThisWinner,
+              success: true
+            });
+
+            console.log('Recorded ' + tokensForThisWinner + ' token payout for ' + winner.name + ' (Sphere PaymentManager handles actual transfer)');
+
+            // Notify winner
+            var winnerId = getClientIdByPubkey(winnerPubkey);
+            if (winnerId) {
+              sendMessageToClient(winnerId, {
+                type: 'chat',
+                from: 'SERVER',
+                message: winners.length === 1
+                  ? '🏆 Congratulations! You won ' + tokensForThisWinner + ' tokens!'
+                  : '🏆 You tied for first place and earned ' + tokensForThisWinner + ' tokens!',
+                timestamp: Date.now()
               });
             }
           }

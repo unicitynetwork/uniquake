@@ -320,10 +320,6 @@
       flex-direction: column;
     }
     
-    .token-panel {
-      margin-top: 15px;
-    }
-    
     .log {
       flex: 1;
       background-color: #252525;
@@ -814,12 +810,56 @@
       font-weight: bold;
       cursor: pointer;
     }
+
+    .sphere-connect-wallet-btn {
+      background-color: #81c784;
+      border: none;
+      border-radius: 3px;
+      padding: 4px 10px;
+      color: #1e1e1e;
+      font-family: 'Courier New', monospace;
+      font-size: 0.7rem;
+      font-weight: bold;
+      cursor: pointer;
+      margin-right: 10px;
+      transition: background-color 0.2s;
+    }
+
+    .sphere-connect-wallet-btn:hover {
+      background-color: #66bb6a;
+    }
+
+    .sphere-connect-wallet-btn.hidden {
+      display: none;
+    }
+
+    .mode-indicator {
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-weight: bold;
+      margin-right: 10px;
+    }
+
+    .mode-indicator.legacy {
+      background-color: rgba(158, 158, 158, 0.2);
+      color: #9e9e9e;
+      border: 1px solid #666;
+    }
+
+    .mode-indicator.sphere {
+      background-color: rgba(129, 199, 132, 0.2);
+      color: #81c784;
+      border: 1px solid #81c784;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <div class="player-info" id="player-info">
+        <span class="mode-indicator legacy" id="mode-indicator">Legacy Mode</span>
+        <button class="sphere-connect-wallet-btn hidden" id="sphere-connect-wallet-btn">Connect Wallet</button>
         <div class="sphere-wallet-info" id="sphere-wallet-info">
           <span class="sphere-status-dot"></span>
           <span class="sphere-nametag" id="sphere-nametag"></span>
@@ -896,10 +936,8 @@
   </div>
 
   <!-- Load scripts -->
-  <script src="lib/client/uniquake-token-service.js"></script>
   <script src="lib/client/browser-mock-game.js"></script>
   <script src="lib/client/browser-mock-client.js"></script>
-  <script src="lib/client/game-integration.js"></script>
   
   <script>
     // Load WebRTC adapter directly, bypassing the auto-connect behavior
@@ -918,8 +956,8 @@
     };
     document.head.appendChild(script);
     
-    // Main client, game, and integration instances
-    let client, game, integration;
+    // Main client and game instances
+    let client, game;
     let selectedServerId = null;
     let currentPlayerName = null;
     
@@ -1143,17 +1181,70 @@
       }
     }
 
+    /**
+     * Update the mode indicator (Legacy / Sphere) in the header
+     */
+    function updateModeIndicator() {
+      var indicator = document.getElementById('mode-indicator');
+      var connectBtn = document.getElementById('sphere-connect-wallet-btn');
+      if (!indicator) return;
+
+      var urlParams = new URLSearchParams(window.location.search);
+      var sphereRequested = urlParams.get('sphere') === 'true';
+
+      if (isSphereMode()) {
+        // Sphere mode, wallet connected
+        var nametag = (window.SPHERE_WALLET.identity && window.SPHERE_WALLET.identity.nametag) || 'Connected';
+        indicator.className = 'mode-indicator sphere';
+        indicator.textContent = 'Sphere Mode (@' + nametag + ')';
+        if (connectBtn) connectBtn.classList.add('hidden');
+      } else if (sphereRequested) {
+        // Sphere requested via URL but wallet not yet connected
+        indicator.className = 'mode-indicator sphere';
+        indicator.textContent = 'Sphere Mode (disconnected)';
+        if (connectBtn) connectBtn.classList.remove('hidden');
+      } else {
+        // Legacy mode
+        indicator.className = 'mode-indicator legacy';
+        indicator.textContent = 'Legacy Mode';
+        if (connectBtn) connectBtn.classList.add('hidden');
+      }
+    }
+
+    // Connect Wallet button handler
+    (function() {
+      document.addEventListener('DOMContentLoaded', function() {
+        var btn = document.getElementById('sphere-connect-wallet-btn');
+        if (btn) {
+          btn.addEventListener('click', function() {
+            if (window.SPHERE_WALLET && typeof window.SPHERE_WALLET.init === 'function') {
+              window.SPHERE_WALLET.init().then(function() {
+                updateSphereWalletDisplay();
+                updateModeIndicator();
+              }).catch(function(err) {
+                showSphereNotification('Failed to connect wallet: ' + (err.message || err), 'error');
+              });
+            } else {
+              showSphereNotification('Sphere wallet bridge not loaded. Ensure ?sphere=true is in the URL.', 'error');
+            }
+          });
+        }
+      });
+    })();
+
     // Poll Sphere wallet display every 30 seconds when connected
     setInterval(function() {
       if (isSphereMode()) {
         updateSphereWalletDisplay();
       }
+      updateModeIndicator();
     }, 30000);
 
     // Initial Sphere wallet display update when bridge loads
     // Use a short delay to allow sphere-game-bridge.js to initialize
     setTimeout(function() {
       updateSphereWalletDisplay();
+      updateModeIndicator();
     }, 2000);
 
     // Get player name from localStorage or generate default
@@ -1176,29 +1267,17 @@
       return null;
     }
     
-    // Save player identity to localStorage (pubkey, secret, tokens)
+    // Save player identity to localStorage
     function savePlayerIdentity() {
-      if (!client || !client.clientState.tokenService) {
-        console.warn('Cannot save identity: token service not initialized');
-        return false;
+      // In Sphere mode, identity is managed by the wallet - no local save needed
+      if (isSphereMode()) {
+        return true;
       }
-      
       try {
-        const identity = client.clientState.tokenService.getIdentity();
-        const tokenStatus = client.clientState.tokenService.getTokenStatus();
-        
-        // Use current player name instead of token service username to ensure consistency
-        const currentName = currentPlayerName || client.clientInfo.name || identity.username;
-        
-        // Save identity data
         const identityData = {
-          username: currentName,
-          pubkey: identity.pubkey,
-          secret: client.clientState.tokenService.secret, // Save secret for full recovery
-          tokens: tokenStatus.tokens,
+          username: currentPlayerName || 'Player',
           savedAt: Date.now()
         };
-        
         localStorage.setItem('uniquake_player_identity', JSON.stringify(identityData));
         return true;
       } catch (error) {
@@ -1262,7 +1341,6 @@
         name: playerName,
         verbose: true,
         debug: true,
-        mintTokens: 5, // Will be overridden if we have saved tokens
         onStatusUpdate: updateClientStatus,
         onChatMessage: displayChatMessage,
         onConnectionChange: handleConnectionChange,
@@ -1280,30 +1358,10 @@
           updatePlayerScoreOverlay();
         }
       });
-      
-      // Create game integration
-      integration = new GameIntegration({
-        client: client,
-        debug: true,
-        onGameStateUpdate: updateGameState,
-        onTokenEvent: handleTokenEvent
-      });
-      
+
       // Initialize all components
       await game.init();
-      
-      // Try to restore saved identity before initializing client
-      const savedIdentity = loadPlayerIdentity();
-      if (savedIdentity) {
-        // Modify client's token service config to use saved identity
-        client.config.restoreIdentity = savedIdentity;
-      }
-      
       await client.init();
-      await integration.init(game);
-
-      // Store reference to game integration for syncing
-      client.gameIntegration = integration;
 
       // Hook Sphere message handler into the signaling message pipeline
       // This patches the client's handler to also process Sphere-specific messages
@@ -1342,36 +1400,12 @@
         }, 5000);
       });
       
-      // Update initial token info
+      // Update initial display
       updateTokenInfo();
-      
-      // Save initial identity to localStorage
-      setTimeout(() => {
-        savePlayerIdentity();
-      }, 1000); // Allow token service to fully initialize
-      
-      // Set up periodic identity saving (every 30 seconds)
-      setInterval(() => {
-        if (client && client.clientState.tokenService) {
-          savePlayerIdentity();
-        }
-      }, 30000);
-      
-      // Set up automatic game state verification every 2 seconds when connected
-      // This ensures the frame counter is updated frequently
-      setInterval(() => {
-        if (client.clientState.connected) {
-          // Request verification from server
-          client.sendMessage({
-            type: 'request:game:state:token'
-          });
-          
-          // Only log in debug mode to avoid console spam
-          if (client.config.debug) {
-          }
-        }
-      }, 2000);
-      
+
+      // Update mode indicator
+      updateModeIndicator();
+
       // Set up periodic player score overlay updates using direct master server requests
       setInterval(() => {
         updatePlayerScoreOverlayFromMaster();
@@ -1406,9 +1440,7 @@
         }
         
         // Save current identity state
-        if (client && client.clientState.tokenService) {
-          savePlayerIdentity();
-        }
+        savePlayerIdentity();
       }
       
       // Use beforeunload event to save data before page closes
@@ -1989,14 +2021,11 @@
         playerName = client.clientInfo.name;
       }
       
-      // 4. Fall back to token service identity
-      if (!playerName && client && client.clientState.tokenService) {
-        const identity = client.clientState.tokenService.getIdentity();
-        if (identity && identity.username) {
-          playerName = identity.username;
-        }
+      // 4. Fall back to Sphere wallet nametag
+      if (!playerName && isSphereMode() && window.SPHERE_WALLET.identity) {
+        playerName = window.SPHERE_WALLET.identity.nametag;
       }
-      
+
       // 5. Final fallback
       if (!playerName) {
         playerName = 'UnnamedPlayer';
@@ -2122,16 +2151,13 @@
         const playerScore = client.getLatestPlayerScore();
         const countdown = client.getMatchCountdown();
         
-        // Get current token balance
+        // Get current balance (Sphere mode or legacy)
         let balance = '0';
-        try {
-          if (client.clientState.tokenService) {
-            const inventory = client.getTokenInventory();
-            balance = inventory.value || '0';
+        if (isSphereMode()) {
+          var balanceEl = document.getElementById('sphere-balance');
+          if (balanceEl) {
+            balance = balanceEl.textContent.replace(' UCT', '') || '0';
           }
-        } catch (error) {
-          // If balance retrieval fails, default to '0'
-          balance = '0';
         }
         
         // Determine score color based on rank
@@ -2311,66 +2337,47 @@
       }
     }
     
-    // Clear player identity (name and pubkey)
+    // Clear player identity (name)
     function clearPlayerIdentity() {
       if (client && client.clientState.connected) {
         alert('Cannot clear identity while connected to a game. Please disconnect first.');
         return;
       }
-      
-      const confirmClear = confirm('Are you sure you want to clear your player identity? This will reset your name, generate a new cryptographic identity, and remove all saved tokens.');
-      if (!confirmClear) {
+
+      var confirmMsg = isSphereMode()
+        ? 'Are you sure you want to clear your player data? This will reset your saved name.'
+        : 'Are you sure you want to clear your player identity? This will reset your name.';
+      if (!confirm(confirmMsg)) {
         return;
       }
-      
+
       // Clear all player data from localStorage
       clearPlayerData();
-      
+
       // Reset current player name
       currentPlayerName = null;
-      
+
       // Clear the input field
       const playerNameInput = document.getElementById('player-name-input');
       if (playerNameInput) {
         playerNameInput.value = '';
         playerNameInput.placeholder = 'Enter your player name...';
       }
-      
-      // Reinitialize token service with new identity
-      if (client && client.clientState.tokenService) {
-        
-        // Clear existing token service
-        client.clientState.tokenService = null;
-        
-        // Remove the restore config to ensure fresh identity
-        delete client.config.restoreIdentity;
-        
-        // Generate new autogenerated name BEFORE initializing token service
-        currentPlayerName = getPlayerName();
+
+      // Generate new name
+      currentPlayerName = getPlayerName();
+      if (client) {
         client.clientInfo.name = currentPlayerName;
         client.config.name = currentPlayerName;
-        
-        console.log(`Generating new identity for: ${currentPlayerName}`);
-        
-        // Initialize new token service
-        client.initializeTokenService().then(() => {
-          console.log('New identity generated successfully');
-          
-          // Update UI with new identity
-          updateTokenInfo();
-          
-          if (playerNameInput) {
-            playerNameInput.value = currentPlayerName;
-            playerNameInput.placeholder = currentPlayerName;
-          }
-          
-          // Save the new identity
-          savePlayerIdentity();
-        }).catch((error) => {
-          console.error('Failed to reinitialize token service:', error);
-          alert('Failed to generate new identity. Please refresh the page.');
-        });
       }
+
+      if (playerNameInput) {
+        playerNameInput.value = currentPlayerName;
+        playerNameInput.placeholder = currentPlayerName;
+      }
+
+      updateTokenInfo();
+      updateModeIndicator();
     }
     
     // Generate autogenerated address based on pubkey
@@ -2618,36 +2625,14 @@
       if (status.ping && status.ping.last) {
         document.getElementById('ping-display').textContent = `Ping: ${status.ping.last}ms`;
       }
-      
-      // Update token info if available
-      if (status.tokens) {
-        updateTokenInfo(status.tokens);
-      }
-      
     }
     
     // Update game state display
     function updateGameState(gameState) {
       if (!gameState) return;
       
-      // Calculate state hash for local state if token service is available
+      // Local state hash (legacy token service removed - hash verification disabled)
       let localStateHash = 'N/A';
-      if (client && client.clientState.tokenService && client.clientState.tokenService.hashGameState) {
-        try {
-          // Enable debug mode temporarily to see serialization and hash details
-          const debugEnabled = client.clientState.tokenService.debugMode;
-          client.clientState.tokenService.debugMode = true;
-          
-          // Use the token service's normalization and hash calculation
-          // This ensures we use exactly the same process as the server
-          localStateHash = client.clientState.tokenService.hashGameState(gameState);
-          
-          // Restore previous debug setting
-          client.clientState.tokenService.debugMode = debugEnabled;
-        } catch (error) {
-          console.error('Failed to calculate game state hash:', error.message);
-        }
-      }
       
       // Get server hash from verification if available
       const serverHash = gameState.serverHash || 
@@ -2746,12 +2731,7 @@
         console.error('Error formatting server timestamp:', error);
       }
       
-      // Recalculate the local hash using the EXACT same normalization as the token service
-      if (client && client.clientState.tokenService) {
-        // Ensure we're using the exactly same state normalization as the server
-        const normalizedState = client.clientState.tokenService.normalizeGameState(gameState);
-        localStateHash = client.clientState.tokenService.hashGameState(normalizedState);
-      }
+      // Hash verification disabled (legacy token service removed)
       
       // Update game state display
       const gameStateElem = document.getElementById('game-state');
@@ -2857,35 +2837,34 @@
       const playerNameInput = document.getElementById('player-name-input');
       const playerAddress = document.getElementById('player-address');
       const playerBalance = document.getElementById('player-balance');
-      
-      if (!client || !client.clientState.tokenService) {
-        if (playerNameInput) playerNameInput.placeholder = 'Enter your player name...';
-        if (playerAddress) playerAddress.innerHTML = 'Generating address...<span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>';
-        if (playerBalance) playerBalance.textContent = 'Balance: 0';
-        return;
-      }
-      
-      const inventory = client.getTokenInventory();
-      const identity = client.clientState.tokenService.getIdentity();
-      
-      // Update placeholder and value if input is empty
-      if (playerNameInput) {
-        if (!playerNameInput.value) {
-          playerNameInput.value = identity.username;
+
+      if (isSphereMode()) {
+        // In Sphere mode, address and balance are shown via the wallet info panel
+        if (playerAddress) {
+          var identity = window.SPHERE_WALLET.identity || {};
+          var addr = identity.directAddress || '';
+          if (addr) {
+            var displayAddr = generatePlayerAddress(addr);
+            playerAddress.innerHTML = displayAddr + '<span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>';
+            playerAddress.setAttribute('data-full-address', addr);
+          }
         }
-        playerNameInput.placeholder = identity.username;
-      }
-      
-      // Generate and display player address
-      const fullAddress = identity.pubkey; // Use full pubkey as address
-      const displayAddress = generatePlayerAddress(identity.pubkey);
-      if (playerAddress) {
-        playerAddress.innerHTML = `${displayAddress}<span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>`;
-        playerAddress.setAttribute('data-full-address', fullAddress);
-      }
-      
-      if (playerBalance) {
-        playerBalance.textContent = `Balance: ${inventory.value || '0'}`;
+        if (playerBalance) {
+          playerBalance.textContent = '';
+        }
+      } else {
+        // Legacy mode
+        if (playerNameInput && !playerNameInput.value && currentPlayerName) {
+          playerNameInput.value = currentPlayerName;
+          playerNameInput.placeholder = currentPlayerName;
+        }
+        if (playerAddress) {
+          playerAddress.innerHTML = 'No wallet<span class="copy-hint" id="address-copy-hint">Copied to clipboard</span>';
+          playerAddress.removeAttribute('data-full-address');
+        }
+        if (playerBalance) {
+          playerBalance.textContent = '';
+        }
       }
     }
     
@@ -2896,30 +2875,10 @@
       return;
     }
     
-    // Handle token events
+    // Handle token events (legacy stub - Sphere mode handles via wallet)
     function handleTokenEvent(event) {
       console.log('Token event:', event);
-      
-      // Update token info
       updateTokenInfo();
-      
-      // Save identity when tokens are updated
-      savePlayerIdentity();
-      
-      // If it's a verification event, update the game state display only
-      if (event.type === 'game_state_verification') {
-        // Update game state display to show current hash status
-        if (client?.gameIntegration?.game) {
-          updateGameState(client.gameIntegration.game.getGameState());
-        }
-        
-        // Log verification result for debugging
-        if (event.result.verified) {
-          console.log(`Game state verified at frame ${event.frame}: Hash matches`);
-        } else {
-          console.warn(`Game state verification failed at frame ${event.frame}: ${event.result.error || 'Hash mismatch'}`);
-        }
-      }
     }
     
     // Validate and save player name (no popup messages)

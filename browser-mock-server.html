@@ -318,10 +318,8 @@
   </div>
 
   <!-- Load scripts -->
-  <script src="lib/client/uniquake-token-service.js"></script>
   <script src="lib/client/browser-mock-game.js"></script>
   <script src="lib/client/browser-mock-server.js"></script>
-  <script src="lib/client/game-integration.js"></script>
   
   <script>
     // Load WebRTC adapter directly, bypassing the auto-connect behavior
@@ -340,8 +338,8 @@
     };
     document.head.appendChild(script);
     
-    // Main server, game, and integration instances
-    let server, game, integration;
+    // Main server and game instances
+    let server, game;
     let selectedClientId = null;
     
     /**
@@ -390,21 +388,9 @@
         onChatMessage: handleChatMessage
       });
       
-      // Create game integration
-      integration = new GameIntegration({
-        server: server,
-        debug: true,
-        onGameStateUpdate: updateGameState,
-        onTokenEvent: handleTokenEvent,
-        onPlayerJoin: handlePlayerJoin,
-        onPlayerLeave: handlePlayerLeave,
-        onGameEnd: handleGameEnd
-      });
-      
       // Initialize all components
       await game.init();
       await server.init();
-      await integration.init(game);
       
       // Store reference to game in server for synchronization
       server.gameInstance = game;
@@ -590,7 +576,6 @@
       // End the game with the selected winner
       if (winnerId) {
         game.endGame(winnerId);
-        integration.endGame(winnerId);
       }
     }
     

@@ -87,6 +87,11 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 - **Server Registry** (`lib/server-registry.js`): Tracks available game servers with heartbeat monitoring
 - **STUN/TURN Servers** (`lib/stun-server.js`, `lib/turn-server.js`): NAT traversal support for WebRTC
 - **Quake Protocol Adapter** (`lib/quake/master-adapter.js`): Bridges WebRTC master with traditional QuakeJS protocol
+- **Payment Manager** (`lib/payment-manager.js`): Sphere SDK integration for entry fees and prize distribution (invoicing, DMs)
+- **Session Escrow** (`lib/session-escrow.js`): Per-session payment state tracking with state machine
+- **Payout Engine** (`lib/payout-engine.js`): Winner determination and invoice-based prize distribution
+- **Admission Gate** (`lib/admission-gate.js`): Cryptographic admission tokens for WebSocket identity binding
+- **Sphere Game Bridge** (`lib/client/sphere-game-bridge.js`): Browser-side wallet bridge via Sphere Connect protocol
 - **Browser Mocks** (`lib/client/`): Development interfaces for testing client/server interactions
 
 ### Key Architecture Patterns
@@ -94,7 +99,7 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 - **Server Registry**: Centralized tracking of available game servers with heartbeat monitoring
 - **Process Management**: Dedicated servers run as separate Node.js processes, managed by the main server
 - **Signaling Protocol**: Custom WebSocket-based signaling for WebRTC negotiation
-- **Unicity Integration**: Support for @unicitylabs packages for advanced networking features
+- **Sphere SDK Integration**: Payment system via `@unicitylabs/sphere-sdk` (invoicing, DMs, wallet bridge)
 
 ### Server Lifecycle & Game State Management
 1. Combined master starts and initializes both WebRTC and QuakeJS protocol handlers
@@ -104,7 +109,8 @@ This project extends QuakeJS with WebRTC capabilities and dedicated server manag
 5. Master server handles signaling between peers and maintains server list
 6. **Automatic match restart cycle**: When matches end via timeout/score cap → 30s countdown → server restart → client auto-reconnect
 7. **Manual match end**: "End Match and Pay Rewards" button → complete server stop (no restart)
-8. **Game state tokens**: Servers send periodic state tokens for verification; inactive servers (>1min without tokens) are automatically terminated
+8. **Sphere payments**: Entry fees collected via invoicing; winnings distributed on match end
+9. **Admission tokens**: Cryptographic tokens bind DM identity to WebSocket connections
 9. **Score requests**: Clients can request scores directly from master server; automatic score updates are pushed periodically
 10. **Match timer overlay**: Countdown timer data preserved from server page for client display
 
@@ -265,14 +271,29 @@ The project includes several binary commands accessible via npm:
 - **Not Running servers**: Gray, disabled connect button
 - **Malformed servers**: Red, always disabled (invalid address data)
 
-### Token Monitoring & Server Termination
-- Servers must send game state tokens at least every 60 seconds
-- Token monitoring runs every 30 seconds checking for inactive servers
-- Inactive servers are automatically terminated (separate from 2-hour session timeout)
+### Server Termination
 - Session timeout (2 hours) handles general connection cleanup
+- Heartbeat-based pruning detects unresponsive servers
 
-## Unicity Integration
-- Project uses @unicitylabs/shared and @unicitylabs/tx-flow-engine packages
-- Game state tokens are managed for blockchain verification
-- Token service handles transaction flow and state management
-- "End Match and Pay Rewards" button triggers token-based reward distribution
+## Sphere SDK Integration
+- Project uses `@unicitylabs/sphere-sdk` (local: `file:../sphere-sdk`)
+- **sphere-sdk is ESM-only** — server code uses `await import('@unicitylabs/sphere-sdk')` (dynamic import)
+- PaymentManager handles entry fees (10 UCT) via AccountingModule invoicing
+- CommunicationsModule (NIP-17 encrypted DMs) for payment coordination
+- Admission tokens bind DM identity to WebSocket connections (S1/S2 security)
+- Three Sphere Connect modes: iframe, popup, browser extension
+- Browser bridge: `lib/client/sphere-game-bridge.js` with `autoConnect()`
+- Browser bundle: `public/sphere-connect-bundle.js` (built via `scripts/build-sphere-bridge.sh`)
+- Payout: human winner gets pot; bot win → session creator; default session → configurable nametag
+- Spectators join free; match cancellation auto-returns fees
+- Security: 12 mitigations documented in `docs/sphere-integration-architecture.md`
+
+### Sphere Environment Variables
+- `UNIQUAKE_MNEMONIC` / `UNIQUAKE_MNEMONIC_FILE` — server wallet (required for payments)
+- `UNIQUAKE_NETWORK` — testnet or mainnet (default: testnet)
+- `UNIQUAKE_DEFAULT_PAYOUT_NAMETAG` — bot-win recipient (default: babaika10)
+- `UNIQUAKE_ENTRY_FEE` — entry fee amount (default: 10)
+- `UNIQUAKE_ENTRY_COIN` — coin type (default: UCT)
+- `UNIQUAKE_WALLET_URL` — Sphere wallet URL for popup mode
+- `UNIQUAKE_SERVER_NAMETAG` — server nametag for client-side pinning
+- `UNIQUAKE_NOSTR_RELAYS` — comma-separated Nostr relay URLs

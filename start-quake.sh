@@ -375,6 +375,28 @@ app_health_check() {
         echo "fail:Internal: Game session check — no response from master"
     fi
 
+    # ── Sphere payment system status ─────────────────────────────────────────
+
+    # 8. Sphere wallet status (if mnemonic configured)
+    if [ -n "${UNIQUAKE_MNEMONIC:-}" ] || [ -n "${UNIQUAKE_MNEMONIC_FILE:-}" ]; then
+        local sphere_status
+        sphere_status=$(docker exec "$container" timeout 5 node -e "
+            const logs = require('fs').readFileSync('/proc/1/fd/1', 'utf8').split('\\n');
+            const sphereInit = logs.find(l => l.includes('Sphere payment system initialized') || l.includes('[PaymentManager] Initialized'));
+            const sphereFail = logs.find(l => l.includes('Sphere payment system failed') || l.includes('payment features disabled'));
+            if (sphereInit) { console.log('pass:' + sphereInit.trim()); }
+            else if (sphereFail) { console.log('warn:' + sphereFail.trim()); }
+            else { console.log('warn:Sphere wallet status unknown'); }
+        " 2>/dev/null | tail -1)
+        if [ -n "$sphere_status" ]; then
+            local sphere_level="${sphere_status%%:*}"
+            local sphere_msg="${sphere_status#*:}"
+            echo "${sphere_level}:Internal: Sphere wallet — ${sphere_msg}"
+        else
+            echo "warn:Internal: Sphere wallet status — could not determine"
+        fi
+    fi
+
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 2: External reachability (from host — tests HAProxy / port publish)
     # ══════════════════════════════════════════════════════════════════════════
