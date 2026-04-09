@@ -16,3 +16,4 @@ logs/
 bin/web.json
 master-config.json
 content-config.json
+.claude

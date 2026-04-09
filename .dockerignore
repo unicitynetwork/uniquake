@@ -1,0 +1,23 @@
+.git
+.gitignore
+.env
+.env.example
+.claude
+# node_modules included — quakejs-files is unpublished from npm, must copy from host
+assets
+assets_src
+ref_materials
+logs
+*.log
+*.md
+!README.md
+fresh_quakejs/.git
+fresh_quakejs/ioq3/.git
+fresh_quakejs/ioq3/code
+fresh_quakejs/ioq3/Makefile
+fresh_quakejs/ioq3/misc
+setup.sh
+docker/run-lib.sh
+docker/build.sh
+browser-mock-client.html
+browser-mock-server.html
