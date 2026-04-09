@@ -399,27 +399,195 @@ UniQuake does NOT modify any Sphere files. Integration contract = Sphere Connect
 
 ---
 
-## Security Considerations
+## Security Architecture
 
-### Server Wallet
-- `UNIQUAKE_MNEMONIC` is the master key for all game payments — store securely
-- Consider separate HD addresses per session (`sphere.deriveAddress(index)`)
+This section addresses all findings from adversarial review of the payment flow and communication model.
 
-### Client-Side
-- `autoConnect()` negotiates permissions; payment intents always require user confirmation
-- Game page cannot extract private keys or mnemonics
-- PostMessage origin validation in iframe/popup modes
+### S1. Admission Gate (prevents free-ride attack)
 
-### Payment Integrity
-- Entry fees verified via aggregator proofs (invoice system handles this)
-- Bots and spectators do NOT pay — only active human players
-- `cancelInvoice({ autoReturn: true })` for refunds on match cancellation
-- Invoice IS a token — on-chain audit trail for all payments
+**Threat:** Payment and game protocol are on separate channels. Without enforcement, a player can connect directly to the Quake game server via WebSocket without paying.
 
-### DM Communication
-- All DMs encrypted via NIP-17 (gift-wrapped messages)
-- Server authenticates via its nametag (on-chain identity)
-- Players authenticate via their Sphere wallet identity
+**Mitigation:** The server maintains a `confirmedPlayers` set per session. The signaling service MUST verify every incoming game connection against this set before relaying to the game server.
+
+**Mechanism: Admission Token**
+
+1. When payment is confirmed, `PaymentManager` generates a cryptographically random **admission token** (32 bytes, hex-encoded) and includes it in the `join_confirmed` DM.
+2. The client must present this token in the WebSocket connection URL: `ws://host:27950?session=xxx&token=yyy`.
+3. The signaling service validates the token against the `confirmedPlayers` set before admitting the connection.
+4. Tokens are single-use, per-session, and expire after 5 minutes.
+5. Spectators receive admission tokens too (marked as spectator-only).
+
+```
+join_confirmed DM → { sessionId, role, admissionToken: 'a3f9b2c1...' }
+WS connect     → ws://host:27950?session=xxx&admissionToken=a3f9b2c1...
+Signaling gate → validate token → admit or reject
+```
+
+### S2. Identity Binding (prevents nametag spoofing)
+
+**Threat:** The WebSocket channel has no cryptographic identity verification. Anyone can claim any nametag.
+
+**Mitigation:** The admission token (S1) binds the DM identity to the WebSocket connection. The DM channel provides NIP-17 cryptographic sender authentication. The admission token is delivered via this authenticated channel and presented on the unauthenticated WebSocket. This creates a cryptographic chain:
+
+```
+Sphere wallet (secp256k1 key) → NIP-17 DM (authenticated sender)
+  → admission token (random secret)
+    → WebSocket connection (bearer token)
+```
+
+The server never trusts a self-asserted nametag on WebSocket. The nametag is looked up from the admission token's associated player record.
+
+### S3. Server Wallet Mnemonic Protection
+
+**Threat:** `UNIQUAKE_MNEMONIC` in env var is visible via `/proc/1/environ`, `docker inspect`, and logs.
+
+**Mitigations:**
+1. **Prefer Docker secrets:** Read mnemonic from `/run/secrets/uniquake_mnemonic` file (mounted via Docker secrets or bind mount). Support `UNIQUAKE_MNEMONIC_FILE` env var pointing to the file path.
+2. **Clear env var after reading:** `delete process.env.UNIQUAKE_MNEMONIC` in PaymentManager constructor.
+3. **Sanitized logging:** Never log the config object containing the mnemonic. Use a sanitized copy.
+4. **Container security:** Run Node.js processes as non-root user inside the container.
+
+```javascript
+// PaymentManager.init()
+const mnemonic = process.env.UNIQUAKE_MNEMONIC_FILE
+  ? fs.readFileSync(process.env.UNIQUAKE_MNEMONIC_FILE, 'utf8').trim()
+  : process.env.UNIQUAKE_MNEMONIC;
+delete process.env.UNIQUAKE_MNEMONIC;  // clear immediately
+```
+
+### S4. Payout Idempotency (prevents double-payout)
+
+**Threat:** Match-end event fires twice (timelimit + fraglimit in same frame). `distributeWinnings()` called twice, paying out the prize pool twice.
+
+**Mitigation:** Synchronous state guard before any async operation:
+
+```javascript
+async distributeWinnings(sessionId, matchResult) {
+  const escrow = this.sessions.get(sessionId);
+  if (!escrow) return { status: 'error', reason: 'Session not found' };
+  if (escrow.state !== 'playing' && escrow.state !== 'open') {
+    return { status: 'already_processed' };
+  }
+  escrow.state = 'paying_out';  // SYNCHRONOUS — before any await
+  // ... payout logic ...
+}
+```
+
+Since Node.js is single-threaded, the synchronous state assignment prevents concurrent executions from passing the guard.
+
+### S5. Join Deduplication (prevents double-invoice)
+
+**Threat:** Player sends `join_request` twice. Server creates two invoices, orphaning the first.
+
+**Mitigation:** Check `escrow.players` before creating an invoice:
+
+```javascript
+const existing = escrow.players.get(senderNametag);
+if (existing?.paymentStatus === 'confirmed') {
+  // Already paid — resend join_confirmed with admission token
+  return;
+}
+if (existing?.invoiceId) {
+  // Invoice already issued — resend the same invoiceId
+  return;
+}
+```
+
+### S6. Spectator Lockdown (prevents spectator-to-player escalation)
+
+**Threat:** Spectator joins free, then switches to a playing team mid-game via Quake console commands.
+
+**Mitigations:**
+1. **Admission token encodes role.** The signaling service tracks `role: 'spectator' | 'player'` per connection.
+2. **Quake server configuration:** Set `g_forceSpectator` or use server-side mod to prevent team switching for spectator-flagged clients.
+3. **Winner filter:** `determineWinner()` MUST exclude players whose `paymentStatus !== 'confirmed'` from the winner pool. Only paying active players are eligible for winnings.
+
+```javascript
+function determineWinner(escrow, scores) {
+  const paidPlayers = new Set(
+    [...escrow.players.entries()]
+      .filter(([_, p]) => p.paymentStatus === 'confirmed')
+      .map(([nametag]) => nametag)
+  );
+  const eligible = scores.filter(s => paidPlayers.has(s.name) || s.isBot);
+  // ... sort and pick winner from eligible only ...
+}
+```
+
+### S7. Enforce WSS in Production (prevents invoice ID interception)
+
+**Threat:** Invoice IDs sent over plaintext `ws://` can be intercepted.
+
+**Mitigations:**
+1. **Production: WSS only.** The Docker/HAProxy setup already provides TLS on port 27951. In production, disable plaintext port 27950 or redirect to WSS.
+2. **Invoice IDs via DM only.** Send invoice IDs exclusively via encrypted Sphere DMs, not over WebSocket. The WebSocket carries only the admission token (which is single-use and time-limited).
+
+### S8. Server Nametag Pinning (prevents impersonation)
+
+**Threat:** Attacker registers a similar nametag and sends fake invoice DMs.
+
+**Mitigations:**
+1. **Client-side pinning:** The game page includes the server's expected nametag in its configuration (served via HTTPS). The sphere-game-bridge.js only processes DMs from this pinned nametag.
+2. **Client initiates conversation:** The player sends `join_request` to the pinned server nametag. Only replies from that same nametag are processed. Unsolicited `entry_invoice` DMs from other nametags are rejected.
+3. **Server nametag verified at startup:** PaymentManager validates nametag resolution during `init()` — fail-fast if the configured nametag cannot be resolved.
+
+### S9. PostMessage Origin Enforcement
+
+**Threat:** Malicious page embeds UniQuake iframe and intercepts wallet communication via `targetOrigin: '*'`.
+
+**Mitigation:** The `sphere-game-bridge.js` MUST configure `autoConnect()` with a specific `walletUrl` and enforce origin validation:
+
+```javascript
+autoConnect({
+  dapp: { name: 'UniQuake', url: window.location.origin },
+  walletUrl: config.SPHERE_ORIGIN,  // e.g., 'https://sphere.unicity.network'
+  // PostMessageTransport.forClient() uses targetOrigin from walletUrl
+});
+```
+
+In iframe mode, the SDK's `PostMessageTransport.forClient()` defaults `targetOrigin` to `'*'`. UniQuake MUST override this with the expected parent origin. If the parent origin is unknown (generic embedding), the game should use popup or extension mode instead.
+
+### S10. Server Wallet Balance & Retry
+
+**Threat:** `payInvoice()` fails because entry fee transfers haven't been pulled yet.
+
+**Mitigations:**
+1. **Pull before payout:** Call `sphere.payments.receive()` immediately before attempting payout.
+2. **Retry queue:** If payout fails, add to a persistent retry queue with exponential backoff (30s, 60s, 120s, max 5 retries).
+3. **Periodic receive:** Run `sphere.payments.receive()` every 30 seconds in the PaymentManager to catch delayed transfers.
+4. **Startup validation:** On server start, validate the default payout nametag resolves. Fail-fast if `babaika10` cannot be resolved.
+
+### S11. Cancellation Rate Limiting
+
+**Threat:** Repeated join/cancel cycles consume server resources and on-chain transaction fees.
+
+**Mitigations:**
+1. **Rate limit per nametag:** Max 3 join requests per 5 minutes per nametag.
+2. **Delayed server spawn:** Don't spawn the game server process until minimum players (2 humans) are confirmed and paid.
+3. **Lobby phase:** Collect fees in a lobby state. Spawn game server only when all confirmed. Cancel with auto-return if lobby times out (2 minutes).
+
+### S12. Minimum Permission Scope
+
+**Threat:** Broad permissions (`payments`, `invoices`) could be exploited by future wallet auto-approve features.
+
+**Mitigation:** Request only `['identity', 'balance', 'invoices']` — remove `payments`. The design uses only `pay_invoice` intents, not direct payment intents. Each `pay_invoice` requires user confirmation regardless.
+
+### Security Summary
+
+| Threat | Mitigation | Priority |
+|--------|-----------|----------|
+| Free-ride (play without paying) | Admission token gate (S1) | **Must-have** |
+| Nametag spoofing on WS | Admission token identity binding (S2) | **Must-have** |
+| Mnemonic exposure | File-based secrets + env cleanup (S3) | **Must-have** |
+| Double payout | Synchronous state guard (S4) | **Must-have** |
+| Double join / orphaned invoice | Deduplication check (S5) | **Must-have** |
+| Spectator escalation | Role-locked admission + winner filter (S6) | **Must-have** |
+| Invoice ID interception | WSS-only + DM-only invoices (S7) | High |
+| Server impersonation | Client-side nametag pinning (S8) | High |
+| PostMessage origin attack | Enforce specific origin (S9) | High |
+| Insufficient balance for payout | Receive-before-pay + retry queue (S10) | High |
+| Cancellation DoS | Rate limiting + lobby phase (S11) | Medium |
+| Permission scope creep | Minimal permissions (S12) | Medium |
 
 ---
 
