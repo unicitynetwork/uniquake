@@ -136,6 +136,22 @@ describe('SessionEscrow', () => {
       expect(() => {
         escrow.setPlayerInvoice('unknown', 'inv-456');
       }).not.toThrow();
+      // Verify no phantom player record was created
+      expect(escrow.players.has('unknown')).toBe(false);
+    });
+  });
+
+  // ── prizePool edge case ─────────────────────────────────────
+
+  describe('prizePool edge: undefined entryFee', () => {
+    it('SE-24b: prizePool returns 0 when entryFee is undefined', () => {
+      const noFeeEscrow = new SessionEscrow('test-nofee', {
+        creatorNametag: '@creator',
+        isDefaultSession: false,
+      });
+      noFeeEscrow.addPlayer('@alice', false, false);
+      noFeeEscrow.confirmPayment('@alice');
+      expect(noFeeEscrow.prizePool).toBe('0');
     });
   });
 
