@@ -365,55 +365,52 @@ case 'payment_required':
 
 ---
 
-## 3. Sphere App Components
+## 3. Sphere Integration Contract
 
-### 3.1 `QuakeGamePage.tsx`
+UniQuake does NOT modify the Sphere codebase. Instead it provides a **ConnectClient** artifact that works with all three Sphere integration modes.
 
-```typescript
-// React component that embeds QuakeJS in an iframe with ConnectHost bridge
+### 3.1 Integration Modes
 
-interface QuakeGamePageProps {
-  gameUrl: string;  // e.g., 'https://uniquake-dev.dyndns.org/quake?sphere=true'
-}
+Sphere provides three ways for dApps to connect to the wallet. UniQuake supports all three via the `autoConnect()` function from `@unicitylabs/sphere-sdk/connect/browser`.
 
-// State:
-//   - connection status (disconnected / connected / playing)
-//   - player nametag
-//   - current balance
-//   - game session info (session ID, players, prize pool)
-//   - pending payment request (for entry fee modal)
+**Mode 1: iframe (Sphere embeds UniQuake)**
+- Sphere renders `<iframe src="https://uniquake-dev.dyndns.org/quake?sphere=true">`
+- Sphere wraps the iframe with `ConnectHost` using `PostMessageTransport.forHost(iframe, { allowedOrigins })`
+- `autoConnect()` in the game detects `window.parent !== window` → uses `PostMessageTransport.forClient()`
+- Best UX: game + wallet visible together
 
-// ConnectHost setup:
-//   - onConnectionRequest: auto-approve for known UniQuake origins
-//   - onIntent('send'): show QuakeEntryFeeModal for user confirmation
-//   - RPC queries: proxy to useWallet() hook
+**Mode 2: Popup (standalone UniQuake, popup wallet)**
+- User visits `https://uniquake-dev.dyndns.org/quake?sphere=true` directly
+- `autoConnect()` detects no iframe and no extension → opens `walletUrl/connect` as popup
+- Sphere's popup route creates `ConnectHost` and communicates via PostMessage
+- `walletUrl` passed via query param or env config (default: `https://sphere.unicity.network`)
 
-// Layout:
-//   - Left 2/3: iframe (QuakeJS game)
-//   - Right 1/3: WalletPanel (standard Sphere wallet)
-//   - Top bar: session info, player count, prize pool
-```
+**Mode 3: Extension (standalone UniQuake, Sphere browser extension)**
+- User visits `https://uniquake-dev.dyndns.org/quake?sphere=true` directly
+- Sphere browser extension injects `window.sphere.isInstalled()` into the page
+- `autoConnect()` detects extension → uses `ExtensionTransport.forClient()`
+- Extension background runs `ConnectHost` with `ExtensionTransport.forHost(chrome)`
 
-### 3.2 `QuakeEntryFeeModal.tsx`
+### 3.2 Connect Protocol Contract
 
-```typescript
-// Modal shown when the game requests an entry fee payment
+UniQuake uses these **RPC queries** (read-only, no user confirmation):
+- `sphere_getIdentity` → `{ nametag, directAddress, chainPubkey }`
+- `sphere_getBalance` → `{ totalAmount, confirmedAmount }`
+- `sphere_getAssets` → `[{ coinId, symbol, totalAmount, ... }]`
+- `sphere_resolve` → resolve a nametag to an address
 
-// Displays:
-//   - Game session name
-//   - Entry fee amount (e.g., "10 UCT")
-//   - Current wallet balance
-//   - "Pay & Join" / "Cancel" buttons
+UniQuake uses these **intents** (wallet shows confirmation UI):
+- `send` → `{ recipient, amount, coinId, memo }` — entry fee payment
+- `sign_message` → `{ message }` — optional server auth
 
-// On confirm:
-//   - Executes sphere.payments.send() via ConnectHost
-//   - Returns success to the iframe's ConnectClient
-//   - Updates wallet balance display
+### 3.3 Sphere Team Responsibilities
 
-// On cancel:
-//   - Returns error to ConnectClient
-//   - Game shows "Payment cancelled" message
-```
+The Sphere team decides how to expose UniQuake in their UI. Options include:
+- Adding a game page component that renders an iframe + ConnectHost
+- Adding a link in GamesChat that opens UniQuake in a new tab (popup mode)
+- Relying on the browser extension for standalone access
+
+UniQuake's deliverable is the game URL (`/quake?sphere=true`) and this integration contract. The Sphere team references `sphere-sdk/docs/CONNECT.md` for ConnectHost setup.
 
 ---
 

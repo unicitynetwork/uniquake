@@ -2,23 +2,76 @@
 
 ## Overview
 
-This document describes the architecture for integrating UniQuake into the Sphere wallet ecosystem, replacing the current `@unicitylabs/tx-flow-engine` + `@unicitylabs/shared` integration with `@unicitylabs/sphere-sdk`.
+This document describes the architecture for integrating UniQuake with the Sphere wallet ecosystem, replacing the current `@unicitylabs/tx-flow-engine` + `@unicitylabs/shared` integration with `@unicitylabs/sphere-sdk`.
+
+**Key principle:** UniQuake is a standalone, self-contained web application. It produces an **integrable artifact** — it does NOT modify the Sphere codebase. Sphere can embed UniQuake via any of its three integration approaches.
 
 ### Goals
 
-1. Embed the QuakeJS game client inside Sphere's web UI
-2. Give the game client access to the player's Sphere wallet (identity, nametag, tokens)
-3. Collect a 10 UCT entry fee when players join a game session
-4. Distribute winnings: human winner gets the pot; bot winner sends pot to session creator
-5. Default sessions send unclaimed winnings to a configurable nametag (default: `babaika10`)
-6. Fully remove the old `@unicitylabs/tx-flow-engine` and `@unicitylabs/shared` dependencies
+1. UniQuake game client connects to the player's Sphere wallet for identity and payments
+2. Collect a 10 UCT entry fee when players join a game session
+3. Distribute winnings: human winner gets the pot; bot winner sends pot to session creator
+4. Default sessions send unclaimed winnings to a configurable nametag (default: `babaika10`)
+5. Fully remove the old `@unicitylabs/tx-flow-engine` and `@unicitylabs/shared` dependencies
+6. Work with all three Sphere integration modes (iframe, popup, extension)
 
 ### Non-Goals (this phase)
 
+- Modifying the Sphere app codebase (Sphere team handles their side)
 - L1 (ALPHA blockchain) payment integration
 - Multi-coin support (UCT only)
 - Tournament bracket system
-- Spectator mode payments
+
+---
+
+## Sphere Connect Integration Model
+
+UniQuake uses the **Sphere Connect protocol** — a JSON-RPC-like message system for dApp ↔ wallet communication. The SDK provides `autoConnect()` which auto-detects the best available transport.
+
+### Three Integration Modes
+
+```
+Mode 1: IFRAME                    Mode 2: POPUP                   Mode 3: EXTENSION
+(Sphere embeds UniQuake)          (UniQuake standalone)            (UniQuake standalone)
+
++---------------------------+     +---------------------------+    +---------------------------+
+|  Sphere Web App           |     |  UniQuake (own tab)       |    |  UniQuake (own tab)       |
+|  +---------------------+ |     |                           |    |                           |
+|  | UniQuake iframe      | |     |  sphere-game-bridge.js    |    |  sphere-game-bridge.js    |
+|  | sphere-game-bridge.js| |     |  ConnectClient            |    |  ConnectClient            |
+|  | ConnectClient        | |     |                           |    |                           |
+|  +----------+-----------+ |     +------------+--------------+    +------------+--------------+
+|             |PostMessage  |                   |PostMessage                     |window.postMessage
+|  +----------+-----------+ |     +------------+--------------+    +------------+--------------+
+|  | ConnectHost          | |     | Sphere Wallet Popup       |    | Sphere Extension          |
+|  | (wallet bridge)      | |     | ConnectHost               |    | Content Script → BG       |
+|  +---------------------+ |     | (420x720 window)          |    | ConnectHost (background)  |
++---------------------------+     +---------------------------+    +---------------------------+
+```
+
+**UniQuake's code is identical across all three modes.** The `autoConnect()` function detects the environment:
+
+| Priority | Detection | Transport | How it works |
+|----------|-----------|-----------|-------------|
+| P1 | `window.parent !== window` | **iframe** | PostMessage to parent Sphere app |
+| P2 | `window.sphere.isInstalled()` | **extension** | Chrome messaging API via content script |
+| P3 | (fallback) | **popup** | Opens Sphere wallet as popup window, PostMessage |
+
+### What UniQuake Delivers
+
+UniQuake is the **ConnectClient** (dApp) side. It delivers:
+
+1. **A game page** at `/quake?sphere=true` that loads the Sphere wallet bridge
+2. **`sphere-game-bridge.js`** — uses `autoConnect()` to connect to the wallet regardless of mode
+3. **Server-side payment management** — collects fees and distributes winnings via Node.js sphere-sdk
+
+### What Sphere Provides (not our responsibility)
+
+The Sphere team implements the **ConnectHost** (wallet) side:
+
+1. **Iframe mode:** Sphere embeds `<iframe src="https://uniquake-dev.dyndns.org/quake?sphere=true">` in their UI and wraps it with a `ConnectHost` using `PostMessageTransport.forHost(iframe)`
+2. **Popup mode:** Sphere's `/connect` route handles popup wallet sessions. Already implemented in the SDK.
+3. **Extension mode:** Sphere's browser extension background script runs `ConnectHost` with `ExtensionTransport.forHost(chrome)`. Already implemented in the SDK.
 
 ---
 
@@ -26,29 +79,25 @@ This document describes the architecture for integrating UniQuake into the Spher
 
 ```
 +----------------------------------------------------------------------+
-|  SPHERE WEB APP (React 19 SPA)                                       |
+|  BROWSER                                                              |
 |                                                                       |
-|  +------------------+   +------------------------------------------+ |
-|  |   WalletPanel    |   |  UniQuake Game Page                      | |
-|  |   (L3 wallet)    |   |                                          | |
-|  |                  |   |  +-------------------------------------+ | |
-|  |  Identity        |   |  |  QuakeJS iframe                     | | |
-|  |  Nametag         |   |  |  (uniquake-dev.dyndns.org/quake)    | | |
-|  |  Balance (UCT)   |   |  |                                     | | |
-|  |  Send/Receive    |   |  |  Uses Sphere Connect (PostMessage)  | | |
-|  |                  |   |  |  to access wallet from iframe        | | |
-|  +--------+---------+   |  +------------------+------------------+ | |
-|           |              |                     |                     | |
-|           |              +------------------------------------------+ |
-|           |                                    |                      |
-|    ConnectHost                          ConnectClient                  |
-|    (wallet side)                        (game side)                   |
-|           |                                    |                      |
-|           +------------- PostMessage ----------+                      |
+|  UniQuake Game Page (/quake?sphere=true)                              |
+|  +------------------------------------------------------------------+|
+|  |  QuakeJS Engine (ioquake3.js, WebGL canvas, audio)               ||
+|  |                                                                   ||
+|  |  sphere-game-bridge.js                                           ||
+|  |    +-- autoConnect({ dapp, walletUrl, permissions })             ||
+|  |    |     P1: iframe → PostMessage to parent                      ||
+|  |    |     P2: extension → Chrome messaging                        ||
+|  |    |     P3: popup → window.open(walletUrl/connect)              ||
+|  |    +-- ConnectClient                                              ||
+|  |         Queries: sphere_getIdentity, sphere_getBalance            ||
+|  |         Intents: send (entry fee), sign_message (server auth)     ||
+|  +------------------------------------------------------------------+|
+|                              |                                        |
+|            WebSocket (ws://host:27950 or wss://host:27951)            |
 +----------------------------------------------------------------------+
-                                    |
-                        WebSocket (ws://host:27950)
-                                    |
+                               |
 +----------------------------------------------------------------------+
 |  UNIQUAKE SERVER (Docker container)                                   |
 |                                                                       |
@@ -58,208 +107,220 @@ This document describes the architecture for integrating UniQuake into the Spher
 |  |  (WSS :27951)    |  |  (HTTPS :9001)   |  |  (HTTPS :443)       | |
 |  +--------+---------+  +------------------+  +---------------------+ |
 |           |                                                           |
-|  +--------+---------+                                                 |
-|  |  Game Session     |                                                |
-|  |  Manager          |                                                |
-|  |                   |  +------------------------------------------+ |
-|  |  - Spawns ioq3ded |  |  Payment Manager (NEW - sphere-sdk)      | |
-|  |  - Tracks scores  |  |                                          | |
-|  |  - Manages state  |  |  - Sphere Node.js instance per session   | |
-|  |                   |  |  - Collects entry fees (invoices)         | |
-|  +-------------------+  |  - Distributes winnings on match end     | |
-|                          |  - Nametag resolution for payouts        | |
+|  +--------+---------+  +------------------------------------------+ |
+|  |  Game Session     |  |  Payment Manager (sphere-sdk Node.js)    | |
+|  |  Manager          |  |                                          | |
+|  |  - Spawns ioq3ded |  |  - Server wallet (persistent mnemonic)   | |
+|  |  - Tracks scores  |  |  - SessionEscrow per active game         | |
+|  |  - Manages state  |  |  - Entry fee collection (10 UCT)         | |
+|  +-------------------+  |  - Payout on match end                   | |
+|                          |  - Nametag resolution for transfers      | |
 |                          +------------------------------------------+ |
 +----------------------------------------------------------------------+
 ```
 
 ---
 
-## Component Design
+## Client-Side: `sphere-game-bridge.js`
 
-### 1. Sphere App Integration (Client-Side)
+### Design
 
-#### 1.1 New Page: `QuakeGamePage.tsx`
+A single JavaScript file loaded in the QuakeJS page when `?sphere=true` is present. Uses `autoConnect()` — works identically whether UniQuake is in an iframe, opened alongside a Sphere extension, or using a popup wallet.
 
-A new React component in Sphere that embeds the QuakeJS game.
+### API
 
-**Location:** `sphere/src/components/agents/QuakeGamePage.tsx`
+```javascript
+// sphere-game-bridge.js
 
-**Integration method:** iframe + Sphere Connect protocol
+import { autoConnect } from '@unicitylabs/sphere-sdk/connect/browser';
 
-**Rationale:** QuakeJS is a complex WebGL/Emscripten application that manages its own canvas, audio, and input. Embedding it as a React component would require significant refactoring of the QuakeJS codebase. An iframe provides clean isolation while Sphere Connect enables secure wallet communication.
+class SphereGameBridge {
+  constructor() {
+    this.client = null;
+    this.connection = null;
+    this.identity = null;
+    this.connected = false;
+    this.transport = null;  // 'iframe' | 'extension' | 'popup'
+    this.disconnect = null;
+  }
 
-```
-QuakeGamePage
-  |
-  +-- Game iframe (src="{UNIQUAKE_URL}/quake?sphere=true")
-  |     |
-  |     +-- QuakeJS engine (ioquake3.js)
-  |     +-- ConnectClient (PostMessage bridge to parent)
-  |     +-- sphere-game-bridge.js (NEW: wallet ↔ game glue)
-  |
-  +-- ConnectHost (bridges iframe requests to wallet)
-  +-- Game status bar (nametag, balance, session info)
-  +-- Entry fee confirmation modal
-```
+  async init(walletUrl) {
+    const result = await autoConnect({
+      dapp: {
+        name: 'UniQuake',
+        description: 'Quake III Arena with UCT stakes',
+        url: window.location.origin,
+        icon: window.location.origin + '/favicon.ico',
+      },
+      walletUrl: walletUrl || 'https://sphere.unicity.network',
+      permissions: ['identity', 'balance', 'payments'],
+    });
 
-#### 1.2 Sphere Connect Bridge
+    this.client = result.client;
+    this.connection = result.connection;
+    this.identity = result.connection.identity;
+    this.transport = result.transport;
+    this.disconnect = result.disconnect;
+    this.connected = true;
+  }
 
-The iframe communicates with the parent Sphere app via the **Connect protocol** (PostMessage transport).
+  // ── Queries (no user confirmation needed) ──
 
-**Wallet side (Sphere app — ConnectHost):**
-- Bridges RPC queries: `sphere_getIdentity`, `sphere_getBalance`, `sphere_getAssets`
-- Handles intents: `send` (for entry fee payment), `sign_message` (for server auth)
-- Shows confirmation UI for payment requests
+  async getIdentity() {
+    return this.client.query('sphere_getIdentity');
+  }
 
-**Game side (QuakeJS iframe — ConnectClient):**
-- Queries identity/nametag on load
-- Requests entry fee payment when joining a session
-- Receives payment confirmation before allowing game join
+  async getBalance() {
+    return this.client.query('sphere_getAssets');
+  }
 
-**Permissions requested:** `identity`, `balance`, `payments`
+  async resolve(nametag) {
+    return this.client.query('sphere_resolve', { nametag });
+  }
 
-#### 1.3 Sphere App Registration
+  // ── Intents (wallet shows confirmation UI) ──
 
-Add to `sphere/src/config/activities.ts`:
+  async payEntryFee(recipientNametag, amount, coinId, sessionId) {
+    return this.client.intent('send', {
+      recipient: recipientNametag,
+      amount: amount,
+      coinId: coinId,
+      memo: `UniQuake entry fee - Session ${sessionId}`,
+    });
+  }
 
-```typescript
-{
-  id: 'quake',
-  name: 'UniQuake',
-  icon: '🎮',
-  type: 'custom',  // new type for non-chat pages
-  description: 'Play Quake III Arena with UCT stakes',
-  backendActivityId: null,  // no AI agent backend
+  async signMessage(message) {
+    return this.client.intent('sign_message', { message });
+  }
+}
+
+// Expose globally for game engine
+window.SPHERE_WALLET = new SphereGameBridge();
+
+// Auto-init if ?sphere=true
+if (new URLSearchParams(window.location.search).get('sphere') === 'true') {
+  const walletUrl = new URLSearchParams(window.location.search).get('walletUrl')
+    || 'https://sphere.unicity.network';
+  window.SPHERE_WALLET.init(walletUrl).catch(err => {
+    console.error('[sphere-bridge] Failed to connect:', err.message);
+  });
 }
 ```
 
-Add route handling in `AgentPage.tsx` for `type: 'custom'` that renders `QuakeGamePage` instead of `AgentChat`.
+### Behavior by Mode
 
-#### 1.4 Game Client Wallet Bridge (`sphere-game-bridge.js`)
-
-A new JavaScript file loaded in the QuakeJS iframe that bridges wallet operations to the game engine.
-
-**Responsibilities:**
-- Initialize ConnectClient on page load
-- Connect to parent Sphere wallet (request identity + payment permissions)
-- Expose `window.SPHERE_WALLET` API for the game engine:
-  - `getIdentity()` → `{ nametag, directAddress, publicKey }`
-  - `getBalance()` → current UCT balance
-  - `payEntryFee(sessionId, amount)` → triggers Send intent to session wallet
-  - `onPaymentConfirmed(callback)` → notifies when fee is paid
-- Communicate payment status to the UniQuake master server via WebSocket
+| Aspect | iframe | popup | extension |
+|--------|--------|-------|-----------|
+| Connection | Automatic (parent detected) | Opens wallet popup window | Automatic (extension detected) |
+| User sees | Game inside Sphere UI | Game in own tab + wallet popup | Game in own tab, extension icon |
+| Entry fee confirmation | Sphere shows modal in parent | Popup window shows modal | Extension popup shows modal |
+| Identity source | Parent Sphere's wallet | Popup Sphere's wallet | Extension's wallet |
+| `walletUrl` needed? | No | Yes (for `window.open`) | No |
 
 ---
 
-### 2. Server-Side Payment Manager (Node.js sphere-sdk)
+## Server-Side: Payment Manager
 
-#### 2.1 Architecture
+### Architecture
 
-The UniQuake server runs a **server-side Sphere SDK instance** to manage game session wallets.
+The UniQuake server runs a **server-side Sphere SDK instance** (Node.js) to manage game session payments.
 
 ```
-PaymentManager (NEW)
+PaymentManager
   |
-  +-- Sphere instance (Node.js providers)
-  |     - Wallet: session manager's wallet (persistent mnemonic)
-  |     - Nametag: configurable (default: babaika10 for default sessions)
-  |     - Network: testnet (configurable)
+  +-- Sphere instance (createNodeProviders)
+  |     Wallet: persistent mnemonic (UNIQUAKE_MNEMONIC env var)
+  |     Nametag: server's own nametag (registered on first run)
+  |     Network: testnet (configurable)
   |
   +-- SessionEscrow (per active game session)
-  |     - Invoice for entry fees
-  |     - Player registry (nametag → payment status)
-  |     - Prize pool tracking
+  |     Invoice for entry fees
+  |     Player registry: nametag → payment status
+  |     Prize pool tracking
   |
   +-- PayoutEngine
-        - Resolves winner (human vs bot)
-        - Transfers prize pool to winner's nametag
-        - Handles default session payout
-        - Handles bot-win payout to session creator
+        Winner determination (human vs bot)
+        Nametag resolution
+        Prize transfer via sphere.payments.send()
 ```
 
-#### 2.2 Payment Manager Lifecycle
+### Entry Fee Collection Flow
 
 ```
-Server Start
-  |
-  +-- Initialize Sphere SDK (Node.js providers)
-  |     sphere = await Sphere.init({
-  |       ...createNodeProviders({ network: 'testnet' }),
-  |       mnemonic: process.env.UNIQUAKE_MNEMONIC,  // persistent
-  |     })
-  |
-  +-- Register nametag if needed
-  |     (configurable: UNIQUAKE_NAMETAG env var, default: 'babaika10')
-  |
-  +-- Listen for game session events from GameServerManager
+Player (browser)                              Server (UniQuake)
+     |                                              |
+     |  1. WS: { type: 'join_session',              |
+     |           nametag: '@alice',                  |
+     |           sessionId: 'xxx' }                  |
+     |  ----------------------------------------->  |
+     |                                              |  2. Create/get SessionEscrow
+     |                                              |     escrow.addPlayer('@alice')
+     |  3. WS: { type: 'payment_required',          |
+     |           amount: '1000000000',               |
+     |           coinId: 'UCT',                     |
+     |           recipientNametag: '@babaika10',     |
+     |           sessionId: 'xxx' }                  |
+     |  <-----------------------------------------  |
+     |                                              |
+     |  4. SPHERE_WALLET.payEntryFee(               |
+     |       '@babaika10', '1000000000',             |
+     |       'UCT', 'xxx')                           |
+     |     → Wallet shows confirmation modal         |
+     |     → User confirms 10 UCT                   |
+     |     → sphere.payments.send() executes         |
+     |                                              |
+     |  5. WS: { type: 'payment_sent',              |
+     |           sessionId: 'xxx',                   |
+     |           nametag: '@alice' }                  |
+     |  ----------------------------------------->  |
+     |                                              |  6. sphere.payments.receive()
+     |                                              |     Verify on aggregator
+     |  7. WS: { type: 'payment_confirmed',         |
+     |           sessionId: 'xxx',                   |
+     |           player: '@alice' }                  |
+     |  <-----------------------------------------  |
+     |                                              |
+     |  [Player admitted to game]                    |
 ```
 
-#### 2.3 Entry Fee Collection Flow
+### Winnings Distribution Flow
 
 ```
-Player wants to join session
-  |
-  1. Client sends: { type: 'join_session', nametag: '@alice', sessionId: 'xxx' }
-  |
-  2. Server creates/retrieves SessionEscrow for this session
-  |     escrow.addPendingPlayer('@alice')
-  |
-  3. Server responds: { type: 'payment_required', amount: '1000000000', coinId: 'UCT',
-  |                      recipientAddress: escrow.depositAddress,
-  |                      recipientNametag: '@babaika10',
-  |                      sessionId: 'xxx' }
-  |
-  4. Client (in Sphere iframe) triggers ConnectClient.intent('send', {
-  |     recipient: recipientNametag,
-  |     amount: '1000000000',
-  |     coinId: 'UCT',
-  |     memo: 'UniQuake entry fee - Session xxx'
-  |   })
-  |
-  5. Sphere wallet shows confirmation modal to user
-  |
-  6. User confirms → Sphere executes payment via sphere.payments.send()
-  |
-  7. Server-side sphere.payments.receive() picks up the transfer via Nostr
-  |     (or invoice system detects payment)
-  |
-  8. Server confirms: { type: 'payment_confirmed', sessionId: 'xxx', player: '@alice' }
-  |
-  9. Player is admitted to the game session
+Match ends → Server determines winner:
+
+  Is winner human?
+    YES → payout to winner's nametag (@alice)
+    NO (bot won) →
+      Is this a default session?
+        YES → payout to UNIQUAKE_DEFAULT_PAYOUT_NAMETAG (@babaika10)
+        NO  → payout to session creator's nametag
+
+Prize pool = entryFee × number_of_human_players
+  (bots don't pay, so they don't contribute to the pool)
+
+Transfer: sphere.payments.send({
+  recipient: '@winner_or_creator_or_default',
+  amount: prizePool,
+  coinId: 'UCT',
+  memo: 'UniQuake winnings - Session xxx',
+})
 ```
 
-#### 2.4 Winnings Distribution Flow
+### Payout Decision Matrix
 
-```
-Match ends (timeout or score limit)
-  |
-  1. Server determines winner:
-  |     - If human player: winner = player's nametag
-  |     - If bot: winner = session creator's nametag
-  |     - If default session with bot win: winner = UNIQUAKE_DEFAULT_PAYOUT_NAMETAG
-  |
-  2. Calculate prize pool:
-  |     prizePool = entryFee * numberOfPlayers
-  |     (e.g., 10 UCT * 4 players = 40 UCT)
-  |
-  3. Transfer winnings:
-  |     await sphere.payments.send({
-  |       recipient: '@winner_nametag',
-  |       amount: prizePool,
-  |       coinId: 'UCT',
-  |       memo: 'UniQuake winnings - Session xxx'
-  |     })
-  |
-  4. Broadcast result to all connected clients:
-  |     { type: 'match_result', winner: '@alice', prizePool: '40',
-  |       paidTo: '@alice', txStatus: 'confirmed' }
-```
+| Winner | Session Type | Payout Recipient |
+|--------|-------------|-----------------|
+| Human player | Any | The winning player's nametag |
+| Bot | Custom session | Session creator's nametag |
+| Bot | Default session | `UNIQUAKE_DEFAULT_PAYOUT_NAMETAG` (default: `babaika10`) |
+| No players | Any | No payout (prize pool = 0) |
+| Transfer fails | Any | Funds retained in server wallet; logged for manual resolution |
 
 ---
 
-### 3. Configuration
+## Configuration
 
-#### 3.1 Server Environment Variables (NEW)
+### Server Environment Variables
 
 ```bash
 # ─── Sphere SDK Configuration ─────────────────────────────────
@@ -273,236 +334,164 @@ UNIQUAKE_NETWORK=testnet
 # Default payout nametag (receives winnings when bot wins default sessions)
 UNIQUAKE_DEFAULT_PAYOUT_NAMETAG=babaika10
 
-# Entry fee in UCT (human-readable amount, SDK converts to smallest units)
+# Entry fee in UCT (human-readable, SDK converts to smallest units via 8 decimals)
 UNIQUAKE_ENTRY_FEE=10
 
 # Entry fee coin type
 UNIQUAKE_ENTRY_COIN=UCT
+
+# Sphere wallet URL for popup mode (clients that aren't in iframe/extension)
+UNIQUAKE_WALLET_URL=https://sphere.unicity.network
 ```
 
-#### 3.2 Session Configuration
-
-Each game session carries payment metadata:
+### Session Configuration
 
 ```javascript
 {
   sessionId: 'game-1234567890',
   creatorNametag: '@alice',           // who started this session
+  isDefaultSession: false,            // auto-started sessions = true
   entryFee: '1000000000',            // 10 UCT in smallest units (8 decimals)
   entryCoin: 'UCT',
-  payoutNametag: '@alice',           // creator gets bot-win payouts
-  isDefaultSession: false,
+  payoutNametag: '@alice',            // creator gets bot-win payouts
   players: [
     { nametag: '@alice', paid: true, isBot: false },
     { nametag: '@bob', paid: true, isBot: false },
     { nametag: 'bot_ranger', paid: false, isBot: true },
   ],
-  prizePool: '2000000000',          // 20 UCT (2 human players * 10 UCT)
+  prizePool: '2000000000',           // 20 UCT (2 human players x 10 UCT)
 }
 ```
 
 ---
 
-### 4. Code Changes Summary
+## Code Changes Summary
 
-#### 4.1 Files to REMOVE (old integration)
+### Files to REMOVE (old integration)
 
 | File | Reason |
 |------|--------|
 | `lib/token-service.js` | Replaced by PaymentManager (sphere-sdk) |
-| `lib/client/uniquake-token-service.js` | Replaced by sphere-game-bridge.js (Connect protocol) |
+| `lib/client/uniquake-token-service.js` | Replaced by sphere-game-bridge.js |
 | `lib/client/game-integration.js` | Functionality moves to PaymentManager |
 
-#### 4.2 Dependencies to REMOVE from `package.json`
+### Dependencies to REMOVE from `package.json`
 
 ```json
 "@unicitylabs/shared": "^1.2.15",
 "@unicitylabs/tx-flow-engine": "^1.3.9",
 ```
 
-#### 4.3 Dependencies to ADD to `package.json`
+### Dependencies to ADD to `package.json`
 
 ```json
 "@unicitylabs/sphere-sdk": "^0.6.14",
-"ws": "^8.0.0"  // for sphere-sdk Node.js Nostr transport (upgrade from 7.2.x)
+"ws": "^8.0.0"  // upgrade for sphere-sdk Node.js Nostr transport
 ```
 
-> **Note:** The main project's `ws` can be upgraded to 8.x. The `fresh_quakejs` submodule keeps its own `ws@0.4.x` (intentional, do not change).
+> **Note:** `fresh_quakejs` keeps its own `ws@0.4.x` — do not change.
 
-#### 4.4 Files to CREATE (server-side)
+### Files to CREATE (server-side)
 
 | File | Purpose |
 |------|---------|
-| `lib/payment-manager.js` | Main payment orchestration — Sphere SDK init, session escrow, payout engine |
-| `lib/session-escrow.js` | Per-session fee tracking, player registration, prize pool |
+| `lib/payment-manager.js` | Sphere SDK init, session escrow management, payout orchestration |
+| `lib/session-escrow.js` | Per-session fee tracking, player registry, prize pool |
 | `lib/payout-engine.js` | Winner determination, nametag resolution, prize transfer |
 
-#### 4.5 Files to CREATE (client-side)
+### Files to CREATE (client-side)
 
 | File | Purpose |
 |------|---------|
-| `lib/client/sphere-game-bridge.js` | ConnectClient in iframe, wallet API for game engine |
+| `lib/client/sphere-game-bridge.js` | `autoConnect()` + wallet API for game engine |
 
-#### 4.6 Files to CREATE (Sphere app)
-
-| File | Purpose |
-|------|---------|
-| `sphere/src/components/agents/QuakeGamePage.tsx` | Game page with iframe + ConnectHost |
-| `sphere/src/components/agents/QuakeEntryFeeModal.tsx` | Entry fee confirmation dialog |
-
-#### 4.7 Files to MODIFY
+### Files to MODIFY
 
 | File | Change |
 |------|--------|
-| `lib/signaling-service.js` | Remove old token handling, add PaymentManager integration |
+| `lib/signaling-service.js` | Remove old token handling, add PaymentManager integration for join_session/payment flow |
 | `lib/game-server-manager.js` | Remove old token monitoring, use PaymentManager for session lifecycle |
 | `lib/server-registry.js` | Remove game state token monitoring |
 | `lib/master-server.js` | Initialize PaymentManager, pass to components |
 | `bin/combined-master.js` | Pass Sphere config to MasterServer |
+| `mock-server.js` | Serve `sphere-game-bridge.js`, pass `walletUrl` config to game page |
+| `bin/index.ejs` | Load sphere-game-bridge.js when `?sphere=true`, pass walletUrl |
 | `docker/entrypoint.sh` | Add UNIQUAKE_MNEMONIC, UNIQUAKE_NETWORK env vars |
-| `start-quake.sh` | Add --mnemonic, --network CLI args |
+| `start-quake.sh` | Add --mnemonic, --network, --wallet-url CLI args |
 | `.env.example` | Add Sphere SDK configuration section |
 | `package.json` | Update dependencies |
-| `mock-server.js` | Add `?sphere=true` query param support for iframe mode |
-| `sphere/src/config/activities.ts` | Add UniQuake agent config |
-| `sphere/src/pages/AgentPage.tsx` | Add QuakeGamePage case |
+
+### Files NOT modified (Sphere app)
+
+UniQuake does NOT modify any files in the `sphere/` repository. The Sphere team is responsible for:
+- Adding a QuakeJS page/agent entry in their `activities.ts`
+- Creating a page component that renders an iframe with `ConnectHost`
+- Handling the `send` intent to show a fee confirmation modal
+
+The integration contract between UniQuake and Sphere is the **Sphere Connect protocol** — documented in `sphere-sdk/docs/CONNECT.md`.
 
 ---
 
-### 5. Security Considerations
+## Security Considerations
 
-#### 5.1 Server Wallet Security
+### Server Wallet Security
 
 - The server's mnemonic (`UNIQUAKE_MNEMONIC`) is the master key for all game payments
-- It MUST be stored securely (env var, Docker secret, or encrypted config)
-- The server wallet accumulates entry fees — it is a high-value target
-- Consider: separate HD addresses per session for isolation
+- MUST be stored securely (env var, Docker secret, or encrypted config)
+- The server wallet accumulates entry fees — high-value target
+- Consider: separate HD addresses per session for isolation (`sphere.deriveAddress(index)`)
 
-#### 5.2 Client-Side Security
+### Client-Side Security
 
-- The QuakeJS iframe runs on a different origin (uniquake-dev.dyndns.org) from Sphere
-- Sphere Connect's PostMessage transport validates origins
-- ConnectHost requires user confirmation for all payment intents (Send)
-- Read-only queries (identity, balance) are allowed without confirmation
-- The game cannot extract the user's private key or mnemonic
+- `autoConnect()` negotiates permissions with the wallet
+- Read-only queries (`sphere_getIdentity`, `sphere_getBalance`) require permission but no user confirmation
+- Payment intents (`send`) always require user confirmation in the wallet UI
+- The game page CANNOT extract the user's private key or mnemonic
+- PostMessage origin validation prevents cross-origin attacks (iframe and popup modes)
+- Extension mode uses Chrome's isolated world + message passing
 
-#### 5.3 Payment Integrity
+### Payment Integrity
 
 - Entry fees are verified server-side via `sphere.payments.receive()` (checks aggregator proofs)
 - Bots do NOT pay entry fees (only human players contribute to the prize pool)
 - Prize pool = sum of confirmed human player payments only
-- Winnings transfer happens atomically after match end — if transfer fails, funds remain in server wallet for manual resolution
-
-#### 5.4 Nametag Trust
-
-- Nametags are resolved via Nostr relays — first-seen-wins for anti-hijack
-- The server resolves the payout nametag at payment time, not at session creation
-- If a nametag cannot be resolved, payout fails and funds are retained
+- If payout transfer fails, funds remain in server wallet for manual resolution
 
 ---
 
-### 6. Data Flow Diagrams
+## Migration Plan
 
-#### 6.1 Player Join Flow
-
-```
-Browser (Sphere)           iframe (QuakeJS)           Server (UniQuake)
-     |                          |                          |
-     |  [User clicks Play]      |                          |
-     |  Load QuakeGamePage      |                          |
-     |  Create ConnectHost      |                          |
-     |       |                  |                          |
-     |       +-- Load iframe -->|                          |
-     |                          |  Create ConnectClient    |
-     |  <-- connect request --- |                          |
-     |  Show approval UI        |                          |
-     |  [User approves]         |                          |
-     |  --- session granted --> |                          |
-     |                          |  getIdentity() --------> |
-     |  <-- identity ---------- |  (nametag, pubkey)       |
-     |                          |                          |
-     |                          |  WS: join_session -----> |
-     |                          |                          |  Create SessionEscrow
-     |                          |  <-- payment_required -- |  (amount: 10 UCT)
-     |                          |                          |
-     |                          |  intent('send', {...})   |
-     |  <-- send intent ------- |                          |
-     |  Show fee modal          |                          |
-     |  [User confirms 10 UCT] |                          |
-     |  Execute payment         |                          |
-     |  --- intent result ----> |                          |
-     |                          |  WS: payment_sent -----> |
-     |                          |                          |  sphere.payments.receive()
-     |                          |                          |  Verify on aggregator
-     |                          |  <-- payment_confirmed - |
-     |                          |  [Join game]             |
-```
-
-#### 6.2 Match End Payout Flow
-
-```
-Server (UniQuake)                      Sphere SDK (Node.js)
-     |                                       |
-     |  [Match ends: @alice wins]            |
-     |  Determine payout recipient:          |
-     |    Human win → @alice                 |
-     |    Bot win → @session_creator         |
-     |    Default + bot → @babaika10         |
-     |                                       |
-     |  Calculate prize: 4 players * 10 = 40 |
-     |                                       |
-     |  sphere.payments.send({               |
-     |    recipient: '@alice',        -----> |  Resolve nametag
-     |    amount: '4000000000',              |  Find tokens to cover amount
-     |    coinId: 'UCT',                     |  Create transfer commitment
-     |    memo: 'UniQuake winnings'          |  Submit to aggregator
-     |  })                                   |  Wait for proof
-     |                                       |  Deliver via Nostr
-     |  <-- transfer result --------------- |
-     |                                       |
-     |  Broadcast to clients:               |
-     |  { type: 'match_result',             |
-     |    winner: '@alice',                 |
-     |    prize: '40 UCT',                  |
-     |    txStatus: 'confirmed' }           |
-```
-
----
-
-### 7. Migration Plan
-
-#### Phase 1: Server-Side Payment Manager
+### Phase 1: Server-Side Payment Manager
 1. Create `PaymentManager`, `SessionEscrow`, `PayoutEngine`
 2. Add sphere-sdk dependency, remove old deps
 3. Wire PaymentManager into MasterServer/SignalingService
 4. Remove old token-service.js and related code
 5. Test: verify entry fee collection and payout via CLI/mock
 
-#### Phase 2: Client-Side Wallet Bridge
-1. Create `sphere-game-bridge.js` with ConnectClient
-2. Modify QuakeJS game page to load bridge when `?sphere=true`
+### Phase 2: Client-Side Wallet Bridge
+1. Create `sphere-game-bridge.js` with `autoConnect()`
+2. Modify game page to load bridge when `?sphere=true`
 3. Add join-session flow with payment request
-4. Test: verify iframe ↔ Sphere Connect handshake
+4. Test: verify all three connect modes (iframe, popup, extension)
 
-#### Phase 3: Sphere App Integration
-1. Create `QuakeGamePage.tsx` with ConnectHost + iframe
-2. Add QuakeJS to Sphere's activities config
-3. Create entry fee confirmation modal
-4. Test: full end-to-end flow in Sphere
+### Phase 3: Integration Testing
+1. Test in Sphere iframe (requires Sphere team to add the page)
+2. Test standalone with popup wallet
+3. Test with Sphere browser extension
+4. Full end-to-end: join → pay → play → win → payout
 
-#### Phase 4: Polish and Production
-1. Handle edge cases (payment timeout, partial payments, network errors)
-2. Add match result UI overlay in game
-3. Docker image rebuild with sphere-sdk
-4. Production deployment and nametag configuration
+### Phase 4: Production
+1. Docker image rebuild with sphere-sdk
+2. Production mnemonic setup and nametag registration
+3. Deployment and monitoring
 
 ---
 
-### 8. Open Questions
+## Open Questions
 
-1. **Fee-free spectators?** Should players who just watch (not play) bypass the fee?
+1. **Fee-free spectators?** Should players who just watch bypass the fee?
 2. **Refund policy?** If a match is cancelled before completion, are fees returned?
 3. **Platform fee?** Should a percentage of the prize pool go to the platform (e.g., 5%)?
-4. **Multiple rounds?** If the same session runs multiple matches, is the fee per-match or per-session?
-5. **Token denomination:** 10 UCT — is this 10.00000000 (10 * 10^8 smallest units = 1000000000)?
-6. **Testnet vs mainnet:** Initial deployment on testnet only? When to switch?
+4. **Multiple rounds?** Fee per-match or per-session?
+5. **Token denomination:** 10 UCT = 10.00000000 (10 * 10^8 smallest units = 1,000,000,000)?
+6. **Testnet vs mainnet:** Initial deployment on testnet only?
